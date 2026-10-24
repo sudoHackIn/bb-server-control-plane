@@ -84,7 +84,7 @@ export function registerServerThreadCommands(
           ),
       ),
     );
-  for (const method of ["get", "result", "stop", "timeline"] as const)
+  for (const method of ["get", "result", "stop"] as const)
     threads
       .command(`${method} <thread-id>`)
       .option("--json", "Print machine-readable JSON output")
@@ -93,6 +93,83 @@ export function registerServerThreadCommands(
           output(await client().threads[method](id)),
         ),
       );
+  threads
+    .command("timeline <thread-id>")
+    .option("--json", "Print machine-readable JSON output")
+    .option(
+      "--before-anchor-id <cursor>",
+      "Earlier-page cursor returned by the timeline",
+    )
+    .option(
+      "--before-anchor-seq <sequence>",
+      "Sequence accompanying the cursor",
+    )
+    .action(
+      action(
+        async (
+          id: string,
+          options: { beforeAnchorId?: string; beforeAnchorSeq?: string },
+        ) => {
+          if (
+            (options.beforeAnchorId === undefined) !==
+            (options.beforeAnchorSeq === undefined)
+          )
+            throw new Error("Supply both cursor fields");
+          output(
+            options.beforeAnchorId === undefined ||
+              options.beforeAnchorSeq === undefined
+              ? await client().threads.timeline(id)
+              : await client().threads.olderTimeline(id, {
+                  anchorId: options.beforeAnchorId,
+                  anchorSeq: z.coerce
+                    .number()
+                    .int()
+                    .nonnegative()
+                    .parse(options.beforeAnchorSeq),
+                }),
+          );
+        },
+      ),
+    );
+  threads
+    .command("timeline-details <thread-id>")
+    .option("--json", "Print machine-readable JSON output")
+    .requiredOption("--turn <id>", "Turn to expand")
+    .requiredOption("--from <sequence>", "Start sequence of the timeline row")
+    .requiredOption("--to <sequence>", "End sequence of the timeline row")
+    .option("--item <id>", "Tool or reasoning item to expand")
+    .option("--cursor <cursor>", "Earlier details cursor")
+    .action(
+      action(
+        async (
+          id: string,
+          options: {
+            turn: string;
+            from: string;
+            to: string;
+            item?: string;
+            cursor?: string;
+          },
+        ) =>
+          output(
+            await client().threads.timelineDetails(id, {
+              turnId: options.turn,
+              sourceSeqStart: z.coerce
+                .number()
+                .int()
+                .nonnegative()
+                .parse(options.from),
+              sourceSeqEnd: z.coerce
+                .number()
+                .int()
+                .nonnegative()
+                .parse(options.to),
+              itemId: options.item,
+              beforeCursor: options.cursor,
+            }),
+          ),
+      ),
+    );
   threads
     .command("send <thread-id>")
     .option("--json", "Print machine-readable JSON output")

@@ -271,6 +271,40 @@ export function createUserThreadFixture({ db, users }) {
           result.text,
           new RegExp(`Personal ${user.login} completed`, "u"),
         );
+        const timeline = await command(user.login, [
+          "threads",
+          "timeline",
+          thread.id,
+          "--json",
+        ]);
+        const work = timeline.rows.find(
+          (row) =>
+            row.kind === "work" && row.workKind === "command" && row.turnId,
+        );
+        assert.ok(work, "Missing native personal shell activity");
+        const details = await command(user.login, [
+          "threads",
+          "timeline-details",
+          thread.id,
+          "--turn",
+          work.turnId,
+          "--from",
+          String(work.sourceSeqStart),
+          "--to",
+          String(work.sourceSeqEnd),
+          "--item",
+          work.callId,
+          "--json",
+        ]);
+        assert.ok(
+          details.rows.some(
+            (row) =>
+              row.kind === "work" &&
+              row.callId === work.callId &&
+              row.command?.includes("/usr/local/bin/node"),
+          ),
+          "Missing hydrated personal shell command",
+        );
         const page = await command(user.login, [
           "threads",
           "events",
@@ -462,6 +496,7 @@ export function createUserThreadFixture({ db, users }) {
         "/interactions",
         "/stream",
         "/timeline",
+        "/timeline-details?turnId=foreign&sourceSeqStart=1&sourceSeqEnd=2",
       ])
         assert.equal(
           (
@@ -694,6 +729,7 @@ export function createUserThreadFixture({ db, users }) {
         personalThreadCertificateCliAndFreshEnvironment: true,
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,
+        personalNativeTimelineAndToolDetailsCli: true,
         personalCanonicalReplayAndLiveNativeTimeline: true,
         personalStreamCursorReconnect: true,
         personalRealCliStreamCancellationReleasesSlots: true,

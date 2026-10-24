@@ -5,6 +5,7 @@ import type { ThreadTimelineViewRow } from "@bb/thread-view";
 import { BbDiffSplit } from "@/components/code/BbDiffSplit";
 import type { ThreadTimelineTurnSummaryDetailsQueryIdentity } from "@/hooks/queries/query-keys";
 import { prefetchThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-panel-queries";
+import { useTimelineDetailSource } from "@/hooks/queries/timeline-detail-source";
 import {
   useRequestPierreWorkerPool,
   useRequirePierreWorkerPool,
@@ -101,11 +102,12 @@ export function usePreloadTimelineRowBody(
   threadId: string | undefined,
 ): () => void {
   const queryClient = useQueryClient();
+  const source = useTimelineDetailSource();
   const requestDiffWorkers = useRequestPierreWorkerPool();
   return () => {
     const identity = timelineRowBodyDetailIdentity(row, threadId);
     if (identity !== null) {
-      prefetchThreadTimelineTurnSummaryDetails(queryClient, identity);
+      prefetchThreadTimelineTurnSummaryDetails(queryClient, identity, source);
     }
     for (const split of timelineRowBodySplits(row)) {
       void split.preload();

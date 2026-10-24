@@ -4,6 +4,39 @@ import { createControlPlaneClient } from "../src/control-plane.js";
 
 const encode = (value: object) =>
   `event: bb\r\ndata: ${JSON.stringify(value)}\r\n\r\n`;
+
+it("aborts an idle custom transport read and cancels its body without waiting for another frame", async () => {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+  const abort = new AbortController();
+  const reader = readControlPlaneThreadStream(response, "owned", abort.signal);
+  const pending = reader.next();
+  abort.abort();
+  expect(await pending).toEqual({ done: true, value: undefined });
+  expect(cancelled).toBe(true);
+});
+it("stops buffered replay after abort instead of yielding the next buffered frame", async () => {
+  const fixture = response(
+    encode({ kind: "ready", cursor: 1 }) + encode({ kind: "ready", cursor: 2 }),
+    1024,
+  );
+  const abort = new AbortController();
+  const stream = readControlPlaneThreadStream(
+    fixture.value,
+    "owned",
+    abort.signal,
+  );
+  expect((await stream.next()).value).toEqual({ kind: "ready", cursor: 1 });
+  abort.abort();
+  expect(await stream.next()).toEqual({ done: true, value: undefined });
+});
 function response(text: string, size = 7) {
   const data = new TextEncoder().encode(text);
   let offset = 0;

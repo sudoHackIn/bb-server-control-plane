@@ -3,6 +3,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { PersonalTimeline } from "./PersonalTimeline";
 import {
   Sidebar,
   SidebarContent,
@@ -258,15 +259,23 @@ function WorkspaceNavigation({
             }}
           />
         ) : (
-          <section className="p-6">
+          <section className="flex min-h-0 flex-1 flex-col">
             {selectedThread && detail.data ? (
               <>
-                <h1 className="text-lg font-medium">
+                <h1 className="px-6 pt-4 text-lg font-medium">
                   {detail.data.title ?? "Untitled thread"}
                 </h1>
-                <p className="text-sm text-muted-foreground">
+                <p className="px-6 pb-3 text-sm text-muted-foreground">
                   {detail.data.status}
                 </p>
+                <PersonalTimeline
+                  key={selectedThread.id}
+                  client={client}
+                  threadId={selectedThread.id}
+                  projectId={selectedThread.projectId}
+                  status={detail.data.status}
+                  cwd={selectedProject?.cwd ?? ""}
+                />
               </>
             ) : (
               <>

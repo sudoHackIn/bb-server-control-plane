@@ -1,6 +1,16 @@
 import { createControlPlaneThreadStreams } from "./thread-stream.js";
 import { createThreadTimelineWindows } from "../services/threads/thread-timeline-windows.js";
 import {
+  resolveThreadCompletedTurnDisplay,
+  resolveThreadProviderDisplayName,
+} from "../services/threads/thread-timeline-windows.js";
+import { buildTimelineTurnSummaryDetails } from "../services/threads/timeline.js";
+import { getAppSettings } from "@bb/db";
+import type {
+  ControlPlaneTimelineDetails,
+  TimelinePaginationCursor,
+} from "@bb/server-contract";
+import {
   ControlPlaneThreadError,
   controlPlaneProfileVersions,
   environments,
@@ -209,6 +219,47 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
     events,
     timeline(userId: string, id: string) {
       return snapshot(userId, id).timeline;
+    },
+    olderTimeline(
+      userId: string,
+      id: string,
+      beforeCursor: TimelinePaginationCursor,
+    ) {
+      const { thread } = read(userId, id);
+      return windows.read(
+        thread,
+        {
+          deferContent: true,
+          includeNestedRows: false,
+          page: { kind: "older", beforeCursor, segmentLimit: 20 },
+          summaryOnly: false,
+        },
+        undefined,
+      );
+    },
+    timelineDetails(
+      userId: string,
+      id: string,
+      input: ControlPlaneTimelineDetails,
+    ) {
+      const { thread } = read(userId, id);
+      const settings = getAppSettings(deps.db);
+      return buildTimelineTurnSummaryDetails(deps.db, thread, {
+        ...input,
+        itemId: input.itemId ?? null,
+        deferContent: true,
+        completedTurnDisplay: resolveThreadCompletedTurnDisplay(
+          deps,
+          settings,
+          thread.providerId,
+        ),
+        includeDiagnosticOperations: settings.showDiagnosticEvents,
+        summarizeShellCommands: settings.summarizeShellCommands,
+        providerDisplayName: resolveThreadProviderDisplayName(
+          deps,
+          thread.providerId,
+        ),
+      });
     },
     stream(
       userId: string,

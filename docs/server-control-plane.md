@@ -38,6 +38,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Gate native web initialization on verified browser context, namespace core caches/drafts/recordings by actor and session epoch, revalidate returning pages, and reject frontend requests bound to an old actor. Legacy plugin persistence and rendered personal UI remain pending.
 - [ ] Clear account-scoped browser caches and drafts when switching identities or signing out.
 - [x] Open a separate personal browser entry with native sidebar navigation, paginated own project/thread metadata and access-loss handling; leave administrative bootstrap and plugin frontends closed.
+- [x] Render owned conversations through the native timeline and scroll surface, personal SSE, older history and deferred tool details; retain the limited API boundary.
 - [ ] Use this fork's native UI for both roles. Keep projects/threads/composer/timeline/model controls for users; remove the right workspace panel and administrative controls in user mode.
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
@@ -776,3 +777,50 @@ module over TLS using a certificate-issued browser cookie. It also
 verifies anonymous asset denial, personal API isolation and all previous
 Qwen/UID/HOME/approval/stream/restart checks. These are not production-browser
 rendering tests. See `control-plane-phase-20-verification.json`.
+
+## Twenty-first increment: personal native conversation timeline
+
+Selecting an owned thread now mounts the existing ThreadTimelineSurface and
+BottomAnchoredScrollBody. Native messages, expandable commands and reasoning,
+streaming rows and history paging use the personal SDK. A private React context
+selects the detail reader for native hooks and hover prefetching; administrative
+rendering uses the same hook path with its existing native SDK reader. User mode
+still does not bootstrap plugin frontends, settings or the workspace panel.
+Local-file links are consumed without invoking privileged file actions. Browser
+routing is mounted for the native timeline's message-location handling.
+
+The limited timeline endpoint accepts only the paired native earlier-page
+cursor. A separate timeline-details endpoint accepts a bounded turn/sequence
+range, optional item and details cursor. Both resolve the persisted owner and
+current project access before calling the native projection. Foreign IDs and
+transplanted history cursors fail; callers cannot override environment, provider,
+model, tools or permissions. Older pages retain native snapshot validation and
+content bounds. SDK olderTimeline/timelineDetails and CLI timeline cursor flags
+plus timeline-details expose the same operations.
+
+The personal live controller starts from an authorized snapshot and consumes the
+existing personal SSE stream. It applies native deltas only to the matching
+baseline, resnapshots otherwise and retains loaded history using native merge
+helpers. It ignores late responses after changing threads, retires disconnected
+rows, reauthorizes before reconnecting and handles lost earlier-page cursors by
+refreshing history. Native status-change metadata updates the working indicator.
+Permission failure during history recovery hides rows and cancels the live
+subscription. Disposal aborts requests and releases the reader. The SDK parser
+also cancels an idle custom transport reader on AbortSignal, including when no
+new frame arrives; aborting buffered replay stops further delivery.
+
+This increment does not complete the composer, profile/model controls, personal
+deep links, attachment preview routes, approved plugin frontend storage or production-browser rendering
+verification. The full personal UI and workflow/automation/scheduling checklists
+remain open.
+
+Verification: 56 selected app/native timeline tests, 8 server timeline/security
+checks, 132 SDK tests and 24 CLI registration/JSON/error tests pass. Strict
+app/server/SDK/CLI typechecks and changed-file lint/format checks pass without
+lint warnings. The full Docker deployment executes the actual personal native
+Qwen command, reads its timeline and hydrates its deferred command through the
+new real CLI, denies foreign detail access and retains prior approval, replay,
+UID/HOME and restart checks. Migrated-SQLite tests cover older-page pagination,
+transplanted cursors and grant revocation; DOM tests cover native messages and
+command expansion. Production-browser rendering is not claimed. See
+`control-plane-phase-21-verification.json`.

@@ -1,4 +1,11 @@
 import { threadTimelineResponseSchema } from "@bb/server-contract";
+import {
+  controlPlaneTimelineDetailsSchema,
+  timelineTurnSummaryDetailsResponseSchema,
+  timelinePaginationCursorSchema,
+  type TimelinePaginationCursor,
+  type ControlPlaneTimelineDetails,
+} from "@bb/server-contract";
 import { readControlPlaneThreadStream } from "./control-plane-thread-stream.js";
 import { z } from "zod";
 import {
@@ -122,6 +129,48 @@ export function createControlPlaneThreadClient(
     async timeline(id: string, signal?: AbortSignal) {
       return threadTimelineResponseSchema.parse(
         await request(`${path(id)}/timeline`, "GET", undefined, signal),
+      );
+    },
+    async olderTimeline(
+      id: string,
+      cursor: TimelinePaginationCursor,
+      signal?: AbortSignal,
+    ) {
+      const value = timelinePaginationCursorSchema.parse(cursor);
+      const query = new URLSearchParams({
+        beforeAnchorId: value.anchorId,
+        beforeAnchorSeq: String(value.anchorSeq),
+      });
+      return threadTimelineResponseSchema.parse(
+        await request(
+          `${path(id)}/timeline?${query}`,
+          "GET",
+          undefined,
+          signal,
+        ),
+      );
+    },
+    async timelineDetails(
+      id: string,
+      input: ControlPlaneTimelineDetails,
+      signal?: AbortSignal,
+    ) {
+      const value = controlPlaneTimelineDetailsSchema.parse(input);
+      const query = new URLSearchParams({
+        turnId: value.turnId,
+        sourceSeqStart: String(value.sourceSeqStart),
+        sourceSeqEnd: String(value.sourceSeqEnd),
+      });
+      if (value.itemId !== undefined) query.set("itemId", value.itemId);
+      if (value.beforeCursor !== undefined)
+        query.set("beforeCursor", value.beforeCursor);
+      return timelineTurnSummaryDetailsResponseSchema.parse(
+        await request(
+          `${path(id)}/timeline-details?${query}`,
+          "GET",
+          undefined,
+          signal,
+        ),
       );
     },
     async *stream(

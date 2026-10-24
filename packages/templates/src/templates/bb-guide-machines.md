@@ -236,7 +236,8 @@ Secure, SameSite=Strict cookie. No token is returned in the page or URL.
 `createControlPlaneClient(...).browserLoginUrl()` returns the same URL.
 Successful sign-in redirects to `/control-plane/app`: native sidebar navigation
 for personal projects and thread summaries, with paginated limited SDK reads.
-Timeline/composer/model controls are not integrated into this screen yet.
+The selected conversation uses the native live timeline and expandable tool
+details. Composer/model controls remain a subsequent integration step.
 Switching browser identities revokes the previous browser credential. Switching
 between administrator and personal sign-in retires the opposite browser session.
 PKCE-issued CLI/plugin credentials remain separate.
@@ -330,6 +331,19 @@ native timeline snapshot accompanies reconnection; live frames are not durable
 sequence IDs. This is replay, not exactly-once delivery. Ctrl-C stops the local
 subscription without stopping the remote thread. `threads timeline <thread-id>`
 reads the native latest 20-segment snapshot with deferred content.
+Pass both `--before-anchor-id <cursor>` and `--before-anchor-seq <sequence>`
+from `timelinePage.olderCursor` to load earlier messages. The SDK equivalent is
+`threads.olderTimeline(id, cursor, signal)`; the latest `timeline(id, signal)`
+signature stays unchanged.
+
+`threads timeline-details <thread-id> --turn <id> --from <sequence>
+--to <sequence> [--item <id>] [--cursor <cursor>]` expands the row's native
+turn range, optionally a tool/reasoning item, and pages using `olderCursor`.
+The SDK equivalent is `threads.timelineDetails(id, input, signal)`.
+These reads recheck ownership and current project grants; cursor fields never
+grant access to a different thread. Personal native timeline rendering uses
+these same readers for deferred content and prefetching. Administrative native
+rendering retains its existing transport.
 
 The transport authenticates in the request header, never the URL. It checks
 current project access and token validity before every frame and at least once

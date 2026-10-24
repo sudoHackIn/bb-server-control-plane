@@ -1354,8 +1354,10 @@ Each navigation page is bounded to 50 with a separate list cursor. The personal
 web entry reuses native sidebar components to browse accessible projects and
 owned thread summaries, with additional pages fetched through this same SDK.
 It loads a separate personal module without administrative bootstrap, plugin
-frontends, settings, terminals or a right workspace panel. Message timeline,
-composer and model controls remain a subsequent integration step. Authenticated
+frontends, settings, terminals or a right workspace panel. The selected thread
+uses the native message/activity timeline, bottom-anchored scrolling, SSE updates,
+older history and deferred tool details through owner-scoped routes. Composer
+and model controls remain a subsequent integration step. Authenticated
 users can read compiled static assets; this does not enable the full BB API,
 raw WebSocket or plugin installation. Browser cookies and PKCE CLI/plugin tokens
 share the existing hashed-session table and server-side revocation checks.
@@ -1379,3 +1381,14 @@ browser cache/storage clearing. The first standalone boot preserves legacy local
 settings. First-party/third-party plugin code that directly uses raw browser
 storage is not migrated by this increment; personal plugin frontend loading
 remains closed until its scoped adapter is implemented.
+
+Personal history is available through `threads.olderTimeline(id, cursor, signal)`
+and `threads.timelineDetails(id, input, signal)` on the control-plane SDK.
+`bb server access threads timeline <id> --before-anchor-id <cursor>
+--before-anchor-seq <sequence>` loads an earlier page; both fields are required.
+`threads timeline-details <id> --turn <id> --from <sequence> --to <sequence>
+[--item <id>] [--cursor <cursor>]` expands a turn or a specific tool/reasoning
+item. Requests are bounded, reject unknown execution fields and recheck current
+ownership/project access before native history reads. The UI resnapshots after
+a lost delta baseline or connection, discards disconnected private rows, and
+uses fresh authorization before displaying history again.

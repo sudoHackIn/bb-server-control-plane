@@ -2,6 +2,10 @@ import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import {
+  controlPlaneTimelinePageSchema,
+  controlPlaneTimelineDetailsSchema,
+} from "@bb/server-contract";
+import {
   controlPlaneThreadStartSchema,
   controlPlaneThreadSendSchema,
   controlPlaneThreadResolutionSchema,
@@ -26,7 +30,7 @@ export function isControlPlaneThreadPath(path: string, method: string) {
   if (path === "/control-plane/user/threads")
     return ["GET", "POST"].includes(method);
   if (
-    /^\/control-plane\/user\/threads\/[^/]+(?:\/(?:events|result|interactions|stream|timeline))?$/u.test(
+    /^\/control-plane\/user\/threads\/[^/]+(?:\/(?:events|result|interactions|stream|timeline|timeline-details))?$/u.test(
       path,
     )
   )
@@ -132,9 +136,33 @@ export function installControlPlaneThreadRoutes(
     handled((context, userId) => {
       const id = context.req.param("id") ?? "";
       service.get(userId, id);
-      if (Object.keys(context.req.query()).length)
+      const parsed = controlPlaneTimelinePageSchema.safeParse(
+        context.req.query(),
+      );
+      if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
-      return context.json(service.timeline(userId, id));
+      const { beforeAnchorId, beforeAnchorSeq } = parsed.data;
+      return context.json(
+        beforeAnchorId === undefined || beforeAnchorSeq === undefined
+          ? service.timeline(userId, id)
+          : service.olderTimeline(userId, id, {
+              anchorId: beforeAnchorId,
+              anchorSeq: beforeAnchorSeq,
+            }),
+      );
+    }),
+  );
+  app.get(
+    `${base}/:id/timeline-details`,
+    handled((context, userId) => {
+      const id = context.req.param("id") ?? "";
+      service.get(userId, id);
+      const parsed = controlPlaneTimelineDetailsSchema.safeParse(
+        context.req.query(),
+      );
+      if (!parsed.success)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(service.timelineDetails(userId, id, parsed.data));
     }),
   );
   app.get(

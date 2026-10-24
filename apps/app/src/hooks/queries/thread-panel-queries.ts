@@ -1,5 +1,10 @@
 import { prependOlderTimelineRows } from "@bb/client-core";
 import {
+  nativeTimelineDetailSource,
+  useTimelineDetailSource,
+  type TimelineDetailSource,
+} from "./timeline-detail-source";
+import {
   infiniteQueryOptions,
   queryOptions,
   useInfiniteQuery,
@@ -372,6 +377,7 @@ function mergeTimelineTurnSummaryDetailsPages(
 
 function threadTimelineTurnSummaryDetailsQueryOptions(
   identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
+  source: TimelineDetailSource,
 ) {
   return infiniteQueryOptions<
     TimelineTurnSummaryDetailsResponse,
@@ -382,19 +388,17 @@ function threadTimelineTurnSummaryDetailsQueryOptions(
   >({
     queryKey: threadTimelineTurnSummaryDetailsQueryKey(identity),
     queryFn: ({ pageParam, signal }) =>
-      sdk.threads.timelineTurnSummaryDetails({
-        threadId: requireThreadId(
-          identity.threadId,
-          "useThreadTimelineTurnSummaryDetails",
-        ),
-        sourceSeqEnd: String(identity.sourceSeqEnd),
-        sourceSeqStart: String(identity.sourceSeqStart),
-        turnId: identity.turnId,
-        deferContent: "true",
-        ...(identity.itemId === null ? {} : { itemId: identity.itemId }),
-        ...(pageParam === undefined ? {} : { beforeCursor: pageParam }),
+      source(
+        {
+          ...identity,
+          threadId: requireThreadId(
+            identity.threadId,
+            "useThreadTimelineTurnSummaryDetails",
+          ),
+        },
+        pageParam,
         signal,
-      }),
+      ),
     initialPageParam: undefined,
     getNextPageParam: (lastPage) => lastPage.olderCursor ?? undefined,
     select: mergeTimelineTurnSummaryDetailsPages,
@@ -410,12 +414,13 @@ function threadTimelineTurnSummaryDetailsQueryOptions(
 export function prefetchThreadTimelineTurnSummaryDetails(
   queryClient: QueryClient,
   identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
+  source: TimelineDetailSource = nativeTimelineDetailSource,
 ): void {
   if (!identity.threadId || !identity.turnId) {
     return;
   }
   void queryClient.prefetchInfiniteQuery(
-    threadTimelineTurnSummaryDetailsQueryOptions(identity),
+    threadTimelineTurnSummaryDetailsQueryOptions(identity, source),
   );
 }
 
@@ -423,8 +428,9 @@ export function useThreadTimelineTurnSummaryDetails(
   identity: ThreadTimelineTurnSummaryDetailsQueryIdentity,
   options?: ThreadTimelineTurnSummaryDetailsQueryOptions,
 ) {
+  const source = useTimelineDetailSource();
   return useInfiniteQuery({
-    ...threadTimelineTurnSummaryDetailsQueryOptions(identity),
+    ...threadTimelineTurnSummaryDetailsQueryOptions(identity, source),
     enabled:
       (options?.enabled ?? true) &&
       Boolean(identity.threadId) &&

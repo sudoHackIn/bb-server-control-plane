@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { PersonalWorkspace } from "./components/control-plane/PersonalWorkspace";
@@ -21,7 +22,9 @@ export function mountPersonalApplication(): () => void {
   const root = createRoot(element);
   root.render(
     <QueryClientProvider client={queries}>
-      <PersonalWorkspace client={client} />
+      <BrowserRouter>
+        <PersonalWorkspace client={client} />
+      </BrowserRouter>
     </QueryClientProvider>,
   );
   return () => {

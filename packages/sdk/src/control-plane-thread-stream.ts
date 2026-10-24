@@ -14,6 +14,10 @@ export async function* readControlPlaneThreadStream(
     throw new Error("Invalid thread stream response");
   }
   const reader = response.body.getReader();
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener("abort", abort, { once: true });
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let buffer = "";
   try {
@@ -23,6 +27,7 @@ export async function* readControlPlaneThreadStream(
       buffer += decoder.decode(chunk.value, { stream: true });
       let boundary = /\r?\n\r?\n/u.exec(buffer);
       while (boundary && boundary.index !== undefined) {
+        if (signal?.aborted) return;
         const frame = buffer.slice(0, boundary.index);
         buffer = buffer.slice(boundary.index + boundary[0].length);
         if (frame.length > 16 * 1024 * 1024)
@@ -56,6 +61,7 @@ export async function* readControlPlaneThreadStream(
         "Thread stream closed; reconnect from the last event sequence",
       );
   } finally {
+    signal?.removeEventListener("abort", abort);
     await reader.cancel().catch(() => {});
     reader.releaseLock();
   }

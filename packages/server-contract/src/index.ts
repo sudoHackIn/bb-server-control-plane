@@ -26,3 +26,4 @@ export * from "./api/machine-environment.js";
 export * from "./client-route-descriptors.js";
 
 export * from "./control-plane-thread-stream.js";
+export * from "./control-plane-timeline.js";
