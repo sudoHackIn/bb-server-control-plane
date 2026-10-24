@@ -184,7 +184,6 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         BB_APP_URL: config.publicOrigin,
         NODE_EXTRA_CA_CERTS: config.users.tls.clientCaFile,
         QWEN_SERVER_BASE_URL: `http://127.0.0.1:${backend.address().port}/v1`,
-        QWEN_SERVER_MODEL: "qwen-job-test",
         NEURALDEAP_KEY: "local-test-only",
       },
     });

@@ -57,7 +57,7 @@ def main():
     with open(POLICY, encoding='utf8') as file:
         policy = json.load(file)
     operation, user_id, raw_uid, *args = sys.argv[1:]
-    if operation not in ('provision', 'project', 'launch', 'stop'):
+    if operation not in ('provision', 'project', 'launch', 'launch-policy', 'stop'):
         raise ValueError('Invalid launcher operation')
     if str(uuid.UUID(user_id)) != user_id or not re.fullmatch(r'[0-9]{6}', raw_uid):
         raise ValueError('Invalid identity')
@@ -107,7 +107,7 @@ def main():
     base = os.path.join(root, user_id)
     home = os.path.join(base, 'home')
     projects = os.path.join(base, 'projects')
-    if operation in ('launch', 'stop'):
+    if operation in ('launch', 'launch-policy', 'stop'):
         jobs_directory = '/var/lib/bb-agent-launcher/jobs'
         try:
             os.mkdir(jobs_directory, 0o700)
@@ -121,7 +121,13 @@ def main():
         jobs = runpy.run_path(jobs_file)
         if operation == 'stop' and len(args) == 1:
             return jobs['stop_job'](user_id, uid, args[0], lock)
-        if operation != 'launch' or len(args) < 3 or args[2] != '--':
+        launch_policy = None
+        if operation == 'launch-policy' and len(args) == 2:
+            policy_file = '/opt/bb-control-plane/launcher/runtime_policy.py'
+            trusted_file(policy_file)
+            launch_policy = runpy.run_path(policy_file)['read_policy']()
+            args = [*args, '--']
+        if operation not in ('launch', 'launch-policy') or len(args) < 3 or args[2] != '--':
             raise ValueError('Expected session, cwd and CLI arguments')
         session_id, cwd, _, *cli_args = args
         if len(cli_args) > 128 or sum(map(len, cli_args)) > 131072:
@@ -134,6 +140,9 @@ def main():
         info = os.fstat(home_fd)
         if info.st_uid != uid or info.st_gid != uid or stat.S_IMODE(info.st_mode) != 0o700:
             raise ValueError('Invalid HOME ownership or mode')
+        if launch_policy is not None:
+            runtime_fd = directory(base_fd, 'runtime', 0, 0, 0o711)
+            os.close(runtime_fd)
         fd = os.open('projects', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=base_fd)
         for part in relative.split('/'):
             if part in ('', '.', '..'):
@@ -144,7 +153,7 @@ def main():
         if os.fstat(fd).st_uid != uid:
             raise ValueError('Project belongs to another identity')
         os.fchdir(fd)
-        return jobs['launch_job'](policy, user_id, uid, home, cwd, session_id, cli_args, lock)
+        return jobs['launch_job'](policy, user_id, uid, home, cwd, session_id, cli_args, lock, launch_policy)
     if operation == 'provision' and not args:
 
         base_fd = directory(root_fd, user_id, 0, 0, 0o711)

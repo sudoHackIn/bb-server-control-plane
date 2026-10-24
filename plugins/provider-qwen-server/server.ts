@@ -29,7 +29,6 @@ export default async function plugin(bb: BbPluginApi) {
     env: {
       passthrough: [
         "QWEN_SERVER_CONTEXT_SOCKET",
-        "QWEN_SERVER_MODEL",
         "QWEN_SERVER_BASE_URL",
         "NEURALDEAP_KEY",
       ],

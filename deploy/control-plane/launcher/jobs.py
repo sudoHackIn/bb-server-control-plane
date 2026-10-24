@@ -5,6 +5,7 @@ import signal
 import subprocess
 import time
 import uuid
+import runpy
 
 JOBS = '/var/lib/bb-agent-launcher/jobs'
 
@@ -125,7 +126,7 @@ def stop_job(user_id, uid, session_id, lock):
     raise RuntimeError('Job supervisor did not stop')
 
 
-def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock):
+def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, launch_policy=None):
     path = lease_path(session_id)
     if not policy.get('node') or not policy.get('cli'):
         raise ValueError('Qwen execution is not configured')
@@ -168,12 +169,22 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock):
         if name in os.environ:
             env[name] = os.environ[name]
     os.umask(0o077)
+    runtime_directory = None
+    runtime_policy = runpy.run_path('/opt/bb-control-plane/launcher/runtime_policy.py') if launch_policy is not None else None
     try:
+        preloads = []
+        if runtime_policy is not None:
+            runtime_directory = runtime_policy['create_policy'](home, uid, session_id, launch_policy)
+            env['BB_AGENT_POLICY_PATH'] = os.path.join(runtime_directory, 'policy.json')
+            env['QWEN_CODE_SYSTEM_SETTINGS_PATH'] = os.path.join(runtime_directory, 'settings.json')
+            env['QWEN_CODE_SYSTEM_DEFAULTS_PATH'] = os.path.join(runtime_directory, 'settings.json')
+            env['QWEN_CODE_NO_RELAUNCH'] = 'true'
+            preloads = ['--import', '/opt/bb-control-plane/launcher/policy-preload.mjs']
         child = subprocess.Popen(['/usr/bin/setpriv', '--reuid=' + str(uid), '--regid=' + str(uid),
                                   '--clear-groups', '--no-new-privs', '--', '/usr/bin/unshare',
                                   '--user', '--map-user=' + str(uid), '--map-group=' + str(uid),
                                   '--pid', '--fork', '--mount-proc', policy['node'],
-                                  '--dns-result-order=ipv4first', policy['cli'], *arguments],
+                                  '--dns-result-order=ipv4first', *preloads, policy['cli'], *arguments],
                                  env=env, close_fds=True, start_new_session=True)
         while clients_alive(clients):
             try:
@@ -185,6 +196,8 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         cleanup(pid)
+        if runtime_directory is not None:
+            runtime_policy['remove_policy'](runtime_directory)
         try:
             with open(path, encoding='utf8') as file:
                 current_lease = json.load(file)

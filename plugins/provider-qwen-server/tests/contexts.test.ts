@@ -1,4 +1,6 @@
-import { test } from "vitest";
+import { test, vi } from "vitest";
+import { createSdkMcpServer } from "@qwen-code/sdk";
+import { serverQuery } from "../src/server-query.js";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -19,6 +21,18 @@ test("provider resolves numeric identity through private service socket; denies 
     gid: 200000,
     home: "/srv/users/alice/home",
     cwd: "/srv/users/alice/projects/default",
+    profile: {
+      versionId: randomUUID(),
+      definition: {
+        prompt: "Approved",
+        providerId: "qwen-server",
+        model: "approved-model",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: ["read_file"],
+        mcpServers: [],
+      },
+    },
   };
   let response: unknown = context;
   let status = 200;
@@ -41,6 +55,33 @@ test("provider resolves numeric identity through private service socket; denies 
       await resolveServiceContext(socket, context.cwd, sessionId, "thr_test"),
       context,
     );
+    const previousSocket = process.env.QWEN_SERVER_CONTEXT_SOCKET;
+    const mcp = createSdkMcpServer({ name: "unverified", tools: [] });
+    const connect = vi.spyOn(mcp.instance, "connect");
+    process.env.QWEN_SERVER_CONTEXT_SOCKET = socket;
+    const blocked = serverQuery({
+      threadId: "thr_test",
+      prompt: (async function* () {})(),
+      options: { cwd: context.cwd, sessionId, mcpServers: { unverified: mcp } },
+    });
+    try {
+      await assert.rejects(blocked.initialized, /Unverified SDK MCP/);
+      assert.equal(connect.mock.calls.length, 0);
+      await blocked.close();
+      const cancelled = serverQuery({
+        threadId: "thr_test",
+        prompt: (async function* () {})(),
+        options: { cwd: context.cwd, sessionId },
+      });
+      const stopping = cancelled.close();
+      await assert.rejects(cancelled.initialized, /closed before launch/);
+      await stopping;
+    } finally {
+      connect.mockRestore();
+      if (previousSocket === undefined)
+        delete process.env.QWEN_SERVER_CONTEXT_SOCKET;
+      else process.env.QWEN_SERVER_CONTEXT_SOCKET = previousSocket;
+    }
     for (const patch of [
       { uid: 0 },
       { gid: 200001 },

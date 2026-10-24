@@ -6,6 +6,8 @@ import pathlib
 import pwd
 import shutil
 import subprocess
+import hashlib
+import stat
 
 
 def main():
@@ -46,6 +48,13 @@ def main():
         shutil.copyfile(source_jobs, jobs)
     os.chown(jobs, 0, 0)
     os.chmod(jobs, 0o644)
+    for name in ('runtime_policy.py', 'policy-preload.mjs'):
+        source = pathlib.Path(__file__).with_name(name)
+        target = helper.with_name(name)
+        if source.resolve() != target.resolve():
+            shutil.copyfile(source, target)
+        os.chown(target, 0, 0)
+        os.chmod(target, 0o644)
     settings = {'root': str(root), 'serviceUid': service.pw_uid}
     if args.qwen_cli:
         for name, value in (('node', args.node), ('cli', args.qwen_cli)):
@@ -61,6 +70,20 @@ def main():
                     break
                 current = current.parent
             settings[name] = str(target)
+        cli_root = pathlib.Path(settings['cli']).parent
+        digest = hashlib.sha256()
+        for target in sorted(cli_root.rglob('*.js'), key=lambda path: path.relative_to(cli_root).as_posix()):
+            current = target
+            while current != cli_root:
+                info = current.lstat()
+                if current.is_symlink() or info.st_uid != 0 or info.st_mode & 0o022:
+                    raise ValueError('Qwen module paths must be root-owned and immutable to users')
+                current = current.parent
+            if not stat.S_ISREG(target.lstat().st_mode):
+                raise ValueError('Qwen modules must be regular files')
+            digest.update(target.relative_to(cli_root).as_posix().encode() + b'\0' + hashlib.sha256(target.read_bytes()).digest())
+        if digest.hexdigest() != 'f722cb0a432c07047f16ddb3b480840dc77167795d508498180850d31bf9b7aa':
+            raise ValueError('Unverified Qwen CLI artifact; review native policy and rerun deployment tests before approving this build')
     policy = pathlib.Path('/etc/bb-agent-launcher/policy.json')
     policy.write_text(json.dumps(settings) + '\n')
     os.chown(policy, 0, 0)

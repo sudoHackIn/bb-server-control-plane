@@ -36,7 +36,6 @@ const query = serverQuery({
     cwd: config.cwd,
     model: "qwen-job-test",
     permissionMode: "yolo",
-    safeMode: true,
     includePartialMessages: true,
     abortController: abort,
     ...(config.sessionId ? { resume: sessionId } : { sessionId }),
@@ -44,7 +43,7 @@ const query = serverQuery({
     systemPrompt: {
       type: "preset",
       preset: "qwen_code",
-      append: `BB_ARGV_PRIVATE_${config.marker}`,
+      append: `BB_ARGV_PRIVATE_${config.marker}${config.largeInstructions ? "\nBB_LARGE_INSTRUCTIONS\n" + "x".repeat(160000) : ""}`,
     },
   },
 });

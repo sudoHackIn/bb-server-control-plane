@@ -21,6 +21,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Protect launcher context and descendant command metadata across agent UIDs through separate job user/PID/mount namespaces; verify process visibility through the actual launcher with hostile-agent /proc probes. This is not a filesystem jail or a network boundary.
 - [x] Persist approved agent profiles with immutable versions and user grants: prompt, provider/model/reasoning, tools, MCP and permissions. Expose administrative management and the user's permitted catalog through API/SDK/CLI; a catalog record alone does not enforce execution.
 - [x] Bind native threads atomically to approved profile versions and recheck current profile grants and availability at create, dispatch, turn submission and resume. Legacy unbound rows remain historical and cannot execute; this admission check does not translate profile settings into the harness.
+- [x] Enforce a native Qwen profile subset through protected per-job policy: exact native tool allowlist, appended instructions, fixed model, SDK reasoning acknowledgement, disabled hooks/extensions/unapproved MCP; reject unsupported modes before launch.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
@@ -309,3 +310,54 @@ The Docker scenario creates execution profiles and grants through the actual adm
 The CLI contract checks also exposed missing `--json` support in the previously added `server access` commands. All their leaf commands now accept it. Existing catalog/project/environment output remains JSON; login/status/logout provide structured responses, while `authorize --json` emits pending and authorized JSON lines. Neither tokens nor PKCE verifiers are printed. Docker uses those real authorization/login/status/logout paths and checks their output. CLI command-output tests require process inspection for their own temporary service fixture; macOS sandbox denies `ps`, so those checks ran with that host restriction lifted, preserving the product's process-identity verification.
 
 Verification: 639 database tests, 26 selected server control-plane tests and 577 CLI contract tests pass (one existing CLI test skipped), with database/server/SDK/CLI strict typechecks and changed-file lint/format. Tests prove pre-notification binding, grant/profile/version revocation, old-version pinning, legacy null denial, initial/queued dispatch refusal and resolver refusal. The complete fork Docker deployment passes. See `control-plane-phase-11-verification.json`. Native profile-setting enforcement, personal thread API/UI, delegated MCP/plugin operations and personal workflows/automations/schedules remain unfinished.
+
+## Twelfth increment: protected native Qwen execution policy
+
+The private context resolver now returns the persisted approved version and its
+definition after the existing grant checks. The provider resolves and validates
+that context before constructing an SDK Query. In particular, an SDK MCP
+instance cannot connect in the shared service process before authorization.
+Caller model overrides, safe mode, non-Full permissions, nonempty MCP profiles,
+unrecognized native tools and unsupported reasoning values are rejected. This
+is an enforced native subset, not completion of the delegated MCP/approval layer.
+
+The root supervisor receives a bounded framed policy over stdin, creates
+root-owned policy/settings files outside writable HOME, grants the registered
+UID read-only access, and removes them after descendant cleanup. A Node preload
+injects appended instructions and launch options in JavaScript memory instead
+of kernel argv. Internal Qwen relaunch is disabled so it cannot copy those
+arguments into a new OS command. The existing numeric UID, no-new-privileges,
+namespace and parent-death boundaries remain in force. Concurrent jobs share
+HOME but have separate policy files and proc views.
+
+The profile controls the model and reasoning settings. SDK initialization must
+acknowledge the requested effort without an overriding sampling configuration;
+for `none`, a diagnostic effort request must report disabled thinking before
+conversation input is sent. Protected settings clear model-provider/fallback
+and generation overrides, disable hook execution and extension loading, and
+exclude all unapproved MCP. Empty MCP allowlists alone are insufficient in
+this pinned CLI because user configuration can merge into them: the launch also
+supplies an explicit empty CLI allowlist and a wildcard exclusion. Native tools
+are disabled by exact registry name, avoiding the broader alias-family effects
+of permission deny rules. Caller exclusions can only reduce capabilities.
+
+The installer verifies immutable root ownership and a SHA-256 pin of the
+reviewed stock CLI JavaScript modules (SDK 0.1.22, CLI 0.26.0). A changed artifact
+fails installation until its policy behavior is reviewed and tested. This does
+not verify the corporate fork or its browser authorization mechanism. The
+unused `QWEN_SERVER_MODEL` override has been removed; execution models come
+from the bound approved profile.
+
+Docker exercises a model-forged `write_file` call against a read-only native-tool
+profile, hostile HOME settings that attempt to enable hooks, extensions, MCP,
+command discovery and another model, read-only policy files, instructions larger
+than the Linux per-argument limit, native resume, concurrent jobs and cleanup.
+The deterministic model backend checks the actual offered tool names, selected
+model and appended instructions. Full approval modes, approved delegated MCP,
+personal execution API/UI and user workflows/automations/schedules remain open.
+
+Verification: 639 database tests, 26 selected server control-plane tests and 21
+provider tests pass, with strict database/server/provider typechecks and
+changed-file lint/format checks. The complete Docker deployment passes,
+including native daemon dispatch and prior crash recovery checks. See
+`control-plane-phase-12-verification.json`. The full feature list remains open.

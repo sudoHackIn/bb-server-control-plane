@@ -19,7 +19,7 @@ original service ancestors before retaining an agent process.
 
 Every launch requires a private execution-context socket and a server-owned BB
 thread identity. The provider requests the registered user UID/GID, HOME, cwd
-and native Qwen session binding; caller-selected paths and identities are not
+and native Qwen session binding plus its bound approved profile version; caller-selected paths and identities are not
 deployment settings. No shared-service fallback is allowed.
 
 The root-owned launcher policy selects the Node and Qwen CLI files. A privileged
@@ -39,7 +39,6 @@ privileged container. The root supervisor retains the outer PID view for cleanup
 Deployment environment on the host bridge:
 
 - `QWEN_SERVER_CONTEXT_SOCKET`: private control-plane execution socket.
-- `QWEN_SERVER_MODEL`: default model when the approved request has no override.
 - `QWEN_SERVER_BASE_URL`: optional OpenAI-compatible backend for testing.
 - `NEURALDEAP_KEY`: optional backend key, required with the testing base URL;
   forwarded only in the child environment. Never print it or put it in options.
@@ -54,3 +53,17 @@ unowned threads or infer identity from a cwd alone. Dynamic BB tools remain
 disabled until their delegated access adapter is enforced. Only Full access
 inside the registered Unix identity is supported; automatic/manual approval
 and service-user execution are rejected.
+
+The profile fixes the model, reasoning, appended instructions and exact native
+Qwen tool allowlist. Caller exclusions can reduce capabilities. Unsupported
+MCP profiles, non-Full approval modes, unknown tools and mismatching model
+requests fail before launch. SDK MCP instances are not connected as the shared
+service user. Model fallback configuration, hooks, extension loading and
+user-configured MCP are disabled in the protected execution policy.
+
+Policy files are created per job by the root supervisor outside writable HOME,
+readable only by the registered UID and removed after descendant cleanup. A
+Node preload injects private instructions without putting them in kernel
+process arguments. The installer pins the reviewed stock CLI JavaScript
+artifact (SDK 0.1.22, CLI 0.26.0); a different artifact requires another policy
+review and deployment test. This pin does not establish corporate CLI support.

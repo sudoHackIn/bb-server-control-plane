@@ -201,6 +201,10 @@ export function resolveControlPlaneQwenContext(
         cwd: context.project.cwd,
         threadId: input.threadId,
         sessionId: input.sessionId,
+        profile: {
+          versionId: context.profileVersion.id,
+          definition: context.profileVersion.definition,
+        },
       };
     },
     { behavior: "immediate" },

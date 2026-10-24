@@ -8,11 +8,14 @@ import {
   type QueryOptions,
   type SDKUserMessage,
   type Transport,
+  type EffortTier,
 } from "@qwen-code/sdk";
 import {
   resolveServiceContext,
   type ServiceContext,
 } from "./service-context.js";
+import { profilePolicy } from "./profile-policy.js";
+import type { QwenQuery } from "./bridge.js";
 const exec = promisify(execFile);
 const helper = "/opt/bb-control-plane/launcher/helper.py";
 class ProcessTransport implements Transport {
@@ -33,7 +36,6 @@ class ProcessTransport implements Transport {
   ) {
     if (!options.cwd) throw new Error("A registered workspace is required");
     const registry = {
-      model: process.env.QWEN_SERVER_MODEL,
       baseUrl: process.env.QWEN_SERVER_BASE_URL,
       apiKeyEnv: "NEURALDEAP_KEY",
     };
@@ -43,28 +45,20 @@ class ProcessTransport implements Transport {
       "--output-format",
       "stream-json",
       "--channel=SDK",
-      "--approval-mode",
-      options.permissionMode ?? "plan",
       "--include-partial-messages",
       ...(options.resume
         ? ["--resume", options.resume]
         : options.sessionId
           ? ["--session-id", options.sessionId]
           : []),
-      ...(options.model || registry.model
-        ? ["--model", options.model ?? registry.model!]
-        : []),
       ...(registry.baseUrl ? ["--auth-type", "openai"] : []),
-      ...(options.excludeTools?.length
-        ? ["--exclude-tools", options.excludeTools.join(",")]
-        : []),
-      ...(typeof options.systemPrompt === "string"
-        ? ["--system-prompt", options.systemPrompt]
-        : options.systemPrompt?.append
-          ? ["--append-system-prompt", options.systemPrompt.append]
-          : []),
-      ...(options.safeMode ? ["--safe-mode"] : []),
     ];
+    const policy = profilePolicy(context, options);
+    const bootstrap = Buffer.from(
+      JSON.stringify({ ...policy, arguments: [...args, ...policy.arguments] }),
+    );
+    if (bootstrap.length > 1048576)
+      throw new Error("Execution policy is too large");
     const key = registry.apiKeyEnv
       ? process.env[registry.apiKeyEnv]
       : undefined;
@@ -76,13 +70,11 @@ class ProcessTransport implements Transport {
         "-n",
         "--",
         helper,
-        "launch",
+        "launch-policy",
         context.id,
         String(context.uid),
         this.jobId,
         context.cwd,
-        "--",
-        ...args,
       ],
       {
         cwd: "/tmp",
@@ -103,6 +95,8 @@ class ProcessTransport implements Transport {
     this.child.stdin.on("error", (error) => {
       if (!this.closing) this.exitError = error;
     });
+    this.child.stdin.write(`BB_AGENT_POLICY ${bootstrap.length}\n`);
+    this.child.stdin.write(bootstrap);
     this.exited = new Promise((resolve) => {
       this.child.once("error", (error) => {
         this.exitError = error;
@@ -173,52 +167,6 @@ class ProcessTransport implements Transport {
     return this.stop;
   }
 }
-class ServerTransport implements Transport {
-  private readonly pending: Promise<ProcessTransport>;
-  private process?: ProcessTransport;
-  private closing = false;
-  exitError: Error | null = null;
-  get isReady() {
-    return !this.closing && (this.process?.isReady ?? true);
-  }
-  constructor(options: QueryOptions, threadId: string) {
-    this.pending = (async () => {
-      if (!options.cwd) throw new Error("Registered cwd required");
-      const socket = process.env.QWEN_SERVER_CONTEXT_SOCKET;
-      if (!socket) throw new Error("Context service socket required");
-      const context = await resolveServiceContext(
-        socket,
-        options.cwd,
-        options.resume ?? options.sessionId ?? "",
-        threadId,
-      );
-      if (this.closing) throw new Error("Transport closed before launch");
-      this.process = new ProcessTransport(options, context);
-      return this.process;
-    })();
-    void this.pending.catch((error) => {
-      this.exitError =
-        error instanceof Error ? error : new Error("Context resolution failed");
-    });
-  }
-  async write(message: string) {
-    (await this.pending).write(message);
-  }
-  async *readMessages(): AsyncGenerator<unknown> {
-    yield* (await this.pending).readMessages();
-  }
-  async endInput() {
-    (await this.pending).endInput();
-  }
-  async waitForExit() {
-    await (await this.pending).waitForExit();
-  }
-  async close() {
-    this.closing = true;
-    const transport = await this.pending.catch(() => undefined);
-    if (transport) await transport.close();
-  }
-}
 export function serverQuery({
   prompt,
   options,
@@ -227,28 +175,89 @@ export function serverQuery({
   prompt: AsyncIterable<SDKUserMessage>;
   options: QueryOptions;
   threadId?: string;
-}) {
+}): QwenQuery {
   if (!threadId)
     throw new Error("A server-owned BB thread is required to launch Qwen");
-  const transport = new ServerTransport(options, threadId);
-  const query = new Query(transport, {
-    ...options,
-    timeout: {
-      ...options.timeout,
-      streamClose: options.timeout?.streamClose ?? 1000,
-    },
-  });
-  const closeQuery = query.close.bind(query);
-  let closing: Promise<void> | null = null;
-  query.close = () => {
-    closing ??= (async () => {
-      await transport.close();
-      await closeQuery();
+  let transport: ProcessTransport | undefined;
+  let query: Query | undefined;
+  let closing = false;
+  let stopped: Promise<void> | undefined;
+  const ready = (async () => {
+    if (!options.cwd) throw new Error("Registered cwd required");
+    const socket = process.env.QWEN_SERVER_CONTEXT_SOCKET;
+    if (!socket) throw new Error("Context service socket required");
+    const context = await resolveServiceContext(
+      socket,
+      options.cwd,
+      options.resume ?? options.sessionId ?? "",
+      threadId,
+    );
+    profilePolicy(context, options);
+    if (closing) throw new Error("Transport closed before launch");
+    transport = new ProcessTransport(options, context);
+    const level = context.profile.definition.reasoningLevel;
+    const effort: EffortTier | undefined =
+      level === "low" ||
+      level === "medium" ||
+      level === "high" ||
+      level === "xhigh" ||
+      level === "max"
+        ? level
+        : undefined;
+    query = new Query(transport, {
+      ...options,
+      model: context.profile.definition.model,
+      effort: effort ?? "low",
+      timeout: {
+        ...options.timeout,
+        streamClose: options.timeout?.streamClose ?? 1000,
+      },
+    });
+    await query.initialized;
+    if (closing) throw new Error("Transport closed before initialization");
+    const status = query.getInitialEffortStatus();
+    if (
+      !status ||
+      status.override ||
+      (effort
+        ? !status.applied
+        : status.applied || status.reason !== "thinking may be disabled")
+    )
+      throw new Error("Selected profile reasoning was not applied");
+    const active = query;
+    void active.streamInput(prompt).catch(() => {
+      void close().catch(() => undefined);
+    });
+    return active;
+  })();
+  async function close() {
+    closing = true;
+    stopped ??= (async () => {
+      await transport?.close();
+      await ready.catch(() => undefined);
+      await query?.close();
     })();
-    return closing;
-  };
-  void query.streamInput(prompt).catch(() => {
-    void query.close();
+    return stopped;
+  }
+  void ready.catch(() => {
+    void close().catch(() => undefined);
   });
-  return query;
+  const initialized = ready.then(() => undefined);
+  void initialized.catch(() => undefined);
+  return {
+    initialized,
+    close,
+    async interrupt() {
+      return (await ready).interrupt();
+    },
+    async getAvailableModels() {
+      return (await ready).getAvailableModels();
+    },
+    getSessionId() {
+      return query?.getSessionId() ?? options.resume ?? options.sessionId ?? "";
+    },
+    async *[Symbol.asyncIterator]() {
+      yield* await ready;
+    },
+  };
 }

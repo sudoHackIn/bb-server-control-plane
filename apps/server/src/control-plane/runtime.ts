@@ -102,7 +102,6 @@ export async function startControlPlaneRuntime(
           BB_APP_URL: config.publicOrigin,
           BB_CLI_DIR: runtime.cliDirectory,
           QWEN_SERVER_CONTEXT_SOCKET: context.socketPath,
-          QWEN_SERVER_MODEL: process.env.QWEN_SERVER_MODEL,
           QWEN_SERVER_BASE_URL: process.env.QWEN_SERVER_BASE_URL,
           NEURALDEAP_KEY: process.env.NEURALDEAP_KEY,
           BB_TELEMETRY: "0",

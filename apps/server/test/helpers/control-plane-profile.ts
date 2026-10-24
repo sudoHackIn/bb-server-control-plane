@@ -5,7 +5,11 @@ import {
   type DbConnection,
 } from "@bb/db";
 
-export function seedControlPlaneProfile(db: DbConnection, userId: string) {
+export function seedControlPlaneProfile(
+  db: DbConnection,
+  userId: string,
+  tools = ["run_shell_command"],
+) {
   const profile = createControlPlaneProfile(db, {
     slug: `profile-${randomUUID()}`,
     name: "Execution test profile",
@@ -15,7 +19,7 @@ export function seedControlPlaneProfile(db: DbConnection, userId: string) {
       model: "qwen-job-test",
       reasoningLevel: "none",
       permissionMode: "full",
-      tools: ["run_shell_command"],
+      tools,
       mcpServers: [],
     },
   });

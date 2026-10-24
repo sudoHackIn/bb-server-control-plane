@@ -18,6 +18,7 @@ import {
   createControlPlaneProject,
   createEnvironment,
   createThread,
+  requireControlPlaneThreadDispatch,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
@@ -97,6 +98,12 @@ it("serves only validated owned thread/session bindings on a private Unix socket
         uid: user.uid,
         gid: user.gid,
         home: user.home,
+        profile: {
+          versionId: requireControlPlaneThreadDispatch(db, thread.id)
+            ?.profileVersion.id,
+          definition: requireControlPlaneThreadDispatch(db, thread.id)
+            ?.profileVersion.definition,
+        },
       },
     });
     expect((await send(service.socketPath, { ...body, uid: 0 })).status).toBe(

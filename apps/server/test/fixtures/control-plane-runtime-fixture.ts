@@ -14,6 +14,7 @@ export async function createRuntimeFixture(config: {
   id: string;
   cwd: string;
   threadId?: string;
+  tools?: string[];
 }) {
   const db = createConnection("/srv/bb/bb.db");
   try {
@@ -54,8 +55,11 @@ export async function createRuntimeFixture(config: {
         environmentId: environment.id,
         providerId: "qwen-server",
         controlPlaneOwnerUserId: config.id,
-        controlPlaneProfileVersionId: seedControlPlaneProfile(db, config.id)
-          .versionId,
+        controlPlaneProfileVersionId: seedControlPlaneProfile(
+          db,
+          config.id,
+          config.tools,
+        ).versionId,
         status: "starting",
       }).id;
     }

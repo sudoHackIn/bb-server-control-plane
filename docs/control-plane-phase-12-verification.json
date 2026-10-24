@@ -1,0 +1,53 @@
+{
+  "scope": "Protected per-job native Qwen profile policy; delegated MCP and approval adapters remain pending",
+  "previousStageCommit": "bc54f50b2",
+  "reviewedRuntime": {
+    "sdk": "0.1.22",
+    "cli": "0.26.0",
+    "cliJavascriptSha256": "f722cb0a432c07047f16ddb3b480840dc77167795d508498180850d31bf9b7aa",
+    "corporateForkVerified": false
+  },
+  "checks": {
+    "databaseTests": 639,
+    "selectedServerTests": 26,
+    "providerTests": 21,
+    "strictDatabaseServerProviderTypechecks": true,
+    "changedFileLintAndFormatting": true
+  },
+  "policy": {
+    "privateResolverReturnsBoundVersion": true,
+    "contextValidatedBeforeSdkConstruction": true,
+    "unverifiedSdkMcpCannotConnectAsService": true,
+    "cancelBeforeResolutionDoesNotLaunch": true,
+    "callerModelAndUnsupportedModeOverridesRejected": true,
+    "nativeToolsDisabledByExactRegistryName": true,
+    "sdkReasoningAcknowledgedBeforePromptInput": true,
+    "rootOwnedPerJobSettingsOutsideWritableHome": true,
+    "policyDeliveredThroughBoundedStdinFrame": true,
+    "preloadKeepsInstructionsOutOfKernelArgv": true,
+    "internalCliRelaunchDisabled": true,
+    "modelProviderGenerationAndFallbackOverridesCleared": true,
+    "hooksExtensionsUnapprovedMcpDisabled": true,
+    "cliArtifactAndOwnershipCheckedAtInstall": true,
+    "hostDaemonWireChanged": false
+  },
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "actualForkServerDaemonAndBundledProvider": true,
+    "hostileHomeOverridesDenied": true,
+    "forgedUnavailableNativeWriteRejected": true,
+    "exactOfferedToolsModelAndPromptCheckedAtBackend": true,
+    "instructionsAboveLinuxArgumentLimit": true,
+    "policyFilesReadOnlyForAgent": true,
+    "policyCleanupAfterStop": true,
+    "concurrentSameHomeAndForeignUidNamespaces": true,
+    "nativeHistoryResumeTimelineAndCrashRecovery": true,
+    "backend": "Local deterministic OpenAI-compatible fixture"
+  },
+  "approvedDelegatedMcpAndInteractivePermissionsComplete": false,
+  "limitedUserThreadApiComplete": false,
+  "personalUiComplete": false,
+  "personalWorkflowsAutomationsSchedulesComplete": false,
+  "liveExternalModelVerified": false,
+  "fullRepositorySuiteRun": false
+}

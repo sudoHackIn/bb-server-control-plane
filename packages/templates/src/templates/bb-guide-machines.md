@@ -250,9 +250,12 @@ Managed native thread creation requires `bb thread spawn --profile-version
 currently granted, enabled profile and version. The server stores that exact
 version atomically with thread ownership and rechecks it on actual dispatch and
 resume. New publications do not upgrade existing threads. A legacy unbound
-thread remains historical data but cannot execute. This admission check does not
-yet apply every profile model/tool/MCP setting; the personal thread API remains
-closed pending that enforcement stage.
+thread remains historical data but cannot execute. Qwen Server applies the native profile subset through protected per-job
+settings: fixed model/reasoning, appended prompt and exact native tool allowlist.
+Unsupported MCP profiles, non-Full permissions, safe mode and model overrides
+fail before launch. The personal thread API remains closed pending delegated
+MCP/approval enforcement. The installer pins the reviewed stock CLI artifact;
+a corporate fork requires separate verification.
 
 `profiles grant <profile-id> <user-id>` and `profiles revoke <profile-id>
 <user-id>` change a registered user's access to that profile's enabled versions.
