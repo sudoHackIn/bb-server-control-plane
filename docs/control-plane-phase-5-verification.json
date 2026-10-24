@@ -1,0 +1,34 @@
+{
+  "scope": "Isolated Qwen process runtime and provider port; authoritative BB-thread admission remains pending",
+  "previousStageCommit": "150958575",
+  "qwenProviderTests": 18,
+  "qwenProviderStrictTypecheckAndBundle": true,
+  "piPeerDependencyRegression": {
+    "passed": 318,
+    "skipped": 8,
+    "typecheck": true
+  },
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "stockQwenSdk": "0.1.22",
+    "realCliAndNativeShellTool": true,
+    "actualUidGidHomeCwd": true,
+    "clearedSupplementaryGroups": true,
+    "noNewPrivileges": true,
+    "otherHomeAndServiceDataDenied": true,
+    "nativeResumePreservesPreviousConversation": true,
+    "twoConcurrentSessionsInOneHome": true,
+    "stopKillsDetachedDescendants": true,
+    "otherSameUserJobSurvives": true,
+    "cancelBeforeLaunchFenced": true,
+    "modelBackend": "Local deterministic OpenAI-compatible HTTP fixture",
+    "executionResolver": "Controlled private fixture, not the authoritative BB-thread resolver"
+  },
+  "hostDaemonArtifactsPackaged": true,
+  "realHostDaemonDispatchVerified": false,
+  "bbThreadOwnershipAdmissionVerified": false,
+  "userThreadApiImplemented": false,
+  "liveModelBackendVerified": false,
+  "corporateForkAuthorizationVerified": false,
+  "fullRepositoryTestSuiteRun": false
+}

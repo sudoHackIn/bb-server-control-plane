@@ -1,0 +1,158 @@
+import ctypes
+import json
+import os
+import signal
+import subprocess
+import time
+import uuid
+
+JOBS = '/var/lib/bb-agent-launcher/jobs'
+
+
+def process_info(pid):
+    try:
+        with open('/proc/' + str(pid) + '/stat', encoding='utf8') as file:
+            fields = file.read().rsplit(')', 1)[1].split()
+        return {'parent': int(fields[1]), 'start': fields[19], 'state': fields[0]}
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def descendants(root):
+    processes = {}
+    for name in os.listdir('/proc'):
+        if name.isdecimal():
+            info = process_info(int(name))
+            if info:
+                processes[int(name)] = info
+    found = {root}
+    while True:
+        added = {pid for pid, info in processes.items() if info['parent'] in found} - found
+        if not added:
+            break
+        found.update(added)
+    return [(pid, processes[pid]) for pid in found if pid != root and pid in processes]
+
+
+def cleanup(root):
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        targets = descendants(root)
+        for signum in (signal.SIGSTOP, signal.SIGKILL):
+            for pid, info in targets:
+                current = process_info(pid)
+                if current and current['start'] == info['start']:
+                    try:
+                        os.kill(pid, signum)
+                    except ProcessLookupError:
+                        pass
+        while True:
+            try:
+                pid, _ = os.waitpid(-1, os.WNOHANG)
+                if pid == 0:
+                    break
+            except ChildProcessError:
+                break
+        if not descendants(root):
+            return
+        time.sleep(0.01)
+    raise RuntimeError('Agent descendants did not terminate')
+
+
+def lease_path(session_id):
+    if str(uuid.UUID(session_id)) != session_id:
+        raise ValueError('Invalid Qwen session identity')
+    return os.path.join(JOBS, session_id + '.json')
+
+
+def stop_job(user_id, uid, session_id, lock):
+    path = lease_path(session_id)
+    try:
+        with open(path, encoding='utf8') as file:
+            lease = json.load(file)
+    except FileNotFoundError:
+        with open(path, 'w', encoding='utf8') as file:
+            os.chmod(path, 0o600)
+            json.dump({'userId': user_id, 'uid': uid, 'stopped': True}, file)
+        os.close(lock)
+        return
+    if lease['userId'] != user_id or lease['uid'] != uid:
+        raise ValueError('Job belongs to another identity')
+    if lease.get('stopped'):
+        os.close(lock)
+        return
+    current = process_info(lease['pid'])
+    if not current or current['start'] != lease['start'] or current['state'] == 'Z':
+        os.unlink(path)
+        os.close(lock)
+        return
+    os.kill(lease['pid'], signal.SIGTERM)
+    os.close(lock)
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        current = process_info(lease['pid'])
+        if not current or current['start'] != lease['start'] or current['state'] == 'Z':
+            return
+        time.sleep(0.02)
+    raise RuntimeError('Job supervisor did not stop')
+
+
+def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock):
+    path = lease_path(session_id)
+    if not policy.get('node') or not policy.get('cli'):
+        raise ValueError('Qwen execution is not configured')
+    if os.path.exists(path):
+        with open(path, encoding='utf8') as file:
+            old = json.load(file)
+        if old['userId'] != user_id or old['uid'] != uid or old.get('stopped'):
+            raise ValueError('Job identity is unavailable')
+        current = process_info(old['pid'])
+        if current and current['start'] == old['start'] and current['state'] != 'Z':
+            raise ValueError('Qwen session is already running')
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+        raise RuntimeError('Could not supervise agent descendants')
+    pid = os.getpid()
+    info = process_info(pid)
+    if not info:
+        raise RuntimeError('Could not identify supervisor')
+    lease = {'userId': user_id, 'uid': uid, 'pid': pid, 'start': info['start']}
+    temporary = path + '.tmp'
+    with open(temporary, 'w', encoding='utf8') as file:
+        os.chmod(temporary, 0o600)
+        json.dump(lease, file)
+        file.flush()
+        os.fsync(file.fileno())
+    os.replace(temporary, path)
+    os.close(lock)
+    child = None
+
+    def interrupt(_signum, _frame):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, interrupt)
+    signal.signal(signal.SIGINT, interrupt)
+    env = {'PATH': '/usr/local/bin:/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': home,
+           'USER': user_id, 'LOGNAME': user_id, 'PWD': cwd}
+    for name in ('OPENAI_API_KEY', 'OPENAI_BASE_URL'):
+        if name in os.environ:
+            env[name] = os.environ[name]
+    os.umask(0o077)
+    try:
+        child = subprocess.Popen(['/usr/bin/setpriv', '--reuid=' + str(uid), '--regid=' + str(uid),
+                                  '--clear-groups', '--no-new-privs', '--', policy['node'],
+                                  '--dns-result-order=ipv4first', policy['cli'], *arguments],
+                                 env=env, close_fds=True, start_new_session=True)
+        return child.wait()
+    finally:
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        cleanup(pid)
+        try:
+            with open(path, encoding='utf8') as file:
+                current_lease = json.load(file)
+            if current_lease == lease:
+                os.unlink(path)
+        except FileNotFoundError:
+            pass

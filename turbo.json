@@ -9,6 +9,7 @@
         "@bb/server#build",
         "@bb/cli#build",
         "@bb/app#build",
+        "@bb/host-daemon#build",
         "@bb/bundled-plugins#build"
       ],
       "passThroughEnv": [

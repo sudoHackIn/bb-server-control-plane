@@ -1,0 +1,49 @@
+{
+  "name": "bb-plugin-provider-qwen-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "bb": ">=0.47",
+    "bbPluginSdk": ">=0.6.79 <0.7"
+  },
+  "bb": {
+    "name": "Qwen Server",
+    "description": "Run approved Qwen sessions under registered Unix user identities.",
+    "branding": {
+      "icon": "Server"
+    },
+    "server": "./server.ts",
+    "host": "./host.ts",
+    "skills": [
+      "skills/qwen-server"
+    ],
+    "experimental_providers": [
+      {
+        "kind": "agent",
+        "id": "qwen-server",
+        "displayName": "Qwen Server"
+      }
+    ]
+  },
+  "scripts": {
+    "prepare:bundled": "bb-plugin-build prepare-bundled",
+    "typecheck": "tsrs --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "oxlint --ignore-pattern node_modules --ignore-pattern dist ."
+  },
+  "dependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@qwen-code/sdk": "0.1.22",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/plugin-build": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

@@ -12,7 +12,7 @@ function docker(args) {
 
 const deadline = setTimeout(() => {
   void docker(["rm", "--force", name]);
-}, 90000);
+}, 210000);
 try {
   const code = await docker([
     "run",

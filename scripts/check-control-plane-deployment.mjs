@@ -4,11 +4,12 @@ import { once } from "node:events";
 import { access } from "node:fs/promises";
 import WebSocket from "ws";
 import { verifyUserDeployment } from "./check-control-plane-user-deployment.mjs";
+import { verifyQwenJobs } from "./check-control-plane-qwen-jobs.mjs";
 
 const origin = "http://127.0.0.1:8080";
 const password = "deployment-check-admin-password";
 const controller = new AbortController();
-const deadline = setTimeout(() => controller.abort(), 60000);
+const deadline = setTimeout(() => controller.abort(), 180000);
 const children = new Set();
 
 function launch(args, extra = {}) {
@@ -166,6 +167,11 @@ try {
     signal: controller.signal,
     password,
   });
+  const qwen = await verifyQwenJobs({
+    command,
+    launch,
+    signal: controller.signal,
+  });
   process.stdout.write(
     JSON.stringify({
       deployedServer: true,
@@ -177,6 +183,7 @@ try {
       logoutClosesSocket: true,
       restartRevokesSessions: true,
       users,
+      qwen,
     }) + "\n",
   );
 } finally {

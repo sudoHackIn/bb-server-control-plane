@@ -21,7 +21,13 @@ try {
     ["packages/bundled-plugins/dist", "server/builtin-plugins"],
     ["apps/app/dist", "app"],
     ["apps/cli/dist", "cli"],
+    ["apps/host-daemon/dist", "host-daemon"],
     ["scripts/check-control-plane-deployment.mjs", "deployment-check.mjs"],
+    [
+      "scripts/check-control-plane-qwen-jobs.mjs",
+      "check-control-plane-qwen-jobs.mjs",
+    ],
+    ["scripts/check-qwen-job-client.mjs", "qwen-job-client.mjs"],
     [
       "scripts/check-control-plane-user-deployment.mjs",
       "check-control-plane-user-deployment.mjs",
@@ -33,6 +39,13 @@ try {
     cleanDist: false,
     entryPoint: join(repo, "scripts/configure-control-plane.ts"),
     outfile: join(directory, "configure.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
+  await buildNodeEsmEntry({
+    cleanDist: false,
+    entryPoint: join(repo, "plugins/provider-qwen-server/src/server-query.ts"),
+    outfile: join(directory, "qwen-server-query.mjs"),
     packageRoot: repo,
     sourcemap: false,
   });
