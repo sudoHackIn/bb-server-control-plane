@@ -13,6 +13,8 @@ import {
   createControlPlaneJobBinding,
   getControlPlaneJobBinding,
   getControlPlaneProjectOwner,
+  getControlPlaneProject,
+  requireControlPlaneThreadDispatch,
   listControlPlaneJobBindings,
   setControlPlaneJobEnabled,
   deleteControlPlaneJobBinding,
@@ -23,6 +25,10 @@ import {
   currentControlPlanePrincipal,
   hasActiveControlPlaneAdministrativeRequest,
 } from "./access.js";
+import {
+  BUILTIN_WORKFLOWS_PLUGIN_ID,
+  BUILTIN_AUTOMATIONS_PLUGIN_ID,
+} from "../services/plugins/builtin-registry.js";
 import { withControlPlaneJobAuthority } from "./job-authority.js";
 
 function denied(): never {
@@ -38,9 +44,9 @@ export function createControlPlaneBackgroundJobs(
   builtin: boolean,
 ): InternalDoNotUseBackgroundJobs {
   const kinds: InternalDoNotUseBackgroundJobBinding["kind"][] =
-    pluginId === "bb--workflows"
+    pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
       ? ["workflow-definition", "workflow-run"]
-      : pluginId === "bb--automations"
+      : pluginId === BUILTIN_AUTOMATIONS_PLUGIN_ID
         ? ["automation", "automation-run", "schedule"]
         : [];
   if (!builtin || kinds.length === 0) return denied();
@@ -59,6 +65,40 @@ export function createControlPlaneBackgroundJobs(
     return job;
   }
   return {
+    get userId() {
+      const principal = currentControlPlanePrincipal();
+      return principal?.kind === "user" ? principal.userId : null;
+    },
+    canReadProject(projectId) {
+      const principal = currentControlPlanePrincipal();
+      return (
+        principal?.kind !== "user" ||
+        getControlPlaneProject(db, principal.userId, projectId) !== undefined
+      );
+    },
+    readOrigin(threadId) {
+      const principal = currentControlPlanePrincipal();
+      if (
+        principal?.kind !== "user" &&
+        !hasActiveControlPlaneAdministrativeRequest()
+      )
+        return denied();
+      const context = requireControlPlaneThreadDispatch(db, threadId);
+      if (
+        !context ||
+        (principal?.kind === "user" && principal.userId !== context.user.id) ||
+        context.thread.environmentId === null
+      )
+        return denied();
+      return {
+        projectId: context.project.projectId,
+        environmentId: context.thread.environmentId,
+        providerId: context.profileVersion.definition.providerId,
+        model: context.profileVersion.definition.model,
+        reasoningLevel: context.profileVersion.definition.reasoningLevel,
+        permissionMode: context.profileVersion.definition.permissionMode,
+      };
+    },
     async bind(input) {
       const parsed = controlPlaneJobBindingSchema
         .omit({ userId: true })
@@ -89,10 +129,10 @@ export function createControlPlaneBackgroundJobs(
         userId,
       });
     },
-    async get(id) {
+    get(id) {
       return read(id);
     },
-    async list(input) {
+    list(input) {
       const options = controlPlaneJobListSchema.parse(input);
       if (!options.kind || !kinds.includes(options.kind)) return denied();
       const principal = currentControlPlanePrincipal();

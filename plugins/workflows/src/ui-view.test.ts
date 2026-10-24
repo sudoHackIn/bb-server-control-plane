@@ -49,6 +49,8 @@ function run(calls: WorkflowCallInspection[]): WorkflowRunInspection {
   return {
     id: "wfr_test",
     projectId: "proj_test",
+    ownerUserId: null,
+    authorityBindingId: null,
     originThreadId: "thr_origin",
     environmentId: "env_test",
     originProvider: "codex",

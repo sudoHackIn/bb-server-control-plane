@@ -4,6 +4,7 @@ import {
   createControlPlaneProfile,
   createControlPlaneProject,
   createThread,
+  createEnvironment,
   noopNotifier,
   setControlPlaneProfileAccess,
   upsertHost,
@@ -42,8 +43,16 @@ export function seedControlPlaneJobSubjects(db: DbConnection) {
       },
     });
     setControlPlaneProfileAccess(db, profile.profileId, user.id, true);
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: `${user.projectsRoot}/app`,
+      providerOwnsPath: false,
+      status: "ready",
+    });
     const thread = createThread(db, noopNotifier, {
       projectId: project.id,
+      environmentId: environment.id,
       providerId: "qwen-server",
       controlPlaneOwnerUserId: user.id,
       controlPlaneProfileVersionId: profile.versionId,
@@ -51,6 +60,7 @@ export function seedControlPlaneJobSubjects(db: DbConnection) {
     return {
       user,
       project,
+      environment,
       profile,
       thread,
       input: {

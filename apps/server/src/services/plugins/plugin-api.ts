@@ -1055,6 +1055,18 @@ export function createPluginApi(options: {
     const source = getBackgroundJobs();
     if (source === null) return (backgroundJobs = null);
     backgroundJobs = {
+      get userId() {
+        assertLive();
+        return source.userId;
+      },
+      canReadProject(id) {
+        assertLive();
+        return source.canReadProject(id);
+      },
+      readOrigin(id) {
+        assertLive();
+        return source.readOrigin(id);
+      },
       bind(input) {
         assertLive();
         return source.bind(input);

@@ -1921,6 +1921,18 @@ export interface InternalDoNotUseBackgroundJobBinding {
 }
 
 export interface InternalDoNotUseBackgroundJobs {
+  /** Current caller on each access. Null means internal administrative/service scope. */
+  readonly userId: string | null;
+  canReadProject(projectId: string): boolean;
+  /** Reads an executable owned origin using its pinned profile; requires user or live admin scope. */
+  readOrigin(threadId: string): {
+    projectId: string;
+    environmentId: string;
+    providerId: string;
+    model: string;
+    reasoningLevel: string;
+    permissionMode: string;
+  };
   bind(
     input: Pick<
       InternalDoNotUseBackgroundJobBinding,
@@ -1932,16 +1944,16 @@ export interface InternalDoNotUseBackgroundJobs {
       | "sourceBindingId"
     > & { profileVersionId: string | null },
   ): Promise<InternalDoNotUseBackgroundJobBinding>;
-  get(id: string): Promise<InternalDoNotUseBackgroundJobBinding | null>;
+  get(id: string): InternalDoNotUseBackgroundJobBinding | null;
   list(input: {
     kind: InternalDoNotUseBackgroundJobBinding["kind"];
     projectId?: string;
     cursor: string | null;
     limit: number;
-  }): Promise<{
+  }): {
     bindings: InternalDoNotUseBackgroundJobBinding[];
     nextCursor: string | null;
-  }>;
+  };
   setEnabled(
     id: string,
     enabled: boolean,

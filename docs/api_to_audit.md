@@ -3668,7 +3668,7 @@ separate ownership and authority checks.
 ## Internal shared-server background authority
 
 `bb.server.internal_DO_NOT_USE_backgroundJobs` is nullable internal plumbing for
-builtin `bb--workflows` and `bb--automations` only. It is null on standalone
+builtin `workflows` and `automations` only. It is null on standalone
 servers, including the standalone fake plugin host. A configured shared server
 rejects access from other plugin IDs or non-builtin provenance. The host derives
 both values from its installed plugin record, not mutable plugin API fields.
@@ -3684,7 +3684,12 @@ administrative request. Re-enable likewise requires user scope or a live
 administrative request in addition to current execution grants. A null profile version resolves the managed origin
 thread's persisted version, never the newest version by default.
 
-`get` and `list` recheck owner/current project access in user scope; trusted
+`userId` reads the current caller dynamically; plugins must not cache it. Null
+is internal administrative/service metadata scope, not a public fallback.
+`canReadProject` supports early project rejection; `readOrigin` requires user or
+live admin scope, validates current execution grants and returns the managed
+origin's immutable profile selection. `get` and `list` are synchronous local
+metadata reads and recheck owner/current project access in user scope; trusted
 administrative/service inspection can read all metadata within that plugin's
 allowed object kinds, including disabled-user history. `withAuthority` rechecks
 current execution grants/ancestry and adopts the saved user principal across
@@ -3698,10 +3703,15 @@ plugin cannot keep using a captured facade. No new HTTP, daemon RPC or public
 CLI authority endpoint is exposed. No tenant evaluator or worker dispatch is
 implemented by this member.
 
-Current callers are the core plugin host, host lifecycle/security tests and the
-Docker authority fixture; actual Workflows/Automations persistence and execution
-integration remains pending. Only those two builtin plugin IDs are intended
-production consumers. The Plugin Guide's SDK inventory includes this member.
+Current callers are the builtin Workflows service, core plugin host,
+lifecycle/security tests and Docker fixtures. The allowlist uses the actual
+`workflows` and `automations` IDs from the builtin registry; the earlier
+`bb--workflows` / `bb--automations` spelling was incorrect. Workflows persists
+owner/binding references and scopes its native readers and resume/stop handlers.
+Its managed evaluator is closed until registered-UID execution and controlled
+worker dispatch are implemented. Automations integration remains pending. Only
+these two builtin plugins are intended production consumers. The Plugin Guide's
+SDK inventory includes this member.
 
 Before any public stabilization, complete native plugin persistence, source
 filtering, controlled child creation, registered-UID script evaluation, retries,

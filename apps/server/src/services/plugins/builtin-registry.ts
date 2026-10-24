@@ -22,6 +22,8 @@ interface ResolveBuiltinPluginRootPathArgs {
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
 export const BUILTIN_PLUGIN_ID_PREFIX = "bb--";
+export const BUILTIN_WORKFLOWS_PLUGIN_ID = "workflows";
+export const BUILTIN_AUTOMATIONS_PLUGIN_ID = "automations";
 
 const ACCOUNT_POOL_PARENT_URL_ENV = "BB_ACCOUNT_POOL_PARENT_URL";
 
@@ -57,7 +59,7 @@ export const BUILTIN_PLUGINS = [
   },
   {
     name: "automations",
-    pluginId: "automations",
+    pluginId: BUILTIN_AUTOMATIONS_PLUGIN_ID,
     defaultEnabled: true,
   },
   {
@@ -227,7 +229,7 @@ export const BUILTIN_PLUGINS = [
   },
   {
     name: "workflows",
-    pluginId: "workflows",
+    pluginId: BUILTIN_WORKFLOWS_PLUGIN_ID,
     defaultEnabled: false,
   },
   {

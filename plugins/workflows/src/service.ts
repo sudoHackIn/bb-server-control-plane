@@ -22,6 +22,7 @@ import {
   claimQueuedRun,
   countCallsForRun,
   createRun,
+  createWorkflowRunId,
   deleteTerminalRuns,
   getCall,
   getCallByChildThread,
@@ -392,6 +393,25 @@ export function createWorkflowService(
   db: Db,
   initialSettings: WorkflowSettings = DEFAULT_WORKFLOW_SETTINGS,
 ): WorkflowService {
+  const backgroundJobs = bb.server.internal_DO_NOT_USE_backgroundJobs ?? null;
+  function bindingFor(run: WorkflowRunRow) {
+    const binding = run.authorityBindingId
+      ? backgroundJobs?.get(run.authorityBindingId)
+      : null;
+    return binding &&
+      binding.kind === "workflow-run" &&
+      binding.objectId === run.id &&
+      binding.ownerUserId === run.ownerUserId &&
+      binding.projectId === run.projectId &&
+      binding.originThreadId === run.originThreadId
+      ? binding
+      : null;
+  }
+  function visibleRun(id: string): WorkflowRunRow | null {
+    const run = getRun(db, id, backgroundJobs?.userId ?? null);
+    if (!run || !backgroundJobs || backgroundJobs.userId === null) return run;
+    return bindingFor(run) ? run : null;
+  }
   let shuttingDown = false;
   let currentSettings = initialSettings;
   let claimRequested = true;
@@ -573,6 +593,12 @@ export function createWorkflowService(
   }
 
   async function resolveOrigin(input: StartWorkflowInput) {
+    if (backgroundJobs) {
+      const origin = backgroundJobs.readOrigin(input.originThreadId);
+      if (origin.projectId !== input.projectId)
+        throw new Error("Workflow origin belongs to another project");
+      return origin;
+    }
     const thread = await bb.sdk.threads.get({ threadId: input.originThreadId });
     if (thread.environmentId === null) {
       throw new Error("Workflow origin thread has no environment");
@@ -612,13 +638,17 @@ export function createWorkflowService(
         throw new Error(`Workflow args are invalid: ${validation.error}`);
     }
     const origin = await resolveOrigin(input);
+    let resumedOwnerUserId: string | null = null;
     if (input.resumedFromRunId !== null) {
-      const previous = getRun(db, input.resumedFromRunId);
+      const previous = visibleRun(input.resumedFromRunId);
       if (previous === null || previous.projectId !== input.projectId) {
         throw new Error(
           `Cannot resume unknown workflow run ${input.resumedFromRunId}`,
         );
       }
+      if (backgroundJobs && !bindingFor(previous))
+        throw new Error("Cannot resume an unassigned workflow run");
+      resumedOwnerUserId = previous.ownerUserId;
       if (previous.status === "queued" || previous.status === "running") {
         throw new Error(
           `Cannot resume workflow run ${input.resumedFromRunId} before it is terminal`,
@@ -630,21 +660,63 @@ export function createWorkflowService(
         );
       }
     }
-    const created = createRun(db, {
-      projectId: input.projectId,
-      originThreadId: input.originThreadId,
-      environmentId: origin.environmentId,
-      originProvider: origin.providerId,
-      originModel: origin.model,
-      originReasoningLevel: origin.reasoningLevel,
-      originPermissionMode: origin.permissionMode,
-      name: parsed.metadata.name,
-      source: input.source,
-      sourceHash: createHash("sha256").update(input.source).digest("hex"),
-      argsJson: JSON.stringify(input.args),
-      settingsJson: JSON.stringify(currentSettings),
-      resumedFromRunId: input.resumedFromRunId,
-    });
+    const runId = createWorkflowRunId();
+    const binding = backgroundJobs
+      ? await backgroundJobs.bind({
+          kind: "workflow-run",
+          objectId: runId,
+          revision: 1,
+          projectId: input.projectId,
+          profileVersionId: null,
+          originThreadId: input.originThreadId,
+          sourceBindingId: null,
+        })
+      : null;
+    let created: WorkflowRunRow;
+    try {
+      if (
+        binding &&
+        input.resumedFromRunId !== null &&
+        binding.ownerUserId !== resumedOwnerUserId
+      )
+        throw new Error("Cannot resume a workflow owned by another user");
+      created = createRun(
+        db,
+        {
+          projectId: input.projectId,
+          originThreadId: input.originThreadId,
+          environmentId: origin.environmentId,
+          originProvider: origin.providerId,
+          originModel: origin.model,
+          originReasoningLevel: origin.reasoningLevel,
+          originPermissionMode: origin.permissionMode,
+          name: parsed.metadata.name,
+          source: input.source,
+          sourceHash: createHash("sha256").update(input.source).digest("hex"),
+          argsJson: JSON.stringify(input.args),
+          settingsJson: JSON.stringify(currentSettings),
+          resumedFromRunId: input.resumedFromRunId,
+        },
+        binding
+          ? {
+              id: runId,
+              ownerUserId: binding.ownerUserId,
+              authorityBindingId: binding.id,
+            }
+          : undefined,
+      );
+    } catch (error) {
+      if (binding && backgroundJobs) {
+        try {
+          await backgroundJobs.remove(binding.id);
+        } catch (cleanupError) {
+          bb.log.error(
+            `Could not retire workflow reservation ${binding.id}: ${message(cleanupError)}`,
+          );
+        }
+      }
+      throw error;
+    }
     wakeWorker();
     publishRunsChanged(created.originThreadId);
     return created;
@@ -673,7 +745,7 @@ export function createWorkflowService(
   }
 
   function inspect(runId: string): WorkflowRunInspection | null {
-    const run = getRun(db, runId);
+    const run = visibleRun(runId);
     if (run === null) return null;
     return {
       ...run,
@@ -692,7 +764,7 @@ export function createWorkflowService(
     if (!Number.isInteger(limit) || limit < 1 || limit > 101) {
       throw new Error("limit must be an integer from 1 to 101");
     }
-    const run = getRun(db, runId);
+    const run = visibleRun(runId);
     if (run === null) return null;
     return {
       run,
@@ -708,17 +780,25 @@ export function createWorkflowService(
   function inspectLatestForThread(
     threadId: string,
   ): WorkflowRunInspection | null {
-    const run = getLatestRunForOriginThread(db, threadId);
+    const run = getLatestRunForOriginThread(
+      db,
+      threadId,
+      backgroundJobs?.userId ?? null,
+    );
     return run === null ? null : inspect(run.id);
   }
 
   function inspectActiveForThread(threadId: string): WorkflowRunInspection[] {
-    return listActiveRunsForOriginThread(db, threadId).map((run) => {
+    return listActiveRunsForOriginThread(
+      db,
+      threadId,
+      backgroundJobs?.userId ?? null,
+    ).flatMap((run) => {
       const inspection = inspect(run.id);
       if (inspection === null) {
-        throw new Error(`Unknown workflow run ${run.id}`);
+        return [];
       }
-      return inspection;
+      return [inspection];
     });
   }
 
@@ -1289,6 +1369,14 @@ export function createWorkflowService(
   async function notify(run: WorkflowRunRow): Promise<void> {
     const latest = getRunRequired(db, run.id);
     if (latest.notificationSent) return;
+    if (backgroundJobs) {
+      settleNotificationUndeliverable(
+        db,
+        latest.id,
+        "Managed workflow notifications await scoped runtime integration",
+      );
+      return;
+    }
     const settings = settingsForRun(latest);
     if (!beginNotificationAttempt(db, run.id)) return;
     try {
@@ -1369,6 +1457,30 @@ export function createWorkflowService(
     run: WorkflowRunRow,
     signal: AbortSignal,
   ): Promise<void> {
+    if (backgroundJobs) {
+      let error = "Managed workflow execution requires an isolated evaluator";
+      try {
+        const binding = bindingFor(run);
+        if (!binding)
+          throw new Error(
+            "Workflow owner is unassigned; administrative migration is required",
+          );
+        backgroundJobs.withAuthority(binding.id, () => null);
+      } catch (failure) {
+        error = message(failure);
+      }
+      try {
+        await settleRunAndStopOutstanding({
+          id: run.id,
+          status: "failed",
+          result: null,
+          error,
+        });
+      } finally {
+        controllers.delete(run.id);
+      }
+      return;
+    }
     const parsed = parseWorkflowSource(run.source);
     const runSettings = settingsForRun(run);
     let callIndex = 0;
@@ -1696,6 +1808,14 @@ export function createWorkflowService(
   }
 
   async function stop(runId: string): Promise<boolean> {
+    const authorized = visibleRun(runId);
+    if (!authorized) return false;
+    if (
+      backgroundJobs &&
+      authorized.authorityBindingId &&
+      backgroundJobs.get(authorized.authorityBindingId)
+    )
+      await backgroundJobs.setEnabled(authorized.authorityBindingId, false);
     const childThreadIds = activeChildThreadsForRun(db, runId);
     const stopped = cancelRun(db, runId);
     wakeWorker();
@@ -1710,12 +1830,20 @@ export function createWorkflowService(
 
   return {
     start,
-    get: (runId) => getRun(db, runId),
+    get: visibleRun,
     inspect,
     inspectPage,
     inspectLatestForThread,
     inspectActiveForThread,
-    list: (projectId, limit) => listRuns(db, { projectId, limit }),
+    list: (projectId, limit) => {
+      if (backgroundJobs && !backgroundJobs.canReadProject(projectId))
+        return [];
+      return listRuns(db, {
+        projectId,
+        limit,
+        ownerUserId: backgroundJobs?.userId ?? null,
+      }).filter((run) => visibleRun(run.id) !== null);
+    },
     stop,
     updateSettings(settings) {
       currentSettings = settings;

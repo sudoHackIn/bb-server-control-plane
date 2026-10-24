@@ -14,6 +14,10 @@ import {
   deleteTerminalRuns,
   getCall,
   getRunRequired,
+  getRun,
+  listRuns,
+  getLatestRunForOriginThread,
+  listActiveRunsForOriginThread,
   incrementRepairAttempts,
   listCallsForRunPage,
   listExpiredTerminalRuns,
@@ -65,6 +69,19 @@ describe("workflow durable data", () => {
     });
   }
 
+  function legacyRun() {
+    const id = "legacy-run";
+    const originThreadId = "legacy-origin";
+    db.prepare(
+      `INSERT INTO workflow_runs(id, project_id, origin_thread_id, environment_id,
+         origin_provider, origin_model, origin_reasoning_level, origin_permission_mode,
+         name, source, source_hash, args_json, status, created_at)
+       VALUES (?, 'project-1', ?, 'environment-1', 'codex', 'gpt-test', 'medium',
+         'full', 'legacy', 'return null', 'hash', 'null', 'running', 0)`,
+    ).run(id, originThreadId);
+    return { id, originThreadId };
+  }
+
   function markRunning(runId: string): void {
     db.prepare(`UPDATE workflow_runs SET status = 'running' WHERE id = ?`).run(
       runId,
@@ -77,6 +94,41 @@ describe("workflow durable data", () => {
     reasoningLevel: "medium",
     permissionMode: "full",
   } as const;
+
+  it("filters durable ownership before pagination and excludes unassigned history", () => {
+    const alice = newRun();
+    const bob = newRun();
+    const legacy = newRun();
+    db.prepare(
+      "UPDATE workflow_runs SET owner_user_id = ?, authority_binding_id = ?, created_at = ? WHERE id = ?",
+    ).run("alice", "alice-binding", 1, alice.id);
+    db.prepare(
+      "UPDATE workflow_runs SET owner_user_id = ?, authority_binding_id = ?, created_at = ? WHERE id = ?",
+    ).run("bob", "bob-binding", 2, bob.id);
+    db.prepare("UPDATE workflow_runs SET created_at = 3 WHERE id = ?").run(
+      legacy.id,
+    );
+    expect(
+      listRuns(db, {
+        projectId: "project-1",
+        limit: 1,
+        ownerUserId: "alice",
+      }).map((run) => run.id),
+    ).toEqual([alice.id]);
+    expect(getRun(db, bob.id, "alice")).toBeNull();
+    expect(getRun(db, legacy.id, "alice")).toBeNull();
+    expect(getLatestRunForOriginThread(db, "thread-1", "alice")?.id).toBe(
+      alice.id,
+    );
+    expect(
+      listActiveRunsForOriginThread(db, "thread-1", "alice").map(
+        (run) => run.id,
+      ),
+    ).toEqual([alice.id]);
+    expect(
+      listRuns(db, { projectId: "project-1", limit: 1 }).map((run) => run.id),
+    ).toEqual([legacy.id]);
+  });
 
   it("persists failed cleanup deadlines and caps retry delays", () => {
     ownWorker(db, "worker", "missing-run", "missing-call", "origin");
@@ -111,27 +163,21 @@ describe("workflow durable data", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -3).join("\n"));
-    const run = newRun();
-    markRunning(run.id);
-    const call = startCall(db, {
-      runId: run.id,
-      callIndex: 0,
-      cacheKey: "migration",
-      prompt: "work",
-      options: {
-        title: null,
-        phase: null,
-        outputSchema: null,
-        selection: null,
-      },
-      selection: resolvedSelection,
-      replay: null,
-    });
+    db.exec(migrations.slice(0, -4).join("\n"));
+    const run = legacyRun();
+    const call = { id: "legacy-call" };
     db.prepare(
-      `UPDATE workflow_calls SET child_thread_id = 'legacy-worker', status = 'failed' WHERE id = ?`,
-    ).run(call.id);
-    db.exec(migrations.slice(-3).join("\n"));
+      `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
+         options_json, resolved_provider, resolved_model, resolved_reasoning_level,
+         resolved_permission_mode, status, child_thread_id, created_at)
+       VALUES (?, ?, 0, 'key', 'work', '{}', 'codex', 'gpt-test', 'medium', 'full',
+         'failed', 'legacy-worker', 0)`,
+    ).run(call.id, run.id);
+    db.exec(migrations.slice(-4).join("\n"));
+    expect(getRunRequired(db, run.id)).toMatchObject({
+      ownerUserId: null,
+      authorityBindingId: null,
+    });
     expect(retiredWorkers(db, Date.now())).toEqual([
       { threadId: "legacy-worker", callId: call.id },
     ]);
@@ -144,8 +190,8 @@ describe("workflow durable data", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -3).join("\n"));
-    const run = newRun();
+    db.exec(migrations.slice(0, -4).join("\n"));
+    const run = legacyRun();
     const insertCall = db.prepare(
       `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
          options_json, resolved_provider, resolved_model, resolved_reasoning_level,
@@ -161,7 +207,7 @@ describe("workflow durable data", () => {
         `worker-${String(index).padStart(3, "0")}`,
       );
     const migratedAt = Date.now();
-    db.exec(migrations.slice(-3).join("\n"));
+    db.exec(migrations.slice(-4).join("\n"));
 
     const buckets = db
       .prepare(

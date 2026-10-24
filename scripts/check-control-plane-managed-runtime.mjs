@@ -462,6 +462,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       adminToken: token,
       config,
       diagnostics: () => log,
+      password,
     });
     assert.equal(
       (

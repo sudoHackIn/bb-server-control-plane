@@ -41,6 +41,10 @@ try {
       "check-control-plane-user-threads.mjs",
     ],
     [
+      "scripts/check-control-plane-workflows.mjs",
+      "check-control-plane-workflows.mjs",
+    ],
+    [
       "scripts/check-control-plane-approvals.mjs",
       "check-control-plane-approvals.mjs",
     ],

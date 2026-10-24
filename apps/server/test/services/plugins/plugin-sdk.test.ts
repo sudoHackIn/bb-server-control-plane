@@ -385,11 +385,7 @@ describe("plugin bb.sdk bind gate", () => {
 
   it("lifecycle-scopes supplied background authority handles and keeps their current user dynamic", async () => {
     const { alice, bob } = seedControlPlaneJobSubjects(db);
-    backgroundJobs = createControlPlaneBackgroundJobs(
-      db,
-      "bb--workflows",
-      true,
-    );
+    backgroundJobs = createControlPlaneBackgroundJobs(db, "workflows", true);
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-jobs-lifecycle",
       serverSource: `export default function plugin() {}`,
@@ -405,6 +401,8 @@ describe("plugin bb.sdk bind gate", () => {
       await withControlPlaneUser(bob.user.id, () => jobs.get(a.id)),
     ).toBeNull();
     await service.setEnabled("jobs-lifecycle", false);
+    expect(() => jobs.userId).toThrow();
+    expect(() => jobs.readOrigin(alice.thread.id)).toThrow();
     expect(() => jobs.get(a.id)).toThrow();
     expect(() => jobs.withAuthority(a.id, () => a)).toThrow();
     expect(() => api.server.internal_DO_NOT_USE_backgroundJobs).toThrow();
@@ -412,14 +410,13 @@ describe("plugin bb.sdk bind gate", () => {
 
   it("starts plugin services and schedules as service even while their administrative request remains active", async () => {
     const { alice } = seedControlPlaneJobSubjects(db);
-    const authority = createControlPlaneBackgroundJobs(
-      db,
-      "bb--workflows",
-      true,
-    );
+    const authority = createControlPlaneBackgroundJobs(db, "workflows", true);
     const attempts: (string | undefined)[] = [];
     backgroundJobs = {
       ...authority,
+      get userId() {
+        return authority.userId;
+      },
       bind(input) {
         attempts.push(currentControlPlanePrincipal()?.kind);
         return authority.bind(input);

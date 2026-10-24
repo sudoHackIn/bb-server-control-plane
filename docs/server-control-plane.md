@@ -1069,3 +1069,54 @@ including facade creation/read, current-source authority, restart without browse
 tokens and denial of the privileged namespace from a real native Qwen MCP plugin
 call. These are not completed personal workflow execution tests. See
 `control-plane-phase-26-verification.json`.
+
+## Twenty-seventh increment: native workflow ownership
+
+The builtin Workflows service now stores nullable owner and central authority
+references in its existing plugin-owned SQLite runs. Its incremental migration
+preserves old history without assigning legacy rows to an arbitrary user. New
+managed runs reserve the central binding with their native run ID before
+inserting the native record; insertion failure retires that reservation. A
+crash before insertion leaves no executable native row. This is an explicit
+cross-database reservation protocol, not an atomic cross-database transaction.
+
+Owner predicates apply before native SQL list limits and latest/active queries.
+User reads additionally check the binding's kind, native object ID, owner,
+project and origin against the row and current project access. Inspect/history,
+resume and stop use the same association check. Administrative/service metadata
+inspection keeps legacy history visible; resuming an unassigned run is denied.
+Cancellation disables its execution binding. Replay compatibility across profile
+or tool changes remains required before tenant execution can open.
+
+The internal adapter exposes a dynamic caller identity, scoped project reads
+and an executable origin snapshot from its immutable profile. Native workflow
+creation no longer obtains execution defaults through unrestricted SDK calls.
+A real Docker invocation caught an earlier facade-only test gap: the installed
+builtin IDs are `workflows` and `automations`, not `bb--workflows` and
+`bb--automations`. Production authorization now imports those IDs from the
+builtin registry; tests verify the registry values and reject the old spellings.
+Earlier increment reports describe their then-tested fixture scope; they were
+not proof of native plugin integration.
+
+On a shared server, managed workflows revalidate their saved execution binding
+and fail before QuickJS until a registered-UID evaluator is connected. Unassigned
+queued legacy workflows fail with an explicit migration error. Managed
+notifications do not fall through to unrestricted thread sends. Standalone
+workflow execution remains unchanged. The personal job API, isolated evaluator,
+controlled child dispatch, scoped notifications/recovery, definitions,
+automations and schedules remain unfinished; the overall background stage stays
+unchecked.
+
+Verification: all 253 Workflows tests, 44 selected server security/lifecycle
+tests and the full 402-test Plugin SDK package pass. Native consumer contract
+tests use the official fake host and real migrated plugin SQLite; they stub
+the internal facade rather than claiming to test core authorization. Core
+authorization tests use the actual adapter and migrated central SQLite. Tests
+cover owner filtering before limits, hidden unassigned records, foreign
+inspect/resume/stop denial, missing bindings, real SQLite insert failure and
+closed shared-process evaluation. Strict server/SDK/Workflows typechecks,
+portable SDK declarations and changed-file lint/format pass. The actual Docker
+deployment enables the installed builtin through administrator CLI, starts runs
+for two managed origins, verifies native owner/profile/binding records and
+confirms their persistence after a server restart. The final build/deployment
+passes all 61 tasks. See `control-plane-phase-27-verification.json`.

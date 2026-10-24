@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyNativeWorkflows } from "./check-control-plane-workflows.mjs";
 import { verifyExternalBrowser } from "./check-control-plane-browser-handshake.mjs";
 import { once } from "node:events";
 import { createHash } from "node:crypto";
@@ -63,6 +64,7 @@ export function createUserThreadFixture({ db, users }) {
       adminToken,
       config,
       diagnostics,
+      password,
     }) {
       const origin = config.publicOrigin;
       const ca = await readFile("/tmp/bb-test-certificates/ca.crt");
@@ -405,6 +407,16 @@ export function createUserThreadFixture({ db, users }) {
           originThreadId: thread.id,
         })),
       );
+
+      const workflows = await verifyNativeWorkflows({
+        launch,
+        signal,
+        wait,
+        password,
+        origin,
+        subjects: created,
+        db,
+      });
 
       const productionBrowser = await verifyExternalBrowser({
         origin,
@@ -809,10 +821,11 @@ export function createUserThreadFixture({ db, users }) {
         alice.thread.id,
         replayAfter,
       );
-      saved = { command, alice, wait, shutdownStream, bindingCheck };
+      saved = { command, alice, wait, shutdownStream, bindingCheck, workflows };
       return {
         ...productionBrowser,
         ...jobBindings,
+        ...workflows.verification,
         personalThreadCertificateCliAndFreshEnvironment: true,
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,
@@ -831,6 +844,7 @@ export function createUserThreadFixture({ db, users }) {
     async afterRestart() {
       const { command, alice, wait, shutdownStream, bindingCheck } = saved;
       const jobBindingRestart = await bindingCheck("resume");
+      const workflowRestart = saved.workflows.afterRestart();
       assert.notEqual((await shutdownStream.done)[0], 0);
       assert.equal(
         (await command("alice", ["threads", "get", alice.thread.id, "--json"]))
@@ -861,6 +875,7 @@ export function createUserThreadFixture({ db, users }) {
       await command("alice", ["threads", "stop", alice.thread.id, "--json"]);
       return {
         ...jobBindingRestart,
+        ...workflowRestart,
         personalTokenAndThreadSurviveRestart: true,
         personalStreamsClosedOnServerShutdown: true,
         personalNativeQwenSessionResumedWithHistory: true,

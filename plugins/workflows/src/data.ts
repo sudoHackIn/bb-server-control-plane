@@ -15,6 +15,8 @@ type WorkflowCallStatus = WorkflowRunStatus;
 export interface WorkflowRunRow {
   id: string;
   projectId: string;
+  ownerUserId: string | null;
+  authorityBindingId: string | null;
   originThreadId: string;
   environmentId: string;
   originProvider: string;
@@ -104,7 +106,7 @@ function optionalCall(value: unknown): WorkflowCallRow | null {
 }
 
 const RUN_SELECT = `
-  SELECT id, project_id AS projectId, origin_thread_id AS originThreadId,
+  SELECT id, project_id AS projectId, owner_user_id AS ownerUserId, authority_binding_id AS authorityBindingId, origin_thread_id AS originThreadId,
     environment_id AS environmentId, origin_provider AS originProvider,
     origin_model AS originModel, origin_reasoning_level AS originReasoningLevel,
     origin_permission_mode AS originPermissionMode,
@@ -232,13 +234,23 @@ export const migrations = [
   `CREATE INDEX workflow_runs_expiry_idx
      ON workflow_runs(finished_at + json_extract(settings_json, '$.retentionDays') * 86400000)
      WHERE status IN ('succeeded', 'failed', 'cancelled') AND notification_sent = 1;`,
+  `ALTER TABLE workflow_runs ADD COLUMN owner_user_id TEXT;
+   ALTER TABLE workflow_runs ADD COLUMN authority_binding_id TEXT;
+   CREATE INDEX workflow_runs_owner_project_created_idx ON workflow_runs(owner_user_id, project_id, created_at DESC);
+   CREATE INDEX workflow_runs_owner_origin_created_idx ON workflow_runs(owner_user_id, origin_thread_id, created_at DESC);`,
 ];
+
+export function createWorkflowRunId() {
+  return `wfr_${randomUUID()}`;
+}
 
 export function createRun(
   db: Db,
   input: Omit<
     WorkflowRunRow,
     | "id"
+    | "ownerUserId"
+    | "authorityBindingId"
     | "status"
     | "resultJson"
     | "error"
@@ -253,28 +265,45 @@ export function createRun(
     | "startedAt"
     | "finishedAt"
   >,
+  reservation?: { id: string; ownerUserId: string; authorityBindingId: string },
 ): WorkflowRunRow {
-  const id = `wfr_${randomUUID()}`;
+  const id = reservation?.id ?? createWorkflowRunId();
   const now = Date.now();
   db.prepare(
     `INSERT INTO workflow_runs (
-       id, project_id, origin_thread_id, environment_id, origin_provider,
+       id, project_id, owner_user_id, authority_binding_id, origin_thread_id, environment_id, origin_provider,
        origin_model, origin_reasoning_level, origin_permission_mode,
        name, source, source_hash,
        args_json, settings_json, status, resumed_from_run_id,
        replay_safety_version, created_at
      ) VALUES (
-       @id, @projectId, @originThreadId, @environmentId, @originProvider,
+       @id, @projectId, @ownerUserId, @authorityBindingId, @originThreadId, @environmentId, @originProvider,
        @originModel, @originReasoningLevel, @originPermissionMode,
        @name, @source, @sourceHash,
        @argsJson, @settingsJson, 'queued', @resumedFromRunId, 1, @now
      )`,
-  ).run({ id, now, ...input });
+  ).run({
+    ...input,
+    id,
+    now,
+    ownerUserId: reservation?.ownerUserId ?? null,
+    authorityBindingId: reservation?.authorityBindingId ?? null,
+  });
   return getRunRequired(db, id);
 }
 
-export function getRun(db: Db, id: string): WorkflowRunRow | null {
-  return optionalRun(db.prepare(`${RUN_SELECT} WHERE id = ?`).get(id));
+export function getRun(
+  db: Db,
+  id: string,
+  ownerUserId: string | null = null,
+): WorkflowRunRow | null {
+  return optionalRun(
+    db
+      .prepare(
+        `${RUN_SELECT} WHERE id = @id${ownerUserId === null ? "" : " AND owner_user_id = @ownerUserId"}`,
+      )
+      .get({ id, ownerUserId }),
+  );
 }
 
 export function getRunRequired(db: Db, id: string): WorkflowRunRow {
@@ -286,38 +315,40 @@ export function getRunRequired(db: Db, id: string): WorkflowRunRow {
 export function getLatestRunForOriginThread(
   db: Db,
   originThreadId: string,
+  ownerUserId: string | null = null,
 ): WorkflowRunRow | null {
   return optionalRun(
     db
       .prepare(
-        `${RUN_SELECT} WHERE origin_thread_id = ? ORDER BY created_at DESC, workflow_runs.rowid DESC LIMIT 1`,
+        `${RUN_SELECT} WHERE origin_thread_id = @originThreadId${ownerUserId === null ? "" : " AND owner_user_id = @ownerUserId"} ORDER BY created_at DESC, workflow_runs.rowid DESC LIMIT 1`,
       )
-      .get(originThreadId),
+      .get({ originThreadId, ownerUserId }),
   );
 }
 
 export function listActiveRunsForOriginThread(
   db: Db,
   originThreadId: string,
+  ownerUserId: string | null = null,
 ): WorkflowRunRow[] {
   return db
     .prepare(
-      `${RUN_SELECT} WHERE origin_thread_id = ? AND status IN ('queued', 'running')
-       ORDER BY created_at DESC, workflow_runs.rowid DESC`,
+      `${RUN_SELECT} WHERE origin_thread_id = @originThreadId${ownerUserId === null ? "" : " AND owner_user_id = @ownerUserId"} AND status IN ('queued', 'running') ORDER BY created_at DESC, workflow_runs.rowid DESC`,
     )
-    .all(originThreadId)
+    .all({ originThreadId, ownerUserId })
     .map(runRow);
 }
 
 export function listRuns(
   db: Db,
-  args: { projectId: string; limit: number },
+  args: { projectId: string; limit: number; ownerUserId?: string | null },
 ): WorkflowRunRow[] {
+  const ownerUserId = args.ownerUserId ?? null;
   return db
     .prepare(
-      `${RUN_SELECT} WHERE project_id = ? ORDER BY created_at DESC LIMIT ?`,
+      `${RUN_SELECT} WHERE project_id = @projectId${ownerUserId === null ? "" : " AND owner_user_id = @ownerUserId"} ORDER BY created_at DESC LIMIT @limit`,
     )
-    .all(args.projectId, args.limit)
+    .all({ ...args, ownerUserId })
     .map(runRow);
 }
 

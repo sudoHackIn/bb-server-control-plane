@@ -30,8 +30,8 @@ const savedSchema = z
 const mode = z.enum(["create", "resume"]).parse(process.argv[2]);
 const statePath = "/srv/bb/job-binding-proof.json";
 const db = createConnection("/srv/bb/bb.db");
-const jobs = createControlPlaneBackgroundJobs(db, "bb--automations", true);
-const workflows = createControlPlaneBackgroundJobs(db, "bb--workflows", true);
+const jobs = createControlPlaneBackgroundJobs(db, "automations", true);
+const workflows = createControlPlaneBackgroundJobs(db, "workflows", true);
 try {
   if (mode === "create") {
     const subjects = z
@@ -39,7 +39,7 @@ try {
       .length(2)
       .parse(JSON.parse(process.argv[3] ?? ""));
     assert.throws(
-      () => createControlPlaneBackgroundJobs(db, "bb--automations", false),
+      () => createControlPlaneBackgroundJobs(db, "automations", false),
       /not authorized/u,
     );
     const saved = await Promise.all(

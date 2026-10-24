@@ -1,3 +1,4 @@
+import { BUILTIN_PLUGINS } from "../../src/services/plugins/builtin-registry.js";
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
@@ -19,15 +20,46 @@ it("admits only approved builtin hosts and captures the current user without acc
   try {
     const { alice, bob } = seedControlPlaneJobSubjects(db);
     for (const [id, builtin] of [
-      ["bb--workflows", false],
-      ["bb--automations", false],
+      ["workflows", false],
+      ["automations", false],
       ["other", true],
+      ["bb--workflows", true],
+      ["bb--automations", true],
     ] as const)
       expect(() => createControlPlaneBackgroundJobs(db, id, builtin)).toThrow(
         "not authorized",
       );
-    const jobs = createControlPlaneBackgroundJobs(db, "bb--workflows", true);
+    const workflowId = BUILTIN_PLUGINS.find(
+      (plugin) => plugin.name === "workflows",
+    )?.pluginId;
+    const automationId = BUILTIN_PLUGINS.find(
+      (plugin) => plugin.name === "automations",
+    )?.pluginId;
+    if (!workflowId || !automationId)
+      throw new Error("Missing builtin job plugins");
+    const jobs = createControlPlaneBackgroundJobs(db, workflowId, true);
+    expect(
+      createControlPlaneBackgroundJobs(db, automationId, true),
+    ).toBeDefined();
     await expect(jobs.bind(alice.input)).rejects.toThrow("not authorized");
+    expect(jobs.userId).toBeNull();
+    expect(() => jobs.readOrigin(alice.thread.id)).toThrow("not authorized");
+    withControlPlaneUser(alice.user.id, () => {
+      expect(jobs.userId).toBe(alice.user.id);
+      expect(jobs.canReadProject(alice.project.id)).toBe(true);
+      expect(jobs.canReadProject(bob.project.id)).toBe(false);
+      expect(jobs.readOrigin(alice.thread.id)).toEqual({
+        projectId: alice.project.id,
+        environmentId: alice.environment.id,
+        providerId: "qwen-server",
+        model: "qwen-test",
+        reasoningLevel: "none",
+        permissionMode: "full",
+      });
+      expect(() => jobs.readOrigin(bob.thread.id)).toThrow("not authorized");
+    });
+    expect(jobs.userId).toBeNull();
+
     const a = await withControlPlaneUser(alice.user.id, () =>
       jobs.bind(alice.input),
     );
@@ -69,13 +101,13 @@ it("admits only approved builtin hosts and captures the current user without acc
     ).toEqual([b.id]);
     const automations = createControlPlaneBackgroundJobs(
       db,
-      "bb--automations",
+      "automations",
       true,
     );
     expect(await automations.get(a.id)).toBeNull();
-    await expect(
+    expect(() =>
       automations.list({ kind: "workflow-run", cursor: null, limit: 1 }),
-    ).rejects.toThrow("not authorized");
+    ).toThrow("not authorized");
   } finally {
     db.$client.close();
   }
@@ -85,7 +117,7 @@ it("adopts current saved authority for nested registration and async callbacks a
   const db = createMigratedConnection();
   try {
     const { alice, bob } = seedControlPlaneJobSubjects(db);
-    const jobs = createControlPlaneBackgroundJobs(db, "bb--workflows", true);
+    const jobs = createControlPlaneBackgroundJobs(db, "workflows", true);
     const a = await withControlPlaneUser(alice.user.id, () =>
       jobs.bind(alice.input),
     );
@@ -168,7 +200,7 @@ it("an explicit administrative request can bind a registered project owner while
   });
   try {
     const { alice } = seedControlPlaneJobSubjects(db);
-    const jobs = createControlPlaneBackgroundJobs(db, "bb--workflows", true);
+    const jobs = createControlPlaneBackgroundJobs(db, "workflows", true);
     const app = new Hono();
     access.install(app);
     const handoff: {

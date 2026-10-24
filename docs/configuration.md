@@ -1450,3 +1450,12 @@ a conversation screenshot and bounded failure diagnostics without tokens or
 certificate material. Browser contexts, Chrome and the disposable container are
 closed at teardown. macOS execution sandboxes may require allowing the separate
 headless browser process; this does not require changing system certificate trust.
+
+On shared control-plane servers, the builtin Workflows plugin now records each
+managed run's owner and immutable authority binding in its existing SQLite
+history. Its native readers and resume/stop operations scope user access; old
+unassigned history remains administrative. This does not open personal workflow
+APIs or tenant execution. Managed workflows currently fail before script
+evaluation until registered-UID execution and controlled child dispatch are
+connected; standalone Workflows execution is unchanged. See
+[background execution integration](control-plane-background-execution.md).
