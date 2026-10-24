@@ -1,0 +1,31 @@
+{
+  "scope": "Native personal BB project creation and scoped metadata access; no harness execution",
+  "previousStageCommit": "b2e63ffde",
+  "migration": "0148_careful_charles_xavier",
+  "serverSecurityAndPluginSdkTests": 48,
+  "nativeProjectDatabaseRegressionTests": 11,
+  "cliFocusedTests": 6,
+  "strictTypechecks": ["@bb/server", "@bb/db", "@bb/cli", "@bb/sdk"],
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "realServerAndSqlite": true,
+    "realCliProjectCreateListGet": true,
+    "separateUserProjectPaths": true,
+    "atomicNativeProjectOwnership": true,
+    "foreignProjectIdsDenied": true,
+    "clientPathAndIdentityOverridesDenied": true,
+    "administrativeNativeApiSeesBothProjects": true,
+    "sharedReadGrantRevocation": true,
+    "projectAccessSurvivesRestart": true,
+    "executionHost": "Registered offline metadata fixture"
+  },
+  "additionalFocusedCoverage": [
+    "pagination",
+    "native source rebinding",
+    "unowned source adoption denial",
+    "user revocation during preparation"
+  ],
+  "hostDaemonExecutionVerified": false,
+  "qwenExecutionVerified": false,
+  "fullRepositoryTestSuiteRun": false
+}

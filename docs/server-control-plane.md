@@ -12,6 +12,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Preserve trusted server-plugin SDK calls through a private in-process transport, including inter-plugin RPC. No full-access network credential is supplied to agent processes.
 - [x] Integrate certificate/PKCE user login, 24-hour user tokens and the environment registry into this repository's shared BB database. This allocates identities and paths; provisioning those paths and running processes are the next stage.
 - [x] Provision registered HOME/project directories through a fixed privileged helper, with immutable UUID/UID bindings and Docker checks under actual numeric UIDs. Qwen/thread execution remains a later stage.
+- [x] Create, list and read personal native BB projects with atomic ownership, source bindings and project grants; expose these operations through the limited API, SDK and CLI.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [ ] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry.
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
@@ -170,3 +171,25 @@ python3 -I deploy/control-plane/launcher/install.py \
 The service account must already exist and the configured `usersRoot` must match the helper policy. The installer writes only fixed launcher/policy/state/sudo-rule locations; it creates no agent accounts. Keep these artifacts root-owned. Install on a Linux filesystem with ACL support.
 
 Verification covers real migrated SQLite provisioning state, concurrent-request coalescing, mismatched helper identities, retry and revocation during provisioning. The real Docker server and CLI provision Alice/Bob directories, then numeric UID/GID processes with cleared groups write their own HOME/project and are denied the other user's paths and service database. Helper UID reassignment, non-service invocation and a symlink replacement are rejected; recovery preserves the same identity. The test controller uses root only to start processes under their actual service/user UIDs; BB itself runs as UID 1000.
+
+## Fourth increment: personal native BB projects
+
+The limited user API now supports `GET/POST /control-plane/user/projects` and `GET /control-plane/user/projects/:projectId`. Creation accepts only `{ name, slug }`; a slug is a lowercase letter followed by up to 47 lowercase letters, digits or hyphens. The server derives the workspace below the authenticated user's `projectsRoot` and selects the local BB primary host from the private server data directory. The host must already be registered. Environment provisioning must have completed first. Clients cannot select another user, host, UID, HOME or arbitrary path.
+
+The helper creates/verifies the project directory and its ACLs. Core's existing project insertion primitive then creates the native BB project/source and its control-plane ownership/grant rows in one immediate transaction. Permissions are checked again after the asynchronous helper call. Existing unowned native project sources are not silently adopted. Repeating the same slug/name returns the existing project; a different name for an occupied slug returns a conflict.
+
+Project lists use SQL joins constrained to the authenticated user's current grant, enabled account and matching native project/source/host bindings. Foreign and revoked IDs return 404. Unowned/legacy objects remain administrative-only until explicitly migrated. The list is paginated by project ID: optional `limit` is 1–100 (default 50), and `cursor` is the previous response's `nextCursor`. A response contains `projects` and nullable `nextCursor`.
+
+Grant rows distinguish owner, runner and viewer, with the owner assigned atomically on creation. This increment implements shared read access; a grant to another user's project does not permit impersonating its Unix identity. The response's `canRun` requires the caller's own execution identity as well as its role. Administrative grant-management APIs and per-thread execution checks are subsequent work; no tenant can edit grants through these endpoints.
+
+CLI:
+
+```sh
+bb server access projects create app --name 'My app'
+bb server access projects list --limit 50
+bb server access projects get <project-id>
+```
+
+SDK: `createControlPlaneClient(...).projects.create({ name, slug })`, `.projects.list({ cursor, limit })` and `.projects.get(projectId)`. These methods use the private per-origin user token; the full BB API stays closed to it. The native administrative UI/API sees the same project objects, not a copied project catalog.
+
+Docker verification creates projects through the actual user CLI/API, checks separate same-slug directories, repeat creation, per-user listing, foreign-ID denial, forbidden path/identity fields, administrative visibility and shared-read grant revocation. It uses a registered **offline host fixture** for metadata registration and verifies project access after a server restart. This does not prove host-daemon or Qwen thread execution. Focused tests additionally cover pagination, source rebinding, unowned-project conflicts and revocation during helper preparation.

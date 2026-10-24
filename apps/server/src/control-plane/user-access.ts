@@ -1,11 +1,17 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { IncomingMessage } from "node:http";
 import { TLSSocket } from "node:tls";
-import { ControlPlaneRegistry } from "@bb/db";
+import {
+  ControlPlaneRegistry,
+  ControlPlaneProjectError,
+  getControlPlaneProject,
+  listControlPlaneProjects,
+} from "@bb/db";
 import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { createControlPlaneProvisioner } from "./provisioning.js";
+import type { ControlPlaneProjectService } from "./projects.js";
 
 const loginSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/u);
 const startSchema = z
@@ -52,6 +58,10 @@ export function certificateLogin(context: Context): string | null {
 }
 
 export function isUserAuthPath(path: string, method: string): boolean {
+  if (path === "/control-plane/user/projects")
+    return ["GET", "POST"].includes(method);
+  if (/^\/control-plane\/user\/projects\/[^/]+$/u.test(path))
+    return method === "GET";
   if (path === "/control-plane/user/environment")
     return ["GET", "POST"].includes(method);
   if (path === "/control-plane/user") return method === "GET";
@@ -73,6 +83,7 @@ export function createControlPlaneUserAccess(
   registry: ControlPlaneRegistry,
   publicOrigin: string,
   now = Date.now,
+  projects?: ControlPlaneProjectService,
 ) {
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
@@ -89,6 +100,93 @@ export function createControlPlaneUserAccess(
   return {
     authenticate,
     install(app: Hono) {
+      const projectResponse = (
+        row: NonNullable<ReturnType<typeof getControlPlaneProject>>,
+        userId: string,
+      ) => ({
+        projectId: row.projectId,
+        name: row.name,
+        slug: row.slug,
+        hostId: row.hostId,
+        cwd: row.cwd,
+        role: row.role,
+        canRun:
+          row.ownerUserId === userId && ["owner", "runner"].includes(row.role),
+        canManage: row.ownerUserId === userId && row.role === "owner",
+      });
+      app.use("/control-plane/user/projects", bodyLimit({ maxSize: 4096 }));
+      app.get("/control-plane/user/projects", (context) => {
+        const value = authenticate(context);
+        if (!value)
+          return context.json({ error: "authentication_required" }, 401);
+        const parsed = z
+          .object({
+            cursor: z.string().min(1).max(200).optional(),
+            limit: z.coerce.number().int().min(1).max(100).default(50),
+          })
+          .strict()
+          .safeParse(context.req.query());
+        if (!parsed.success)
+          return context.json({ error: "invalid_request" }, 400);
+        const result = listControlPlaneProjects(registry.db, value.user.id, {
+          cursor: parsed.data.cursor ?? null,
+          limit: parsed.data.limit,
+        });
+        return context.json({
+          projects: result.projects.map((row) =>
+            projectResponse(row, value.user.id),
+          ),
+          nextCursor: result.nextCursor,
+        });
+      });
+      app.get("/control-plane/user/projects/:id", (context) => {
+        const value = authenticate(context);
+        if (!value)
+          return context.json({ error: "authentication_required" }, 401);
+        const project = getControlPlaneProject(
+          registry.db,
+          value.user.id,
+          context.req.param("id"),
+        );
+        return project
+          ? context.json(projectResponse(project, value.user.id))
+          : context.json({ error: "project_not_found" }, 404);
+      });
+      app.post("/control-plane/user/projects", async (context) => {
+        const value = authenticate(context);
+        if (!value)
+          return context.json({ error: "authentication_required" }, 401);
+        const parsed = z
+          .object({
+            name: z.string().trim().min(1).max(100),
+            slug: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/u),
+          })
+          .strict()
+          .safeParse(await context.req.json().catch(() => null));
+        if (!parsed.success)
+          return context.json({ error: "invalid_request" }, 400);
+        if (!projects || value.user.environmentStatus !== "ready")
+          return context.json({ error: "environment_unavailable" }, 503);
+        try {
+          const result = await projects.create(value.user, parsed.data);
+          const project = getControlPlaneProject(
+            registry.db,
+            value.user.id,
+            result.projectId,
+          );
+          if (!project)
+            return context.json({ error: "project_not_found" }, 404);
+          return context.json(
+            projectResponse(project, value.user.id),
+            result.created ? 201 : 200,
+          );
+        } catch (error) {
+          return error instanceof ControlPlaneProjectError &&
+            error.kind === "project_conflict"
+            ? context.json({ error: "project_conflict" }, 409)
+            : context.json({ error: "project_unavailable" }, 503);
+        }
+      });
       app.use("/control-plane/user/environment", bodyLimit({ maxSize: 1024 }));
       app.get("/control-plane/user/environment", (context) => {
         const value = authenticate(context);

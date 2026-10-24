@@ -356,6 +356,131 @@ export async function verifyUserDeployment({
       }
       const alice = users[0];
       const bob = users[1];
+      const projectHostId = "host_control_plane_deployment";
+      db.prepare(
+        "INSERT INTO hosts(id,name,type,created_at,updated_at) VALUES(?,?,?,?,?)",
+      ).run(
+        projectHostId,
+        "Offline project fixture",
+        "persistent",
+        Date.now(),
+        Date.now(),
+      );
+      await writeFile("/srv/bb/host-id", projectHostId + "\n", { mode: 0o600 });
+      await chown("/srv/bb/host-id", 1000, 1000);
+      const aliceProject = JSON.parse(
+        await command(
+          [...cli, "projects", "create", "app", "--name", "Alice app"],
+          "",
+          { env },
+        ),
+      );
+      assert.equal(aliceProject.cwd, `${alice.projects_root}/app`);
+      assert.equal(aliceProject.hostId, projectHostId);
+      assert.equal(
+        JSON.parse(
+          await command(
+            [...cli, "projects", "create", "app", "--name", "Alice app"],
+            "",
+            { env },
+          ),
+        ).projectId,
+        aliceProject.projectId,
+      );
+      const bobHeaders = { authorization: `Bearer ${bobToken}` };
+      const bobCreated = await send("/control-plane/user/projects", {
+        headers: bobHeaders,
+        body: { slug: "app", name: "Bob app" },
+      });
+      assert.equal(bobCreated.status, 201);
+      const bobProject = JSON.parse(bobCreated.text);
+      assert.notEqual(bobProject.projectId, aliceProject.projectId);
+      assert.equal(bobProject.cwd, `${bob.projects_root}/app`);
+      assert.deepEqual(
+        JSON.parse(
+          await command([...cli, "projects", "list"], "", { env }),
+        ).projects.map((project) => project.projectId),
+        [aliceProject.projectId],
+      );
+      assert.equal(
+        JSON.parse(
+          await command(
+            [...cli, "projects", "get", aliceProject.projectId],
+            "",
+            { env },
+          ),
+        ).projectId,
+        aliceProject.projectId,
+      );
+      const foreign = launch(
+        [...cli, "projects", "get", bobProject.projectId],
+        { env },
+      );
+      foreign.stdout.resume();
+      let foreignError = "";
+      foreign.stderr.on("data", (data) => (foreignError += data));
+      assert.notEqual((await once(foreign, "exit", { signal }))[0], 0);
+      assert.match(foreignError, /404/u);
+      assert.equal(
+        (
+          await send("/control-plane/user/projects", {
+            headers: aliceHeaders,
+            body: {
+              name: "Forged",
+              slug: "other",
+              uid: bob.uid,
+              hostId: projectHostId,
+              cwd: bob.home,
+            },
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await send("/control-plane/user/projects", {
+            headers: aliceHeaders,
+            body: { name: "Invalid", slug: "../bob" },
+          })
+        ).status,
+        400,
+      );
+      const adminLogin = await send("/control-plane/login", {
+        body: { login: "operator", password },
+      });
+      assert.equal(adminLogin.status, 200);
+      const native = await send("/api/v1/projects", {
+        headers: {
+          authorization: `Bearer ${JSON.parse(adminLogin.text).token}`,
+        },
+      });
+      assert.equal(native.status, 200);
+      assert.deepEqual(
+        JSON.parse(native.text)
+          .map((project) => project.id)
+          .sort(),
+        [aliceProject.projectId, bobProject.projectId].sort(),
+      );
+      db.prepare(
+        "INSERT INTO control_plane_project_access(project_id,user_id,role) VALUES(?,?,?)",
+      ).run(aliceProject.projectId, bob.id, "viewer");
+      const shared = await send(
+        `/control-plane/user/projects/${aliceProject.projectId}`,
+        { headers: bobHeaders },
+      );
+      assert.equal(shared.status, 200);
+      assert.equal(JSON.parse(shared.text).canRun, false);
+      db.prepare(
+        "DELETE FROM control_plane_project_access WHERE project_id=? AND user_id=?",
+      ).run(aliceProject.projectId, bob.id);
+      assert.equal(
+        (
+          await send(`/control-plane/user/projects/${aliceProject.projectId}`, {
+            headers: bobHeaders,
+          })
+        ).status,
+        404,
+      );
       assert.equal(
         (
           await send("/control-plane/user/environment", {
@@ -450,6 +575,14 @@ export async function verifyUserDeployment({
       );
       assert.equal(
         (
+          await send(`/control-plane/user/projects/${aliceProject.projectId}`, {
+            headers: aliceHeaders,
+          })
+        ).status,
+        200,
+      );
+      assert.equal(
+        (
           await send("/control-plane/user", {
             headers: { authorization: `Bearer ${bobToken}` },
           })
@@ -491,6 +624,10 @@ export async function verifyUserDeployment({
       persistedUserSessions: true,
       revokedUserDenied: true,
       userCannotUseRawBbApi: true,
+      personalNativeProjects: true,
+      foreignProjectIdsDenied: true,
+      sharedReadGrantRevocation: true,
+      projectHostFixtureOffline: true,
     };
   } finally {
     server.kill("SIGTERM");

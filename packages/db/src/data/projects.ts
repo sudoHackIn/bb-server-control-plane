@@ -8,7 +8,15 @@ import type {
   DbTransaction,
 } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { projects, projectSources } from "../schema.js";
+import {
+  projects,
+  projectSources,
+  controlPlaneUsers,
+  controlPlaneProjects,
+  controlPlaneProjectAccess,
+  hosts,
+} from "../schema.js";
+import { join } from "node:path";
 import { createProjectId, createProjectSourceId } from "../ids.js";
 import { toProjectSource } from "./project-sources.js";
 import { createOrderKeyAfter, createOrderKeyBetween } from "./order-keys.js";
@@ -203,6 +211,107 @@ export function createProject(
   return { project, source: toProjectSource(source) };
 }
 
+export class ControlPlaneProjectError extends Error {
+  constructor(
+    readonly kind: "user_unavailable" | "host_unavailable" | "project_conflict",
+  ) {
+    super(kind);
+  }
+}
+
+export function createControlPlaneProject(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: { userId: string; hostId: string; name: string; slug: string },
+) {
+  const result = db.transaction(
+    (tx) => {
+      const user = tx
+        .select()
+        .from(controlPlaneUsers)
+        .where(
+          and(
+            eq(controlPlaneUsers.id, input.userId),
+            eq(controlPlaneUsers.enabled, true),
+            eq(controlPlaneUsers.environmentStatus, "ready"),
+          ),
+        )
+        .get();
+      if (!user) throw new ControlPlaneProjectError("user_unavailable");
+      const host = tx
+        .select()
+        .from(hosts)
+        .where(and(eq(hosts.id, input.hostId), isNull(hosts.destroyedAt)))
+        .get();
+      if (!host) throw new ControlPlaneProjectError("host_unavailable");
+      const sourceInput: CreateProjectLocalPathSourceInput = {
+        type: "local_path",
+        hostId: input.hostId,
+        path: join(user.projectsRoot, input.slug),
+      };
+      const association = tx
+        .select()
+        .from(controlPlaneProjects)
+        .where(
+          and(
+            eq(controlPlaneProjects.ownerUserId, user.id),
+            eq(controlPlaneProjects.slug, input.slug),
+          ),
+        )
+        .get();
+      const existing = getPublicProjectWithLocalPathSource(tx, sourceInput);
+      if (association || existing) {
+        if (
+          !association ||
+          !existing ||
+          association.projectId !== existing.project.id ||
+          association.cwd !== sourceInput.path ||
+          association.hostId !== input.hostId ||
+          existing.project.name !== input.name
+        )
+          throw new ControlPlaneProjectError("project_conflict");
+        const access = tx
+          .select()
+          .from(controlPlaneProjectAccess)
+          .where(
+            and(
+              eq(controlPlaneProjectAccess.userId, user.id),
+              eq(controlPlaneProjectAccess.projectId, association.projectId),
+              eq(controlPlaneProjectAccess.role, "owner"),
+            ),
+          )
+          .get();
+        if (!access) throw new ControlPlaneProjectError("project_conflict");
+        return { created: false, ...existing };
+      }
+      const inserted = insertProject(tx, {
+        name: input.name,
+        source: sourceInput,
+      });
+      tx.insert(controlPlaneProjects)
+        .values({
+          projectId: inserted.project.id,
+          ownerUserId: user.id,
+          slug: input.slug,
+          hostId: input.hostId,
+          cwd: sourceInput.path,
+        })
+        .run();
+      tx.insert(controlPlaneProjectAccess)
+        .values({
+          projectId: inserted.project.id,
+          userId: user.id,
+          role: "owner",
+        })
+        .run();
+      return { created: true, ...inserted };
+    },
+    { behavior: "immediate" },
+  );
+  if (result.created) notifyProjectCreated(notifier, result.project.id);
+  return { ...result, source: toProjectSource(result.source) };
+}
+
 export function findOrCreateProjectByLocalPathSource(
   db: DbConnection,
   notifier: DbNotifier,
@@ -241,15 +350,19 @@ export function getPersonalProject(db: DbConnection) {
     db
       .select()
       .from(projects)
-      .where(and(eq(projects.id, PERSONAL_PROJECT_ID), eq(projects.kind, "personal")))
+      .where(
+        and(
+          eq(projects.id, PERSONAL_PROJECT_ID),
+          eq(projects.kind, "personal"),
+        ),
+      )
       .get() ?? null
   );
 }
 
 export function ensurePersonalProject(db: DbConnection) {
   const now = Date.now();
-  db
-    .insert(projects)
+  db.insert(projects)
     .values({
       id: PERSONAL_PROJECT_ID,
       kind: "personal",
@@ -377,7 +490,8 @@ export function reorderProject({
       );
       const currentPreviousProjectId =
         currentProjects[currentIndex - 1]?.id ?? null;
-      const currentNextProjectId = currentProjects[currentIndex + 1]?.id ?? null;
+      const currentNextProjectId =
+        currentProjects[currentIndex + 1]?.id ?? null;
       if (
         currentPreviousProjectId === previousProjectId &&
         currentNextProjectId === nextProjectId

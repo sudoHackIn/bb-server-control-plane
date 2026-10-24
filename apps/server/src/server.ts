@@ -6,6 +6,8 @@ import {
 import { loadControlPlaneConfig } from "./control-plane/config.js";
 import { ControlPlaneRegistry } from "@bb/db";
 import { createControlPlaneUserAccess } from "./control-plane/user-access.js";
+import { createControlPlaneProjectService } from "./control-plane/projects.js";
+import { requirePrimaryHostId } from "./services/hosts/primary-host.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import {
@@ -482,16 +484,25 @@ export function createApp(
   const accessConfig = options?.controlPlane
     ? null
     : loadControlPlaneConfig(deps.config.dataDir);
+  const userRegistry = accessConfig?.users
+    ? new ControlPlaneRegistry(deps.db, accessConfig.users)
+    : null;
   const controlPlane =
     options?.controlPlane ??
     (accessConfig
       ? createControlPlaneAccess(
           accessConfig,
           Date.now,
-          accessConfig.users
+          userRegistry
             ? createControlPlaneUserAccess(
-                new ControlPlaneRegistry(deps.db, accessConfig.users),
+                userRegistry,
                 accessConfig.publicOrigin,
+                Date.now,
+                createControlPlaneProjectService({
+                  registry: userRegistry,
+                  notifier: deps.hub,
+                  hostId: () => requirePrimaryHostId(deps),
+                }),
               )
             : undefined,
         )

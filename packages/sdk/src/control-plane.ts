@@ -32,6 +32,16 @@ const environmentSchema = z.object({
   projectsRoot: z.string(),
   status: z.enum(["allocated", "provisioning", "ready", "failed"]),
 });
+const projectSchema = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  slug: z.string(),
+  hostId: z.string(),
+  cwd: z.string(),
+  role: z.enum(["owner", "runner", "viewer"]),
+  canRun: z.boolean(),
+  canManage: z.boolean(),
+});
 
 export function createControlPlaneClient(args: {
   origin: string;
@@ -75,6 +85,47 @@ export function createControlPlaneClient(args: {
     return response.json();
   };
   return {
+    projects: {
+      async list(
+        options: { cursor?: string; limit?: number; signal?: AbortSignal } = {},
+      ) {
+        const query = new URLSearchParams();
+        if (options.cursor !== undefined) query.set("cursor", options.cursor);
+        if (options.limit !== undefined)
+          query.set("limit", String(options.limit));
+        return z
+          .object({
+            projects: z.array(projectSchema),
+            nextCursor: z.string().nullable(),
+          })
+          .parse(
+            await request(
+              `/control-plane/user/projects${query.size ? `?${query}` : ""}`,
+              "GET",
+              undefined,
+              options.signal,
+            ),
+          );
+      },
+      async get(projectId: string, signal?: AbortSignal) {
+        return projectSchema.parse(
+          await request(
+            `/control-plane/user/projects/${encodeURIComponent(projectId)}`,
+            "GET",
+            undefined,
+            signal,
+          ),
+        );
+      },
+      async create(
+        input: { name: string; slug: string },
+        signal?: AbortSignal,
+      ) {
+        return projectSchema.parse(
+          await request("/control-plane/user/projects", "POST", input, signal),
+        );
+      },
+    },
     async environment(signal?: AbortSignal) {
       return environmentSchema.parse(
         await request(

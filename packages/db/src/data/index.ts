@@ -1,5 +1,7 @@
 export {
   createProject,
+  createControlPlaneProject,
+  ControlPlaneProjectError,
   ensurePersonalProject,
   findOrCreateProjectByLocalPathSource,
   getPersonalProject,
@@ -539,3 +541,4 @@ export type {
   DiffViewedFileScope,
 } from "./diff-viewed-files.js";
 export * from "./control-plane.js";
+export * from "./control-plane-projects.js";

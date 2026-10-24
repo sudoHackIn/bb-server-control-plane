@@ -29,6 +29,56 @@ export function registerServerAccessCommands(
   const access = server
     .command("access")
     .description("Sign in to a protected shared BB server");
+  const projects = access
+    .command("projects")
+    .description("Manage your authorized server projects");
+  const projectClient = () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }).projects;
+  projects
+    .command("list")
+    .option("--cursor <id>", "Continue after the returned cursor")
+    .option("--limit <count>", "Maximum projects, from 1 to 100", "50")
+    .action(
+      action(async (options: { cursor?: string; limit: string }) => {
+        const limit = z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .parse(options.limit);
+        console.log(
+          JSON.stringify(
+            await projectClient().list({ cursor: options.cursor, limit }),
+            null,
+            2,
+          ),
+        );
+      }),
+    );
+  projects.command("get <project-id>").action(
+    action(async (projectId: string) => {
+      console.log(
+        JSON.stringify(await projectClient().get(projectId), null, 2),
+      );
+    }),
+  );
+  projects
+    .command("create <slug>")
+    .requiredOption("--name <name>", "Project display name")
+    .action(
+      action(async (slug: string, options: { name: string }) => {
+        console.log(
+          JSON.stringify(
+            await projectClient().create({ slug, name: options.name }),
+            null,
+            2,
+          ),
+        );
+      }),
+    );
   access
     .command("environment")
     .description(

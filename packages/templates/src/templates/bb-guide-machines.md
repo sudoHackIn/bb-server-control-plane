@@ -216,6 +216,13 @@ state. Add `--provision` to create or verify your registered HOME and project
 directories. The server selects their identity and paths; this command creates
 no BB conversation or project object.
 
+After your environment is provisioned and the local server host is registered,
+use `bb server access projects create <slug> --name <name>` to create a project
+in your allocated workspace. `projects list [--limit <count>] [--cursor <id>]`
+and `projects get <project-id>` expose your current project grants. List limits
+are 1–100, default 50; continue using the returned `nextCursor`.
+Project creation cannot override your UID, HOME, host or base directory.
+
 On a protected deployment of the server-control-plane fork, administrators sign
 in with `bb server access login --login <name> --password-stdin`, supplying the
 password from private stdin. `bb server access status` shows the current login;

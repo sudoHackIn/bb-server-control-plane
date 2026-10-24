@@ -107,7 +107,12 @@ export function createControlPlaneAccess(
           ["GET", "POST"].includes(context.req.method)
         )
           return next();
-        if (users && isUserAuthPath(path, context.req.method)) return next();
+        if (users && isUserAuthPath(path, context.req.method)) {
+          const origin = context.req.header("origin");
+          if (origin !== undefined && !safeOrigin(context))
+            return context.json({ error: "forbidden_origin" }, 403);
+          return next();
+        }
         if (
           path.startsWith("/internal/") &&
           path !== "/internal/hosts/enroll-key"

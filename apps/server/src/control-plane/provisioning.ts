@@ -33,6 +33,22 @@ export async function prepareUserEnvironment(
   return preparedSchema.parse(JSON.parse(stdout));
 }
 
+export async function prepareUserProject(
+  user: ControlPlaneUser,
+  slug: string,
+): Promise<string> {
+  const { stdout } = await exec(
+    "/usr/bin/sudo",
+    ["-n", "--", helper, "project", user.id, String(user.uid), slug],
+    {
+      env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
+      timeout: 30000,
+      maxBuffer: 16384,
+    },
+  );
+  return z.object({ cwd: z.string() }).strict().parse(JSON.parse(stdout)).cwd;
+}
+
 export function createControlPlaneProvisioner(
   registry: ControlPlaneRegistry,
   prepare = prepareUserEnvironment,

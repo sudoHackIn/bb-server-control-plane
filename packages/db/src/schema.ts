@@ -216,6 +216,51 @@ export const projects = sqliteTable(
   ],
 );
 
+export const controlPlaneProjects = sqliteTable(
+  "control_plane_projects",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    slug: text("slug").notNull(),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id),
+    cwd: text("cwd").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_projects_owner_slug_idx").on(
+      table.ownerUserId,
+      table.slug,
+    ),
+  ],
+);
+
+export const controlPlaneProjectAccess = sqliteTable(
+  "control_plane_project_access",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => controlPlaneProjects.projectId, {
+        onDelete: "cascade",
+      }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    role: text("role", { enum: ["owner", "runner", "viewer"] }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    index("control_plane_project_access_user_idx").on(
+      table.userId,
+      table.projectId,
+    ),
+  ],
+);
+
 export const projectExecutionDefaults = sqliteTable(
   "project_execution_defaults",
   {
