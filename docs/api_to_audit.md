@@ -3643,3 +3643,24 @@ Docs: `providers.md`.
 
 Before stabilization, decide whether `model/list` `supportedServiceTiers` may
 override the icon and whether reasoning levels should render it.
+
+## Shared-server private SDK read scopes
+
+No new Plugin SDK member is exposed. The shared-server transport denies user
+principals by default; core supplies two temporary internal read capabilities:
+
+- `control-plane/threads.ts` scopes cold project-checkout provisioning to the
+  server-selected project, exact host and exact cwd. The existing
+  `sdk.environments.list({hostId, path})` can return only that project's rows
+  after current grant checks. Query additions and mutation methods are denied.
+- `services/threads/dispatch-hooks.ts` scopes the centrally installed
+  `concurrency-limit` message-dispatch callback to existing
+  `sdk.threads.listRunning()`. It returns only native ID/host pairs for global
+  capacity accounting, after current thread/project/profile admission. Another
+  plugin ID, operation or query is denied. No messages/titles are exposed.
+
+The only capability creators are those two core call sites. Scoped readers
+never dispatch the requested operation with service authority. Public user HTTP
+and private realtime remain denied. These exceptions do not constitute the
+pending general scoped Plugin SDK adapter; child/plugin actions still need
+separate ownership and authority checks.

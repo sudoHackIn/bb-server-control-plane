@@ -1,3 +1,5 @@
+import { withControlPlaneDispatchRead } from "../../control-plane/sdk-dispatch-read.js";
+import { listRunningThreadsWithIntendedHosts } from "./dispatch-attempt.js";
 import { getEnvironment } from "@bb/db";
 import {
   QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH,
@@ -32,19 +34,8 @@ import { pluginHookProvider } from "../plugins/plugin-hook-registry.js";
 
 type DispatchHookDeps = Pick<AppDeps, "db" | "hub">;
 
-/**
- * Whether an attempt starts a turn or joins one that is already running. The
- * decision powers are identical either way — a steer is hooked exactly like a
- * send.
- */
 export type DispatchAttemptKind = PluginDispatchAttemptKind;
 
-/**
- * A hook handler's answer, re-parsed at the boundary. Plugin sources are
- * untyped at runtime, so the contract's TypeScript shape is a promise, not a
- * guarantee: everything a handler returns is validated here and a malformed
- * decision fails the attempt with the plugin named, exactly like a throw.
- */
 const messageDispatchHookDecisionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("proceed") }),
   z.object({
@@ -58,7 +49,6 @@ const messageDispatchHookDecisionSchema = z.discriminatedUnion("action", [
 export interface MessageDispatchWaitDecision {
   pluginId: string;
   reason: string;
-  /** Becomes the queued row's `sendAt`, so core's due sweep re-attempts then. */
   sendAt: number | null;
 }
 
@@ -66,30 +56,15 @@ export type MessageDispatchHookPassOutcome =
   | { kind: "proceed" }
   | {
       kind: "wait";
-      /**
-       * The pass queues ONE row, owned by the FIRST plugin that voted to wait.
-       * Several rows would multiply the user's Send-now/Cancel affordances for
-       * one decision and make "send this message" ambiguous, while one row
-       * keeps a single card whose reason line names every waiter. The losers'
-       * reasons are appended to that reason; each of them votes again on the
-       * next attempt, so nothing is lost by not owning the row.
-       */
       waiter: MessageDispatchWaitDecision;
       additionalWaiters: readonly MessageDispatchWaitDecision[];
     };
 
 export interface MessageDispatchHookPassRequest {
-  /** The target thread; a `pending` row for a first message. */
   thread: Thread;
-  /** The thread's public DTO, as the hook context carries it. */
   threadResponse: ThreadResponse;
   project: Project;
   environmentId: string | null;
-  /**
-   * The machine the start intent names, for a thread with no environment yet.
-   * It becomes the context's `host` so a per-host policy sees a cold start's
-   * pool; null when an environment answers instead, or nothing names one.
-   */
   intendedHostId: string | null;
   environmentIntent: PluginDispatchEnvironmentIntent | null;
   input: PromptInput[];
@@ -107,31 +82,8 @@ export interface MessageDispatchHookPassRequest {
   continueAfterHooks?: () => Promise<void>;
 }
 
-/**
- * Minimum gap between a re-attempt that re-queued and the next drain attempt
- * on that thread.
- *
- * Clearing a wait re-runs the hook pass, and a pass that votes to wait again
- * queues the row afresh — so a plugin that clears the moment it sees
- * `message.queued` would spin clear → re-queue → clear at whatever rate its
- * event handler fires. Core owns the pacing rather than trusting plugins, the same
- * way `STALE_QUEUED_MESSAGE_CLAIM_MS` in the queue owns claim recovery rather
- * than trusting senders.
- *
- * Only a re-queue starts the clock. An attempt that dispatched is not a loop
- * and must never be delayed — a due scheduled send that re-queues for a busy
- * thread and then dispatches the moment the turn ends is one normal sequence
- * of two attempts milliseconds apart. And the window is per thread, not per
- * row, because a re-queue can land on a different row entirely.
- */
 const DISPATCH_REQUEUE_MIN_INTERVAL_MS = 1_000;
 
-/**
- * When each thread last had a drain attempt turn straight back into a queue.
- * In-memory on purpose: this paces a live spin, and a restart is already a
- * hard stop for one. Entries are dropped as they age out, so a long-lived
- * server does not accumulate one per thread ever drained.
- */
 const lastRequeuedAtByThreadId = new Map<string, number>();
 
 export function noteDispatchRequeued(threadId: string): void {
@@ -144,22 +96,11 @@ export function noteDispatchRequeued(threadId: string): void {
   lastRequeuedAtByThreadId.set(threadId, now);
 }
 
-/**
- * True when this thread re-queued moments ago and the next drain attempt
- * should wait. The caller does nothing, so the row stays queued and the next
- * sweep tick, drain or user action tries again.
- */
 export function isDispatchRequeuedRecently(threadId: string): boolean {
   const at = lastRequeuedAtByThreadId.get(threadId);
   return at !== undefined && Date.now() - at < DISPATCH_REQUEUE_MIN_INTERVAL_MS;
 }
 
-/**
- * True when at least one plugin answers `message.dispatch`. Every wiring site
- * checks this first: with no handler the dispatch path must be byte-for-byte
- * what it was before hooks existed — no lock, no context assembly, no queued
- * row.
- */
 export function hasMessageDispatchHooks(): boolean {
   const provider = pluginHookProvider();
   return (
@@ -167,26 +108,10 @@ export function hasMessageDispatchHooks(): boolean {
   );
 }
 
-/**
- * Server-wide evaluation lock.
- *
- * A handler that limits concurrency is only correct if no two passes
- * interleave, so every pass runs to completion before the next starts — AND,
- * via `continueAfterHooks`, a cleared attempt's thread-status flip commits
- * before the lock releases. Those two together are what let a handler ask the
- * server what is running (`sdk.threads.listRunning()`) instead of maintaining
- * its own tally of in-flight `proceed`s: the fact is already true by the time
- * the next handler reads it.
- *
- * The cost is real — a slow handler delays other dispatches up to its box — and is
- * accepted deliberately; scoping the lock per project or host is the fix if it
- * bites.
- */
 let evaluationLock: Promise<unknown> = Promise.resolve();
 
 function withEvaluationLock<T>(run: () => Promise<T>): Promise<T> {
   const result = evaluationLock.then(run, run);
-  // Swallow only for the chain: the caller still sees the rejection.
   evaluationLock = result.then(
     () => undefined,
     () => undefined,
@@ -198,10 +123,6 @@ function messageDispatchHookFailure(
   pluginId: string,
   detail: string,
 ): ApiError {
-  // Fail-closed, mirroring how a throwing `deriveProviderOptions` fails the
-  // command: 502 says the failure came from something behind the server rather
-  // than from the caller's request, and the plugin is named so the user knows
-  // which one to disable.
   return new ApiError(
     502,
     "dispatch_hook_failed",
@@ -216,11 +137,6 @@ function dispatchRejection(pluginId: string, message: string): ApiError {
   });
 }
 
-/**
- * Runs one handler inside its decision box. A timeout resolves as a failure
- * rather than racing on: the handler's promise may never settle, and the whole
- * point of the box is that the dispatch does not wait on it.
- */
 export async function decideWithinBox<T>(
   run: () => Promise<T>,
   timeoutMs: number,
@@ -253,11 +169,6 @@ export async function decideWithinBox<T>(
   }
 }
 
-/**
- * The environment/host pair a dispatch context carries, resolved the same way
- * for every reader so a queue-failure line names the same host record —
- * including its live connection state — that the hook context did.
- */
 export function dispatchEnvironmentAndHost(
   deps: Pick<AppDeps, "db" | "hub">,
   environmentId: string | null,
@@ -265,15 +176,12 @@ export function dispatchEnvironmentAndHost(
   if (environmentId === null) return { environment: null, host: null };
   const environment = getEnvironment(deps.db, environmentId);
   if (environment === null) return { environment: null, host: null };
-  // The same DTO `GET /threads/:id?include=host` serves, so a handler reading
-  // `host.status` sees the live connection state rather than a stored row.
   return {
     environment: toEnvironmentResponse(deps.db, environment),
     host: getNonDestroyedHostWithStatus(deps, environment.hostId),
   };
 }
 
-/** The concatenated text blocks, which is what a rules-based router matches on. */
 export function dispatchInputText(input: readonly PromptInput[]): string {
   return input
     .filter((block) => block.type === "text")
@@ -281,24 +189,11 @@ export function dispatchInputText(input: readonly PromptInput[]): string {
     .join("\n");
 }
 
-/**
- * Fields no longer in `MessageDispatchHookContext` that core still puts on the
- * object, so a handler compiled against an older SDK keeps reading them.
- * `startedOnBehalfOf` said why the THREAD was started, never who sent the
- * message being decided about; `initiator` and `senderThreadId` answer that.
- */
 interface DroppedFromContractStillEmitted {
   startedOnBehalfOf: StartedOnBehalfOf | null;
   queuedMessage: ThreadQueuedMessage | null;
 }
 
-/**
- * The author a whole dispatch reports, which a group of queued rows may not
- * agree on: the drain sends them as one turn and the hook decides once for all
- * of them. `mixed` says the rows differ, so a handler that cares reads
- * `queuedMessages` for each row's own author. An inline attempt has no rows and
- * reports the author the dispatch was requested with.
- */
 function summarizeDispatchProvenance(
   request: MessageDispatchHookPassRequest,
 ): Pick<
@@ -334,13 +229,6 @@ function summarizeDispatchProvenance(
   };
 }
 
-/**
- * The context every handler in a pass sees.
- *
- * Built once and shared: with no amendments, nothing a handler returns can
- * change what the next one is deciding about, so the pass is a chain of
- * independent decisions on one unchanging fact.
- */
 function buildHookContext(
   deps: DispatchHookDeps,
   request: MessageDispatchHookPassRequest,
@@ -378,18 +266,6 @@ function buildHookContext(
   };
 }
 
-/**
- * Runs one full `message.dispatch` pass at the single dispatch checkpoint.
- *
- * Order is plugin install order; a `reject` short-circuits the pass and throws
- * a 409; `wait` decisions are COLLECTED across the whole pass rather than
- * short-circuiting, so every plugin that would have queued the message gets its
- * reason onto the one row. The attempt proceeds only when a pass yields no
- * waits.
- *
- * The caller must check {@link hasMessageDispatchHooks} first; with no handler
- * this returns an empty `proceed` without touching the lock.
- */
 export async function runMessageDispatchHookPass(
   deps: DispatchHookDeps,
   request: MessageDispatchHookPassRequest,
@@ -413,7 +289,17 @@ export async function runMessageDispatchHookPass(
         "message.dispatch hook",
         () =>
           decideWithinBox(
-            async () => hook.handler(context),
+            async () =>
+              withControlPlaneDispatchRead(
+                {
+                  db: deps.db,
+                  threadId: request.thread.id,
+                  pluginId: hook.pluginId,
+                  running: () =>
+                    Response.json(listRunningThreadsWithIntendedHosts(deps)),
+                },
+                () => hook.handler(context),
+              ),
             provider.decisionTimeoutMs,
           ),
       );
@@ -457,11 +343,6 @@ export async function runMessageDispatchHookPass(
   });
 }
 
-/**
- * The wait reason for a pass, naming every plugin that voted to wait. The
- * first waiter owns the row, so its reason leads; the rest are appended so the
- * user sees the whole picture on one card rather than one card per plugin.
- */
 export function dispatchWaitReasonForPass(
   outcome: Extract<MessageDispatchHookPassOutcome, { kind: "wait" }>,
 ): string {
@@ -477,7 +358,6 @@ export function dispatchWaitReasonForPass(
     : reason;
 }
 
-/** The per-field sources a request carries into a pass. */
 export function dispatchExecutionSources(args: {
   model?: ExecutionInputFieldSource;
   permissionMode?: ExecutionInputFieldSource;

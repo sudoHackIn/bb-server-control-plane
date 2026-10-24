@@ -9,7 +9,7 @@ import {
   hosts,
 } from "../schema.js";
 
-function accessibleProjects(db: DbQueryConnection) {
+export function accessibleControlPlaneProjects(db: DbQueryConnection) {
   return db
     .select({
       projectId: projects.id,
@@ -61,7 +61,7 @@ export function getControlPlaneProject(
   userId: string,
   projectId: string,
 ) {
-  return accessibleProjects(db)
+  return accessibleControlPlaneProjects(db)
     .where(
       and(
         eq(controlPlaneProjectAccess.userId, userId),
@@ -76,7 +76,7 @@ export function listControlPlaneProjects(
   userId: string,
   options: { cursor: string | null; limit: number },
 ) {
-  const rows = accessibleProjects(db)
+  const rows = accessibleControlPlaneProjects(db)
     .where(
       and(
         eq(controlPlaneProjectAccess.userId, userId),

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createUserThreadFixture } from "./check-control-plane-user-threads.mjs";
 import { createApprovalFixture } from "./check-control-plane-approvals.mjs";
 import { createServer } from "node:http";
 import { request } from "node:https";
@@ -24,6 +25,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     .prepare("SELECT * FROM control_plane_users ORDER BY uid")
     .all();
   const approvals = createApprovalFixture({ db, users });
+  const personal = createUserThreadFixture({ db, users });
+  let personalVerification, personalRestartVerification;
   let approvalVerification;
   const toolCalls = new Map();
   const delegatedResults = new Set();
@@ -32,7 +35,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     let text = "";
     for await (const part of req) text += part;
     const body = JSON.parse(text);
-    if (approvals.handle(body, res)) return;
+    if (approvals.handle(body, res) || personal.handle(body, res)) return;
     const marker = JSON.stringify(body.messages).includes("BB_MANAGED_ALICE")
       ? "alice"
       : "bob";
@@ -450,6 +453,15 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       });
     }
     approvalVerification = await approvals.verify({ send, wait, token });
+    personalVerification = await personal.verify({
+      launch,
+      signal,
+      wait,
+      sendAdmin: send,
+      adminToken: token,
+      config,
+      diagnostics: () => log,
+    });
     assert.equal(
       (
         await send(
@@ -547,6 +559,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       false,
     );
     token = await start();
+    personalRestartVerification = await personal.afterRestart();
     const secondSession = await wait(
       connected,
       "daemon reconnect after restart",
@@ -696,6 +709,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     return {
       realDaemonEnrollment: true,
       ...approvalVerification,
+      ...personalVerification,
+      ...personalRestartVerification,
       trustedPluginSdkRealtimeEvents: true,
       staleContextReclaimedAfterCrash: true,
       localDaemonApiDisabled: true,
@@ -715,7 +730,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       parentDeathStopsDaemonAndQwen: true,
       daemonDescendantsExitAfterParentDeath: true,
       crashRecoveryRetainsIdentityAndThreads: true,
-      userThreadApi: false,
+      userThreadApi: true,
+      userLiveTimelineStream: false,
     };
   } finally {
     if (child?.exitCode === null && child.signalCode === null) {

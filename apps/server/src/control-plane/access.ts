@@ -1,3 +1,5 @@
+import { dispatchControlPlaneDispatchRead } from "./sdk-dispatch-read.js";
+import { dispatchControlPlaneEnvironmentRead } from "./sdk-environment-read.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes } from "node:crypto";
 import type { Context, Hono } from "hono";
@@ -311,8 +313,14 @@ export function createControlPlaneAccess(
       const path = new URL(request.url).pathname;
       if (!path.startsWith("/api/v1/"))
         throw new Error("Internal SDK must use the BB API");
-      if (currentControlPlanePrincipal()?.kind === "user")
+      const principal = currentControlPlanePrincipal();
+      if (principal?.kind === "user") {
+        const response =
+          dispatchControlPlaneDispatchRead(principal.userId, request) ??
+          dispatchControlPlaneEnvironmentRead(principal.userId, request);
+        if (response) return response;
         throw new Error("User SDK operations require scoped authorization");
+      }
       trustedRequests.set(
         request,
         currentControlPlanePrincipal() ?? { kind: "service" },

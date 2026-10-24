@@ -253,8 +253,8 @@ resume. New publications do not upgrade existing threads. A legacy unbound
 thread remains historical data but cannot execute. Qwen Server applies the native profile subset through protected per-job
 settings: fixed model/reasoning, appended prompt and exact native tool allowlist.
 Unsupported MCP transports, safe mode and model overrides fail before launch.
-Native permission mode must match the bound profile. The personal thread API remains closed pending delegated
-MCP/approval enforcement. The installer pins the reviewed stock CLI artifact;
+Native permission mode must match the bound profile. Personal clients use `bb server access threads`; raw native thread commands
+remain administrative on the shared server. The installer pins the reviewed stock CLI artifact;
 a corporate fork requires separate verification.
 
 Qwen Server accepts `--permission-mode full|accept-edits|auto` only when it
@@ -262,8 +262,32 @@ matches the profile. Project edits can be accepted automatically; other asks
 use the native `threads.interactions` SDK and `bb thread interactions
 list|approve|deny` in administrative integrations. The transport retains native
 tool IDs, expires pending asks and rechecks current grants after approval.
-Personal approval endpoints and restricted native subagent adapters are pending.
+Personal approval endpoints are available under `server access threads interactions`;
+restricted native subagent adapters remain pending.
 These modes do not add a filesystem jail to the numeric-UID execution boundary.
+
+`bb server access threads start <project-id> --profile-version <version-id>
+--message <text>` starts your conversation with the exact approved profile.
+Use `--message-stdin` for piped text; it is mutually exclusive with `--message`.
+The service chooses UID, HOME, host and cwd from your registered project.
+`threads list [--project <id>] [--limit 1..100] [--cursor <id>]` and `threads get
+<thread-id>` return only your current project access and thread ownership.
+`threads send <thread-id> --message <text>` continues the pinned native session;
+active turns queue the message. Steering and execution-option overrides are
+not supported. `threads stop <thread-id>` can stop your job after its profile
+grant is revoked, while current project access is still required.
+
+`threads events <thread-id> [--after <sequence>] [--limit 1..200]` reads a page
+of persisted native events in sequence order, exclusive of `after` (default 0).
+Continue using `cursor` while `hasMore`; this command is not a live stream.
+`threads result <thread-id>` returns current status and latest assistant text,
+not an immutable run snapshot. `threads interactions list <thread-id>` lists
+native interactions. `interactions approve|deny <thread-id> <interaction-id>`
+submits one-time approval or denial. `interactions resolve <thread-id>
+<interaction-id> --response-stdin` accepts native approval or user-answer JSON.
+No personal endpoint resolves plugin extension forms yet. New execution,
+messages and interaction resolutions recheck the current profile grant;
+revocation preserves authorized history reads. All leaf commands accept `--json`.
 
 Delegated BB tools reserve `mcpServers: ["bb"]` plus exact `bb:<tool-name>`
 profile entries. The server rechecks current grants before plugin invocation.

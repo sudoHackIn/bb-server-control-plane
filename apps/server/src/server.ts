@@ -6,6 +6,7 @@ import {
 import { loadControlPlaneConfig } from "./control-plane/config.js";
 import { ControlPlaneRegistry } from "@bb/db";
 import { createControlPlaneUserAccess } from "./control-plane/user-access.js";
+import { createControlPlaneThreadService } from "./control-plane/threads.js";
 import { createControlPlaneProjectService } from "./control-plane/projects.js";
 import { requirePrimaryHostId } from "./services/hosts/primary-host.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
@@ -505,6 +506,9 @@ export function createApp(
                   registry: userRegistry,
                   notifier: deps.hub,
                   hostId: () => requirePrimaryHostId(deps),
+                }),
+                createControlPlaneThreadService({
+                  deps,
                 }),
               )
             : undefined,

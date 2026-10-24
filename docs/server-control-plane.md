@@ -25,6 +25,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Connect approved `bb` MCP tools through the native Qwen SDK/BB tool channel, revalidate context on MCP requests and invoke the mandatory core guard; verify actual two-user model → plugin → model round trips in Docker. Other MCP transports and interactive approvals remain pending.
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
+- [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
@@ -526,3 +527,55 @@ typechecks and changed-file lint/format checks pass. The full Docker deployment
 passes with the pinned stock CLI and deterministic local model backend. This
 does not verify a corporate fork or real external classifier/model quality.
 See `control-plane-phase-15-verification.json`.
+
+## Sixteenth increment: personal thread API, SDK and CLI
+
+The limited user facade now creates native BB conversations in a registered
+project with an exact approved profile version. It exposes owner-filtered lists,
+status, send, stop, persisted event pages, latest text and native interaction
+listing/resolution. `createControlPlaneClient(...).threads` and `bb server access
+threads` use these routes with the existing certificate/PKCE-issued user token.
+Raw native HTTP, private plugin SDK and native realtime endpoints remain closed
+to that token. Lists filter ownership and current project grants in SQL before
+pagination; another user's project grant never grants their conversations.
+
+Start accepts project ID, profile-version ID, message and optional title only.
+The service derives provider/model/reasoning/permissions and UID/HOME/cwd/host
+from the approved version and registered project. It reuses a matching ready
+native environment or provisions the normal project-checkout provider. Send
+continues the same native session with the pinned version, queues when active,
+and accepts no execution-option override. Unsupported steering is rejected.
+New actions and interaction resolutions recheck current profile authority;
+profile revocation preserves authorized history and the ability to stop one's
+own job. Current project access remains required for every thread operation.
+Pending native approval or user-question responses go through the same native
+interaction validator and provider recheck as the administrative path. Extension
+form resolution is not exposed until scoped plugin actions are implemented.
+
+The real cold-start path required two narrowly scoped private SDK reads.
+Project-checkout validation can list environments only for the server-selected
+exact host/path/project during that provisioning context. The query rechecks
+current project access and filters by project in SQL. The centrally installed
+`concurrency-limit` message-dispatch hook can read running-thread ID/host pairs
+only inside its own callback, after current thread/project/profile admission.
+Other hooks, arbitrary query options and mutations are denied. That trusted
+capacity policy gets no conversation content; no full service-principal fallback
+was added. Public user HTTP access to both native routes remains denied.
+
+Events are canonical persisted BB rows with exclusive sequence cursors and
+bounded pages. This increment does not supply a live stream or reconstructed
+UI timeline. Result means latest assistant text with current thread status,
+not an immutable execution snapshot. Live subscriptions/revocation, native
+user UI, scoped delegated plugin actions and personal workflows/schedules
+remain subsequent required stages.
+
+Verification: 641 database tests, 166 selected server security/tool/runtime-config/
+dispatch-hook tests, a final personal API retest and five CLI registration/JSON
+checks pass. Strict server/CLI/SDK/database typechecks and changed-file lint and
+format checks pass. The real fork Docker deployment verifies certificate login
+through the actual CLI, fresh projects with no preseeded environment, two-user
+UID/HOME/cwd probes, foreign access denial, one-time approval, grant revocation
+before side effects and same-Qwen-session continuation after BB restart. The
+backend is the local deterministic fixture with pinned stock Qwen CLI, not a
+verified corporate fork or external model. See
+`control-plane-phase-16-verification.json`.

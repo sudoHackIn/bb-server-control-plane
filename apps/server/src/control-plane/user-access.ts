@@ -12,6 +12,11 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { createControlPlaneProvisioner } from "./provisioning.js";
 import type { ControlPlaneProjectService } from "./projects.js";
+import {
+  isControlPlaneThreadPath,
+  installControlPlaneThreadRoutes,
+} from "./thread-routes.js";
+import type { ControlPlaneThreadService } from "./threads.js";
 import { installControlPlaneProfileRoutes } from "./profile-routes.js";
 
 const loginSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/u);
@@ -59,6 +64,7 @@ export function certificateLogin(context: Context): string | null {
 }
 
 export function isUserAuthPath(path: string, method: string): boolean {
+  if (isControlPlaneThreadPath(path, method)) return true;
   if (
     /^\/control-plane\/user\/profiles(?:\/[^/]+(?:\/versions(?:\/[^/]+)?)?)?$/u.test(
       path,
@@ -91,6 +97,7 @@ export function createControlPlaneUserAccess(
   publicOrigin: string,
   now = Date.now,
   projects?: ControlPlaneProjectService,
+  threads?: ControlPlaneThreadService,
 ) {
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
@@ -108,6 +115,7 @@ export function createControlPlaneUserAccess(
     authenticate,
     install(app: Hono) {
       installControlPlaneProfileRoutes(app, registry.db, authenticate);
+      if (threads) installControlPlaneThreadRoutes(app, threads, authenticate);
       const projectResponse = (
         row: NonNullable<ReturnType<typeof getControlPlaneProject>>,
         userId: string,

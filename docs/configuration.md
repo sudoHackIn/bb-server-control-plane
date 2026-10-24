@@ -14,7 +14,7 @@ Optional `users` configuration enables direct HTTPS certificate authorization: `
 
 `bb server access authorize [--client-name <name>]` prints a browser URL, waits for certificate approval, exchanges PKCE and saves a 24-hour opaque user token without printing it. `status` and `logout` support both user and administrator sessions. User tokens persist in the shared BB database as hashes, survive server restarts until expiry and stop working when the user is disabled. `bb server access environment [--provision]` inspects or creates/verifies the user's HOME and project directories through a fixed privileged helper. Supported numeric UIDs are 200000–299999; no agent Unix accounts are created. The helper policy must match `usersRoot`, and the filesystem must support POSIX ACLs. Persist the user directories and `/var/lib/bb-agent-launcher` manifests together with the BB database. The personal thread API remains a later stage.
 
-After environment provisioning and local host registration, `bb server access projects create <slug> --name <name>` creates a native BB project below the user's project directory. `projects list [--limit 1..100] [--cursor <nextCursor>]` and `projects get <project-id>` expose only current grants with valid native source bindings. User-supplied identity/path/host overrides are rejected. Project ownership and grants live in the shared BB database; the personal thread API remains pending.
+After environment provisioning and local host registration, `bb server access projects create <slug> --name <name>` creates a native BB project below the user's project directory. `projects list [--limit 1..100] [--cursor <nextCursor>]` and `projects get <project-id>` expose only current grants with valid native source bindings. User-supplied identity/path/host overrides are rejected. Project ownership and grants live in the shared BB database; personal conversations use `bb server access threads` with an approved profile version.
 
 Approved profile definitions, immutable versions, availability and user grants are stored in the same BB database. `bb server access profiles list|get|versions` reads the user's permitted enabled records; administrators add `--admin` for all records and use `create|publish|grant|revoke|enable|disable|access` to manage them. Create/publish take definition JSON on `--definition-stdin`, never executable command/environment overrides or credentials. See `bb guide machines` and [profile integration status](server-control-plane.md#tenth-increment-approved-profile-catalog). A catalog record alone is not execution authority: native threads must be bound to approved versions, current grants must remain valid and the provider must support and enforce every selected setting.
 
@@ -1300,3 +1300,26 @@ metadata is preserved. This is a desktop-local preference, with no server
 settings CLI/SDK endpoint. Builds with tolerant readers ignore the field and
 may drop it on save; older strict readers can reject the whole file, so keep a
 backup before rolling back to a build predating the tolerant-reader fix #5286.
+
+Personal thread execution is exposed through `/control-plane/user/threads` and
+`createControlPlaneClient(...).threads`, using the same opaque user credential
+as project access. Start accepts only project ID, approved profile-version ID,
+message and optional title. No UID/HOME/cwd/environment/provider/model override
+is accepted. Send queues during an active turn; stop, paged events, current
+result and native approval/question resolution are scoped to persisted ownership
+and current project access. New actions also require the current profile grant.
+The SDK's `threads.events` reads persisted event pages, not a live stream.
+`threads.result` reports the latest assistant text and current status.
+
+Native project-checkout provisioning gets a private, temporary SDK read scope:
+only `GET /api/v1/environments` for the server-selected exact host/path and
+registered project. The query rechecks current project authority and filters in
+SQL. This does not grant a user token access to that native endpoint or enable
+other private plugin SDK operations. See [personal thread API verification](server-control-plane.md#sixteenth-increment-personal-thread-api-sdk-and-cli).
+
+The centrally installed `concurrency-limit` message-dispatch hook has a separate
+private read scope for native running-thread IDs and host IDs, needed for shared
+capacity accounting. That scope exists only during that exact hook callback,
+requires current thread/profile/project authority, and accepts no query options
+or mutations. Other hooks/plugins do not receive it. Neither internal scope
+changes the user's HTTP permissions or grants access to conversations/content.

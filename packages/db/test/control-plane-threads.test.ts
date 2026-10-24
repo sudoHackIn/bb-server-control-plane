@@ -4,6 +4,8 @@ import { expect, it } from "vitest";
 import { createMigratedConnection } from "../src/testing.js";
 import {
   ControlPlaneRegistry,
+  listControlPlaneThreads,
+  getControlPlaneThread,
   ControlPlaneThreadError,
   controlPlaneThreads,
   controlPlaneProjectAccess,
@@ -384,6 +386,111 @@ it("rechecks grants, user status and workspace bindings on every dispatch and Qw
     expect(() => resolveControlPlaneQwenContext(db, input)).toThrow(
       ControlPlaneThreadError,
     );
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("lists and reads only owned threads under current project grants without duplicate shared-project rows", () => {
+  const { db, alice, bob, start } = fixture();
+  try {
+    const first = start(),
+      second = start();
+    const foreign = start(bob);
+    db.insert(controlPlaneProjectAccess)
+      .values({
+        projectId: alice.project.id,
+        userId: bob.user.id,
+        role: "viewer",
+      })
+      .run();
+    const listed = listControlPlaneThreads(db, alice.user.id, {
+      cursor: null,
+      limit: 50,
+    });
+    expect(new Set(listed.threads.map((thread) => thread.id))).toEqual(
+      new Set([first.id, second.id]),
+    );
+    expect(listed.threads).toHaveLength(2);
+    expect(listed.threads[0]).not.toHaveProperty("environmentId");
+    expect(
+      listControlPlaneThreads(db, bob.user.id, {
+        projectId: alice.project.id,
+        cursor: null,
+        limit: 50,
+      }).threads,
+    ).toEqual([]);
+    expect(getControlPlaneThread(db, bob.user.id, first.id)).toBeNull();
+    expect(getControlPlaneThread(db, alice.user.id, foreign.id)).toBeNull();
+    const page = listControlPlaneThreads(db, alice.user.id, {
+      cursor: null,
+      limit: 1,
+    });
+    expect(page.nextCursor).toBe(page.threads[0]?.id);
+    const next = listControlPlaneThreads(db, alice.user.id, {
+      cursor: page.nextCursor,
+      limit: 1,
+    });
+    expect(next.threads).toHaveLength(1);
+    expect(next.threads[0]?.id).not.toBe(page.threads[0]?.id);
+    expect(next.nextCursor).toBeNull();
+    setControlPlaneProfileAccess(
+      db,
+      alice.profile.profileId,
+      alice.user.id,
+      false,
+    );
+    expect(getControlPlaneThread(db, alice.user.id, first.id)?.id).toBe(
+      first.id,
+    );
+    db.delete(controlPlaneProjectAccess)
+      .where(
+        and(
+          eq(controlPlaneProjectAccess.projectId, alice.project.id),
+          eq(controlPlaneProjectAccess.userId, alice.user.id),
+        ),
+      )
+      .run();
+    expect(getControlPlaneThread(db, alice.user.id, first.id)).toBeNull();
+    expect(
+      listControlPlaneThreads(db, alice.user.id, { cursor: null, limit: 50 })
+        .threads,
+    ).toEqual([]);
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("preserves owned archived history but excludes deleted and invalid-source threads", () => {
+  const { db, alice, start } = fixture();
+  try {
+    const archived = start(),
+      deleted = start();
+    db.update(threads)
+      .set({ archivedAt: 1 })
+      .where(eq(threads.id, archived.id))
+      .run();
+    db.update(threads)
+      .set({ deletedAt: 1 })
+      .where(eq(threads.id, deleted.id))
+      .run();
+    expect(
+      getControlPlaneThread(db, alice.user.id, archived.id)?.archivedAt,
+    ).toBe(1);
+    expect(getControlPlaneThread(db, alice.user.id, deleted.id)).toBeNull();
+    expect(
+      listControlPlaneThreads(db, alice.user.id, { cursor: null, limit: 50 })
+        .threads,
+    ).toMatchObject([{ id: archived.id, archived: true }]);
+    db.update(projectSources)
+      .set({ path: "/foreign" })
+      .where(eq(projectSources.projectId, alice.project.id))
+      .run();
+    expect(getControlPlaneThread(db, alice.user.id, archived.id)).toBeNull();
+    expect(
+      listControlPlaneThreads(db, alice.user.id, { cursor: null, limit: 50 })
+        .threads,
+    ).toEqual([]);
   } finally {
     db.$client.close();
   }

@@ -108,6 +108,17 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access projects list`
 - `bb server access projects get`
 - `bb server access projects create`
+- `bb server access threads list`
+- `bb server access threads start`
+- `bb server access threads get`
+- `bb server access threads send`
+- `bb server access threads stop`
+- `bb server access threads events`
+- `bb server access threads result`
+- `bb server access threads interactions list`
+- `bb server access threads interactions approve`
+- `bb server access threads interactions deny`
+- `bb server access threads interactions resolve`
 - `bb server access profiles list`
 - `bb server access profiles get`
 - `bb server access profiles versions`

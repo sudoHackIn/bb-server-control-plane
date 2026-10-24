@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { createControlPlaneThreadClient } from "./control-plane-threads.js";
 import {
   controlPlaneProfileCreateSchema,
   controlPlaneProfileDefinitionSchema,
@@ -88,8 +89,23 @@ export function createControlPlaneClient(args: {
       redirect: "manual",
       signal,
     });
-    if (!response.ok)
-      throw new Error(`Control-plane request failed (${response.status})`);
+    if (!response.ok) {
+      const error = z
+        .object({
+          code: z.string().max(200).optional(),
+          error: z.string().max(200).optional(),
+          message: z.string().max(2000).optional(),
+        })
+        .safeParse(await response.json().catch(() => null));
+      const detail = error.success
+        ? [error.data.code ?? error.data.error, error.data.message]
+            .filter(Boolean)
+            .join(": ")
+        : "";
+      throw new Error(
+        `Control-plane request failed (${response.status})${detail ? `: ${detail}` : ""}`,
+      );
+    }
     return response.json();
   };
   const profilePath = (base: string, id: string) =>
@@ -158,6 +174,7 @@ export function createControlPlaneClient(args: {
   const adminProfiles = "/control-plane/admin/profiles";
   const ok = z.object({ ok: z.literal(true) });
   return {
+    threads: createControlPlaneThreadClient(request),
     profiles: profileReader("/control-plane/user/profiles"),
     admin: {
       profiles: {

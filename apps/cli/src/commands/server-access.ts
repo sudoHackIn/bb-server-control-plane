@@ -6,6 +6,7 @@ import { createServerAccessStore } from "../server-access-session.js";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { createControlPlaneClient } from "@bb/sdk/node";
+import { registerServerThreadCommands } from "./server-threads.js";
 import { registerServerProfileCommands } from "./server-profiles.js";
 import { outputJson } from "./helpers.js";
 import { noteJsonPayloadWritten } from "../cli-error-output.js";
@@ -44,6 +45,12 @@ export function registerServerAccessCommands(
     .command("access")
     .description("Sign in to a protected shared BB server");
   registerServerProfileCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
+  registerServerThreadCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,
       fetch: cliFetch,

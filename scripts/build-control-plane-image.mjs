@@ -33,6 +33,10 @@ try {
     ],
     ["scripts/check-qwen-job-client.mjs", "qwen-job-client.mjs"],
     [
+      "scripts/check-control-plane-user-threads.mjs",
+      "check-control-plane-user-threads.mjs",
+    ],
+    [
       "scripts/check-control-plane-approvals.mjs",
       "check-control-plane-approvals.mjs",
     ],

@@ -1,14 +1,18 @@
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
   controlPlaneProjects,
+  controlPlaneProjectAccess,
   controlPlaneProfileVersions,
   controlPlaneThreads,
   controlPlaneUsers,
   environments,
   threads,
 } from "../schema.js";
-import { getControlPlaneProject } from "./control-plane-projects.js";
+import {
+  accessibleControlPlaneProjects,
+  getControlPlaneProject,
+} from "./control-plane-projects.js";
 import { getControlPlaneProfile } from "./control-plane-profiles.js";
 
 export class ControlPlaneThreadError extends Error {
@@ -209,4 +213,75 @@ export function resolveControlPlaneQwenContext(
     },
     { behavior: "immediate" },
   );
+}
+
+export function listControlPlaneThreads(
+  db: DbQueryConnection,
+  userId: string,
+  options: { projectId?: string; cursor: string | null; limit: number },
+) {
+  const accessible = accessibleControlPlaneProjects(db)
+    .where(eq(controlPlaneProjectAccess.userId, userId))
+    .as("accessible_projects");
+  const rows = db
+    .select({
+      id: threads.id,
+      projectId: threads.projectId,
+      profileVersionId: controlPlaneThreads.profileVersionId,
+      title: threads.title,
+      status: threads.status,
+      createdAt: threads.createdAt,
+      updatedAt: threads.updatedAt,
+      archivedAt: threads.archivedAt,
+    })
+    .from(controlPlaneThreads)
+    .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
+    .innerJoin(accessible, eq(accessible.projectId, threads.projectId))
+    .where(
+      and(
+        eq(controlPlaneThreads.ownerUserId, userId),
+        isNull(threads.deletedAt),
+        options.projectId
+          ? eq(threads.projectId, options.projectId)
+          : undefined,
+        options.cursor ? gt(threads.id, options.cursor) : undefined,
+      ),
+    )
+    .orderBy(asc(threads.id))
+    .limit(options.limit + 1)
+    .all();
+  const selected = rows.slice(0, options.limit);
+  return {
+    threads: selected.map(({ archivedAt, ...row }) => ({
+      ...row,
+      archived: archivedAt !== null,
+    })),
+    nextCursor:
+      rows.length > options.limit ? (selected.at(-1)?.id ?? null) : null,
+  };
+}
+
+export function getControlPlaneThread(
+  db: DbQueryConnection,
+  userId: string,
+  threadId: string,
+) {
+  const owner = db
+    .select()
+    .from(controlPlaneThreads)
+    .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
+    .where(
+      and(
+        eq(controlPlaneThreads.threadId, threadId),
+        eq(controlPlaneThreads.ownerUserId, userId),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .get();
+  if (!owner || !getControlPlaneProject(db, userId, owner.threads.projectId))
+    return null;
+  return {
+    ...owner.threads,
+    profileVersionId: owner.control_plane_threads.profileVersionId,
+  };
 }
