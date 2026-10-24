@@ -33,6 +33,10 @@ try {
     ],
     ["scripts/check-qwen-job-client.mjs", "qwen-job-client.mjs"],
     [
+      "apps/server/test/fixtures/control-plane-tool-plugin",
+      "control-plane-tool-plugin",
+    ],
+    [
       "scripts/check-control-plane-managed-runtime.mjs",
       "check-control-plane-managed-runtime.mjs",
     ],

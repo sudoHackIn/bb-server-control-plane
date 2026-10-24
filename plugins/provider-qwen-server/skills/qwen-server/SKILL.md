@@ -49,14 +49,13 @@ can render a sign-in URL; do not claim that a corporate fork emits it unless
 that executable has been verified.
 
 Server integration is under development. Do not enable this provider for
-unowned threads or infer identity from a cwd alone. Dynamic BB tools remain
-disabled until their delegated access adapter is enforced. Only Full access
+unowned threads or infer identity from a cwd alone. Approved dynamic BB tools use the provider-owned `bb` SDK MCP adapter. Only Full access
 inside the registered Unix identity is supported; automatic/manual approval
 and service-user execution are rejected.
 
 The profile fixes the model, reasoning, appended instructions and exact native
 Qwen tool allowlist. Caller exclusions can reduce capabilities. Unsupported
-MCP profiles, non-Full approval modes, unknown tools and mismatching model
+MCP transports, non-Full approval modes, unknown tools and mismatching model
 requests fail before launch. SDK MCP instances are not connected as the shared
 service user. Model fallback configuration, hooks, extension loading and
 user-configured MCP are disabled in the protected execution policy.
@@ -67,3 +66,18 @@ Node preload injects private instructions without putting them in kernel
 process arguments. The installer pins the reviewed stock CLI JavaScript
 artifact (SDK 0.1.22, CLI 0.26.0); a different artifact requires another policy
 review and deployment test. This pin does not establish corporate CLI support.
+
+Approve a BB tool with `mcpServers: ["bb"]` and `tools: ["bb:<registered-name>"]`
+in the immutable profile definition. Native Qwen names stay unprefixed. The
+available BB catalog is filtered in core, validated by the provider and checked
+again at each MCP list/call. Calls use the native BB tool channel and repeat
+current profile/project checks before invoking a trusted server plugin. An
+unavailable or unsupported tool fails explicitly. Caller exclusions reduce
+capabilities; they never enable a tool. `update_environment_directory` remains
+unsupported for managed threads.
+
+The protected policy clears HOME-configured MCP servers before registering the
+provider-owned adapter, including an impostor named `bb`. User-supplied SDK MCP
+instances and arbitrary stdio/HTTP MCP transports are rejected. Full private
+SDK calls from user-principal plugin code remain denied until their scoped
+adapters are implemented; central service/admin plugin code retains its access.

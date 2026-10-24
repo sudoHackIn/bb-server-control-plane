@@ -1,4 +1,6 @@
 import { test } from "vitest";
+import { z } from "zod";
+import type { DelegatedTools } from "../src/delegated-mcp.js";
 import assert from "node:assert/strict";
 import {
   experimental_runBridgeConformance,
@@ -213,6 +215,77 @@ test("rejects unsupported policy, attachments and malformed params without runni
       -32602,
     );
     assert.equal(sdk.calls.length, 0);
+  } finally {
+    await h.bridge.onClose?.();
+  }
+});
+
+test("forwards approved MCP adapter calls through the native BB tool channel with fixed session identities", async () => {
+  let adapter: DelegatedTools | undefined;
+  const sdk = fakeSdk();
+  const h = harness((config) => {
+    adapter = config.delegatedTools;
+    return sdk.factory(config);
+  });
+  try {
+    await h.initialize();
+    const started = await h.rpc("thread/start", {
+      threadId: "bb-test",
+      cwd: "/tmp",
+      options,
+      instructionMode: "append",
+      dynamicTools: [
+        {
+          name: "approved",
+          description: "Fixture",
+          inputSchema: { type: "object" },
+        },
+      ],
+    });
+    const { providerThreadId } = z
+      .object({ providerThreadId: z.string() })
+      .parse(started.result);
+    await h.turn(providerThreadId, "wait");
+    const active = await until(() => adapter);
+    assert.deepEqual(
+      active.tools.map((tool) => tool.name),
+      ["approved"],
+    );
+    const pending = active.invoke("approved", { threadId: "forged" });
+    const request = await until(
+      () =>
+        h.messages.flatMap((message) => {
+          const parsed = z
+            .object({
+              id: z.number(),
+              method: z.literal("item/tool/call"),
+              params: z.object({
+                threadId: z.string(),
+                providerThreadId: z.string(),
+                tool: z.string(),
+                arguments: z.record(z.string(), z.unknown()),
+              }),
+            })
+            .safeParse(message);
+          return parsed.success ? [parsed.data] : [];
+        })[0],
+    );
+    assert.equal(request.params.threadId, "bb-test");
+    assert.equal(request.params.providerThreadId, providerThreadId);
+    assert.deepEqual(request.params.arguments, { threadId: "forged" });
+    h.bridge.handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: {
+          success: true,
+          contentItems: [{ type: "inputText", text: "Delegated response" }],
+        },
+      }),
+    );
+    assert.deepEqual((await pending).content, [
+      { type: "text", text: "Delegated response" },
+    ]);
   } finally {
     await h.bridge.onClose?.();
   }

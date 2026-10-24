@@ -14,6 +14,11 @@ import {
   resolveServiceContext,
   type ServiceContext,
 } from "./service-context.js";
+import {
+  delegatedMcpServer,
+  selectDelegatedTools,
+  type DelegatedTools,
+} from "./delegated-mcp.js";
 import { profilePolicy } from "./profile-policy.js";
 import type { QwenQuery } from "./bridge.js";
 const exec = promisify(execFile);
@@ -33,6 +38,7 @@ class ProcessTransport implements Transport {
   constructor(
     options: QueryOptions,
     readonly context: ServiceContext,
+    delegatedNames: string[],
   ) {
     if (!options.cwd) throw new Error("A registered workspace is required");
     const registry = {
@@ -53,7 +59,7 @@ class ProcessTransport implements Transport {
           : []),
       ...(registry.baseUrl ? ["--auth-type", "openai"] : []),
     ];
-    const policy = profilePolicy(context, options);
+    const policy = profilePolicy(context, options, delegatedNames);
     const bootstrap = Buffer.from(
       JSON.stringify({ ...policy, arguments: [...args, ...policy.arguments] }),
     );
@@ -171,10 +177,12 @@ export function serverQuery({
   prompt,
   options,
   threadId,
+  delegatedTools,
 }: {
   prompt: AsyncIterable<SDKUserMessage>;
   options: QueryOptions;
   threadId?: string;
+  delegatedTools?: DelegatedTools;
 }): QwenQuery {
   if (!threadId)
     throw new Error("A server-owned BB thread is required to launch Qwen");
@@ -192,9 +200,15 @@ export function serverQuery({
       options.resume ?? options.sessionId ?? "",
       threadId,
     );
-    profilePolicy(context, options);
+    const tools = selectDelegatedTools(
+      context,
+      delegatedTools?.tools ?? [],
+      options.excludeTools ?? [],
+    );
+    const delegatedNames = tools.map((tool) => tool.name);
+    profilePolicy(context, options, delegatedNames);
     if (closing) throw new Error("Transport closed before launch");
-    transport = new ProcessTransport(options, context);
+    transport = new ProcessTransport(options, context, delegatedNames);
     const level = context.profile.definition.reasoningLevel;
     const effort: EffortTier | undefined =
       level === "low" ||
@@ -206,6 +220,25 @@ export function serverQuery({
         : undefined;
     query = new Query(transport, {
       ...options,
+      ...(tools.length && delegatedTools
+        ? {
+            mcpServers: {
+              bb: delegatedMcpServer({
+                context,
+                adapter: delegatedTools,
+                tools,
+                excluded: options.excludeTools ?? [],
+                authorize: () =>
+                  resolveServiceContext(
+                    socket,
+                    context.cwd,
+                    context.sessionId,
+                    context.threadId,
+                  ),
+              }),
+            },
+          }
+        : {}),
       model: context.profile.definition.model,
       effort: effort ?? "low",
       timeout: {

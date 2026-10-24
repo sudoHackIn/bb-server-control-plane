@@ -22,6 +22,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Persist approved agent profiles with immutable versions and user grants: prompt, provider/model/reasoning, tools, MCP and permissions. Expose administrative management and the user's permitted catalog through API/SDK/CLI; a catalog record alone does not enforce execution.
 - [x] Bind native threads atomically to approved profile versions and recheck current profile grants and availability at create, dispatch, turn submission and resume. Legacy unbound rows remain historical and cannot execute; this admission check does not translate profile settings into the harness.
 - [x] Enforce a native Qwen profile subset through protected per-job policy: exact native tool allowlist, appended instructions, fixed model, SDK reasoning acknowledgement, disabled hooks/extensions/unapproved MCP; reject unsupported modes before launch.
+- [x] Connect approved `bb` MCP tools through the native Qwen SDK/BB tool channel, revalidate context on MCP requests and invoke the mandatory core guard; verify actual two-user model → plugin → model round trips in Docker. Other MCP transports and interactive approvals remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
@@ -409,3 +410,55 @@ workspace probes. Strict server typecheck and changed-file lint/format checks
 pass. The full fork Docker deployment passes with the production guard/SQLite
 fixture and previous native runtime checks. See
 `control-plane-phase-13-verification.json`.
+
+## Fourteenth increment: approved BB MCP bridge in Qwen
+
+The Qwen Server bridge now consumes the already-contributed dynamic tool
+catalog instead of discarding it. It supplies a local delegated adapter to the
+query factory, not caller-provided SDK MCP configuration. The factory resolves
+the private thread/profile context first, validates approved `bb:<tool-name>`
+entries against the available catalog and constructs only its own `bb` SDK MCP
+server. Raw SDK MCP instances are still rejected before connection. Missing,
+duplicate or unsupported delegated names fail explicitly; caller exclusions can
+only reduce the selected tools. `update_environment_directory` remains denied.
+
+Each MCP list/call re-resolves current authority over the private Unix socket
+and checks the user, BB thread, native Qwen session and bound profile version.
+Only initially selected tools remain available. Calls then use BB's existing
+pending-tool tracker and native daemon tool route, where the mandatory core
+profile/project guard runs again before plugin invocation. Tool arguments do
+not replace the captured identities. SDK MCP configuration is created only
+after authorization, and trusted plugin execution retains the user's async
+principal. Scoped plugin SDK operations and child/workflow authority remain
+unfinished; the full private user SDK is still denied.
+
+Protected settings now clear the entire untrusted `mcpServers` configuration.
+For approved BB tools, only `bb` is allowed and only their exact qualified names
+are made eager/visible. With no selected delegated tools, MCP remains disabled.
+The existing protected model, native-tool, hook, extension and launch policy
+stays in force. Arbitrary stdio/HTTP MCP servers and interactive approval modes
+are not supported by this increment and are rejected rather than ignored.
+
+The Docker lab installs a disposable typed server-tool plugin through the real
+administrative API. For each user, the deterministic backend first calls the
+native shell identity probe, then the approved BB MCP tool and consumes its
+actual result. The result's BB thread/project are checked against persisted
+ownership; the plugin's attempt to use the full private SDK is denied. Another
+registered plugin tool is not offered. Alice's HOME contains an impostor `bb`
+MCP command as well as the previous hostile settings; none of their marker
+files appear. Native session resume, two-user isolation, timeline and service
+crash recovery remain passing. The fixture is copied only into the Docker lab
+image and is not added to the bundled production plugin registry.
+
+Installing a source plugin in the network-isolated container revealed missing
+build tooling in the image. The image now includes the same exact esbuild and
+Tailwind toolchain pins used by BB's normal plugin builder, recorded in the
+runtime npm lockfile. Installation therefore uses the ordinary source-plugin
+build path without fetching tools after startup or weakening packaging checks.
+
+Verification: 24 provider tests pass, including a real in-memory MCP client and
+native bridge tool-response forwarding; provider/server strict typechecks and
+changed-file lint/format checks pass. The complete fork Docker deployment passes
+with the actual model → Qwen → BB plugin → model round trips. The backend remains
+a deterministic local fixture, not a corporate CLI or a live external model.
+See `control-plane-phase-14-verification.json`.

@@ -4,11 +4,6 @@ import {
   type QueryOptions,
   type SDKUserMessage,
 } from "@qwen-code/sdk";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import {
   createBridgeIo,
   createPendingToolCallTracker,
@@ -28,6 +23,7 @@ import {
   type PromptInput,
   type ThreadDelta,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import type { DelegatedTools } from "./delegated-mcp.js";
 import { InputQueue } from "./input-queue.js";
 import { modelsFromQwen, controlProbeInput } from "./models.js";
 import { QwenDeltaTranslator } from "./translator.js";
@@ -47,6 +43,7 @@ export type QueryFactory = (config: {
   threadId?: string;
   prompt: AsyncIterable<SDKUserMessage>;
   options: QueryOptions;
+  delegatedTools?: DelegatedTools;
 }) => QwenQuery;
 type ActiveTurn = {
   id: string;
@@ -184,41 +181,23 @@ export function createQwenBridge({
       if (session.disconnecting === stopping) session.disconnecting = undefined;
     }
   }
-  function mcpServer(session: Session) {
-    const server = new McpServer(
-      { name: "bb", version: "0.1.0" },
-      { capabilities: { tools: {} } },
-    );
-    const tools = session.dynamicTools.filter(
-      (tool) => !session.disallowedTools.includes(tool.name),
-    );
-    server.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-      })),
-    }));
-    server.server.setRequestHandler(
-      CallToolRequestSchema,
-      async ({ params }) => {
-        if (
-          !session.active ||
-          !tools.some((tool) => tool.name === params.name)
-        ) {
+  function delegatedTools(session: Session): DelegatedTools {
+    return {
+      tools: session.dynamicTools,
+      async invoke(name, arguments_) {
+        if (!session.active || session.disallowedTools.includes(name))
           return {
             content: [
               { type: "text", text: "Unknown tool or inactive Qwen turn" },
             ],
             isError: true,
           };
-        }
         const result = await tracker.forwardToolCall({
           scope: session,
           threadId: session.threadId,
           providerThreadId: session.providerThreadId,
-          toolName: params.name,
-          arguments: params.arguments ?? {},
+          toolName: name,
+          arguments: arguments_,
         });
         return {
           content: result.contentBlocks ?? [
@@ -227,8 +206,7 @@ export function createQwenBridge({
           isError: result.isError === true,
         };
       },
-    );
-    return { type: "sdk" as const, name: "bb", instance: server };
+    };
   }
   async function ensureQuery(
     session: Session,
@@ -262,6 +240,7 @@ export function createQwenBridge({
       return;
     const qwen = queryFactory({
       threadId: session.threadId,
+      delegatedTools: delegatedTools(session),
       prompt: input,
       options: {
         cwd: session.cwd,
@@ -290,9 +269,6 @@ export function createQwenBridge({
         includePartialMessages: true,
         abortController: abort,
         timeout: { controlRequest: AUTH_TIMEOUT_MS },
-        ...(session.dynamicTools.length
-          ? { mcpServers: { bb: mcpServer(session) } }
-          : {}),
       },
     });
     const live = { query: qwen, input, abort, signature };
@@ -499,7 +475,7 @@ export function createQwenBridge({
             : randomUUID(),
         cwd: value.cwd,
         instructionMode: value.instructionMode,
-        dynamicTools: [],
+        dynamicTools: value.dynamicTools ?? [],
         disallowedTools: value.disallowedTools ?? [],
         resume: method === "thread/resume",
       };

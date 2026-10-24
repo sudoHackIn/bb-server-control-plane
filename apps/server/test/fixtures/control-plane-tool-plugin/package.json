@@ -1,0 +1,14 @@
+{
+  "name": "bb-plugin-control-plane-tool-fixture",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bb": {
+    "name": "Control plane tool fixture",
+    "description": "Disposable deployment verification",
+    "branding": {
+      "icon": "Server"
+    },
+    "server": "server.ts"
+  }
+}

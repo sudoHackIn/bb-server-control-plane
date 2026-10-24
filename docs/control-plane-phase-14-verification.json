@@ -1,0 +1,51 @@
+{
+  "scope": "Approved BB MCP delegation through stock Qwen and native BB tool channel",
+  "previousStageCommit": "82d6015fb",
+  "tests": {
+    "provider": 24,
+    "realInMemoryMcpClient": true,
+    "nativeBridgeToolResponseForwarding": true,
+    "strictProviderAndServerTypechecks": true,
+    "changedFileLintAndFormatting": true
+  },
+  "delegation": {
+    "approvedBbNamespaceAndExistingCatalogRequired": true,
+    "unsupportedMissingAndDuplicateToolsRejected": true,
+    "callerExclusionsOnlyReduceCapabilities": true,
+    "rawSdkMcpInstancesStillRejected": true,
+    "privateContextResolvedBeforeSdkConstruction": true,
+    "contextRecheckedAtEveryMcpListAndCall": true,
+    "ownerThreadSessionVersionCannotChange": true,
+    "mandatoryCoreGuardRunsBeforePluginInvocation": true,
+    "asyncUserPrincipalRetained": true,
+    "homeConfiguredMcpServersCleared": true,
+    "onlyExactApprovedMcpToolsVisible": true,
+    "managedWorkspaceChangeStillDenied": true,
+    "hostDaemonWireChanged": false
+  },
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "actualForkServerDaemonQwenRoundTrip": true,
+    "typedFixturePluginInstalledThroughAdminApi": true,
+    "aliceAndBobInvokeNativeShellThenApprovedBbTool": true,
+    "pluginResultConsumedByModelBackend": true,
+    "resultThreadProjectMatchDatabaseOwnership": true,
+    "forgedIdentityArgumentsDoNotReplaceContext": true,
+    "unscopedPrivateSdkAttemptDeniedInActualPlugin": true,
+    "unapprovedRegisteredToolNotOffered": true,
+    "homeImpostorBbMcpDidNotRun": true,
+    "sourcePluginBuildUsesPinnedImageToolchainWithoutNetwork": true,
+    "nativeUidHomeNamespacesTimelineResumeAndCrashRecovery": true,
+    "backend": "Local deterministic OpenAI-compatible fixture"
+  },
+  "supportedMcpAdapters": ["bb"],
+  "arbitraryStdioOrHttpMcpSupported": false,
+  "interactivePermissionAdapterComplete": false,
+  "scopedPluginSdkAdapterComplete": false,
+  "limitedUserThreadApiComplete": false,
+  "personalUiComplete": false,
+  "personalWorkflowsAutomationsSchedulesComplete": false,
+  "corporateQwenAuthorizationVerified": false,
+  "liveExternalModelVerified": false,
+  "fullRepositorySuiteRun": false
+}

@@ -22,7 +22,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   const users = db
     .prepare("SELECT * FROM control_plane_users ORDER BY uid")
     .all();
-  const toolCalls = new Set();
+  const toolCalls = new Map();
+  const delegatedResults = new Set();
   let resumedWithHistory = false;
   const backend = createServer(async (req, res) => {
     let text = "";
@@ -68,8 +69,59 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       resumedWithHistory = JSON.stringify(body.messages).includes(
         "BB_MANAGED_ALICE first",
       );
-    const first = !toolCalls.has(marker);
-    toolCalls.add(marker);
+    const count = toolCalls.get(marker) ?? 0;
+    toolCalls.set(marker, count + 1);
+    const first = count < 2;
+    const delegated = body.tools?.find(
+      (entry) => entry.function?.name === "mcp__bb__approved_server_probe",
+    );
+    assert.ok(
+      delegated,
+      `Approved MCP tool was not offered: ${JSON.stringify(body.tools?.map((entry) => entry.function?.name))}`,
+    );
+    assert.equal(
+      body.tools.some((entry) =>
+        entry.function?.name.includes("forbidden_server_probe"),
+      ),
+      false,
+    );
+    if (count >= 2 && !delegatedResults.has(marker)) {
+      const result = body.messages
+        .filter((message) => message.role === "tool")
+        .map((message) =>
+          typeof message.content === "string"
+            ? message.content
+            : JSON.stringify(message.content),
+        )
+        .find((content) => content.includes("delegatedProbe"));
+      assert.ok(result, "Missing actual delegated server tool result");
+      const decode = (value) => {
+        if (typeof value === "string") {
+          try {
+            return decode(JSON.parse(value));
+          } catch {
+            return undefined;
+          }
+        }
+        if (!value || typeof value !== "object") return undefined;
+        if (value.delegatedProbe === true) return value;
+        return Object.values(value).map(decode).find(Boolean);
+      };
+      const probe = decode(result);
+      assert.ok(probe, "Missing structured delegated probe");
+      assert.equal(probe.unscopedSdkDenied, true);
+      const binding = db
+        .prepare(
+          "SELECT t.project_id, o.owner_user_id FROM threads t JOIN control_plane_threads o ON o.thread_id = t.id WHERE t.id = ?",
+        )
+        .get(probe.threadId);
+      assert.equal(
+        binding?.owner_user_id,
+        users.find((user) => user.login === marker)?.id,
+      );
+      assert.equal(binding?.project_id, probe.projectId);
+      delegatedResults.add(marker);
+    }
     const code =
       'const fs=require("node:fs");fs.writeFileSync(process.env.HOME+"/bb-managed-' +
       marker +
@@ -80,15 +132,24 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
           tool_calls: [
             {
               index: 0,
-              id: `managed_${marker}`,
+              id: `managed_${marker}_${count}`,
               type: "function",
               function: {
-                name: tool.function.name,
-                arguments: JSON.stringify({
-                  command: `/usr/local/bin/node -e '${code}'`,
-                  description: "Verify managed identity",
-                  timeout: 30000,
-                }),
+                name:
+                  count === 0 ? tool.function.name : delegated.function.name,
+                arguments: JSON.stringify(
+                  count === 0
+                    ? {
+                        command: `/usr/local/bin/node -e '${code}'`,
+                        description: "Verify managed identity",
+                        timeout: 30000,
+                      }
+                    : {
+                        userId: "forged",
+                        threadId: "foreign",
+                        projectId: "foreign",
+                      },
+                ),
               },
             },
           ],
@@ -225,6 +286,17 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       token,
     );
     assert.equal(enabled.status, 200, JSON.stringify(enabled.body));
+    const installed = await send(
+      "/api/v1/plugins/install",
+      { source: "path:/srv/bb-tool-fixture" },
+      token,
+    );
+    assert.equal(installed.status, 200, JSON.stringify(installed.body) + log);
+    assert.equal(
+      installed.body.plugin.status,
+      "running",
+      JSON.stringify(installed.body),
+    );
     const created = [];
     for (const user of users) {
       const approved = await send(
@@ -238,8 +310,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
             model: "qwen-job-test",
             reasoningLevel: "none",
             permissionMode: "full",
-            tools: ["run_shell_command"],
-            mcpServers: [],
+            tools: ["run_shell_command", "bb:approved_server_probe"],
+            mcpServers: ["bb"],
           },
         },
         token,
@@ -353,6 +425,19 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         JSON.stringify(timeline.body),
         new RegExp(`Managed ${user.login} probe completed`, "u"),
       );
+      assert.equal(delegatedResults.has(user.login), true);
+      for (const name of [
+        "bb",
+        "mcp",
+        "hook",
+        "extension",
+        "discovery",
+        "call",
+      ])
+        await assert.rejects(
+          readFile(`${user.home}/unapproved-${name}`),
+          (error) => error.code === "ENOENT",
+        );
       created.push({
         threadId,
         sessionId: owner.qwen_session_id,
@@ -610,6 +695,9 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       localDaemonApiDisabled: true,
       privateMachineBootstrap: true,
       realBbThreadDispatch: true,
+      approvedBbToolInvokedThroughNativeQwenMcp: true,
+      foreignBbToolNotOffered: true,
+      homeConfiguredBbMcpCannotOverrideBridge: true,
       nativeUidHomeTools: true,
       nativeTimeline: true,
       managedShutdown: true,

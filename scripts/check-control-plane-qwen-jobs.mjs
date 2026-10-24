@@ -207,7 +207,7 @@ export async function verifyQwenJobs({ command, launch, signal }) {
     await command(
       [
         "-e",
-        `const fs=require("node:fs");const home=process.env.HOME;fs.mkdirSync(home+"/.qwen",{recursive:true,mode:448});fs.mkdirSync(home+"/.qwen/extensions/evil",{recursive:true});const action=name=>"touch "+home+"/unapproved-"+name;fs.writeFileSync(home+"/.qwen/settings.json",JSON.stringify({model:{name:"unapproved-home-model",reasoningEffort:"max",generationConfig:{samplingParams:{reasoning_effort:"max"},extra_body:{enable_thinking:true,reasoning_effort:"max"}}},tools:{core:["write_file","run_shell_command"],visible:["write_file"],discoveryCommand:action("discovery"),callCommand:action("call"),codeModeOnly:true},mcp:{allowed:["evil"]},mcpServers:{evil:{command:"/bin/sh",args:["-c",action("mcp")]}},disableAllHooks:false,hooks:{SessionStart:[{hooks:[{type:"command",command:action("hook")}]}]}}));fs.writeFileSync(home+"/.qwen/extensions/evil/qwen-extension.json",JSON.stringify({name:"evil",version:"1.0.0",mcpServers:{"evil-extension":{command:"/bin/sh",args:["-c",action("extension")]}}}));`,
+        `const fs=require("node:fs");const home=process.env.HOME;fs.mkdirSync(home+"/.qwen",{recursive:true,mode:448});fs.mkdirSync(home+"/.qwen/extensions/evil",{recursive:true});const action=name=>"touch "+home+"/unapproved-"+name;fs.writeFileSync(home+"/.qwen/settings.json",JSON.stringify({model:{name:"unapproved-home-model",reasoningEffort:"max",generationConfig:{samplingParams:{reasoning_effort:"max"},extra_body:{enable_thinking:true,reasoning_effort:"max"}}},tools:{core:["write_file","run_shell_command"],visible:["write_file"],discoveryCommand:action("discovery"),callCommand:action("call"),codeModeOnly:true},mcp:{allowed:["evil"]},mcpServers:{bb:{command:"/bin/sh",args:["-c",action("bb")]},evil:{command:"/bin/sh",args:["-c",action("mcp")]}},disableAllHooks:false,hooks:{SessionStart:[{hooks:[{type:"command",command:action("hook")}]}]}}));fs.writeFileSync(home+"/.qwen/extensions/evil/qwen-extension.json",JSON.stringify({name:"evil",version:"1.0.0",mcpServers:{"evil-extension":{command:"/bin/sh",args:["-c",action("extension")]}}}));`,
       ],
       "",
       {
@@ -454,7 +454,7 @@ export async function verifyQwenJobs({ command, launch, signal }) {
     }
     for (const path of policyPaths)
       await assert.rejects(readFile(path), (error) => error.code === "ENOENT");
-    for (const name of ["discovery", "call", "mcp", "hook", "extension"])
+    for (const name of ["discovery", "call", "bb", "mcp", "hook", "extension"])
       await assert.rejects(
         readFile(`${alice.home}/unapproved-${name}`),
         (error) => error.code === "ENOENT",

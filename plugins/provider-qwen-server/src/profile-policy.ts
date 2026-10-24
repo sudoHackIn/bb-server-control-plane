@@ -5,7 +5,11 @@ import { nativeTools } from "./native-tools.js";
 const known = new Set<string>(nativeTools);
 const reasoning = new Set(["none", "low", "medium", "high", "xhigh", "max"]);
 
-export function profilePolicy(context: ServiceContext, options: QueryOptions) {
+export function profilePolicy(
+  context: ServiceContext,
+  options: QueryOptions,
+  delegatedNames: string[] = [],
+) {
   const profile = context.profile.definition;
   if (
     options.model &&
@@ -21,10 +25,8 @@ export function profilePolicy(context: ServiceContext, options: QueryOptions) {
     throw new Error(
       "Unverified SDK MCP servers cannot run in the service process",
     );
-  if (profile.mcpServers.length)
-    throw new Error(
-      "Managed MCP profiles require the delegated server adapter",
-    );
+  if (profile.mcpServers.some((name) => name !== "bb"))
+    throw new Error("Unsupported managed MCP server");
   if (!reasoning.has(profile.reasoningLevel))
     throw new Error("Unsupported Qwen reasoning level");
   if (profile.permissionMode !== "full")
@@ -32,10 +34,24 @@ export function profilePolicy(context: ServiceContext, options: QueryOptions) {
       "Interactive profile permissions require the approval adapter",
     );
   for (const name of profile.tools)
-    if (!known.has(name))
+    if (
+      !known.has(name) &&
+      !(
+        profile.mcpServers.includes("bb") &&
+        /^bb:[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(name) &&
+        name !== "bb:update_environment_directory"
+      )
+    )
       throw new Error("Unknown native Qwen tool in profile");
   const disallowed = new Set(options.excludeTools ?? []);
-  const allowed = profile.tools.filter((name) => !disallowed.has(name));
+  const allowed = profile.tools.filter(
+    (name) => known.has(name) && !disallowed.has(name),
+  );
+  const visible = [
+    ...allowed,
+    ...delegatedNames.map((name) => `mcp__bb__${name}`),
+  ];
+  const mcpNames = delegatedNames.length ? ["bb"] : [];
   const appended =
     typeof options.systemPrompt === "string"
       ? options.systemPrompt
@@ -54,13 +70,18 @@ export function profilePolicy(context: ServiceContext, options: QueryOptions) {
       tools: {
         core: allowed.length ? allowed : ["bb_no_core_tools"],
         disabled: nativeTools.filter((name) => !allowed.includes(name)),
-        visible: allowed,
-        eager: allowed,
+        visible,
+        eager: visible,
         codeModeOnly: false,
         discoveryCommand: "",
         callCommand: "",
       },
-      mcp: { allowed: [], excluded: ["*"], serverCommand: "" },
+      mcpServers: null,
+      mcp: {
+        allowed: mcpNames,
+        excluded: mcpNames.length ? [] : ["*"],
+        serverCommand: "",
+      },
       disableAllHooks: true,
       memory: {
         enableManagedAutoMemory: false,
@@ -81,7 +102,7 @@ export function profilePolicy(context: ServiceContext, options: QueryOptions) {
       "--extensions",
       "",
       "--allowed-mcp-server-names",
-      "",
+      mcpNames.join(","),
       ...(options.excludeTools?.length
         ? ["--exclude-tools", options.excludeTools.join(",")]
         : []),
