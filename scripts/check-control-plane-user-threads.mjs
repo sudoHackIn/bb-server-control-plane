@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyExternalBrowser } from "./check-control-plane-browser-handshake.mjs";
 import { once } from "node:events";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -370,6 +371,9 @@ export function createUserThreadFixture({ db, users }) {
           project,
           profile,
           thread,
+          messageSeq: timeline.rows.find(
+            (row) => row.kind === "conversation" && row.role === "user",
+          )?.messageSeq,
           sessionId: db
             .prepare(
               "SELECT qwen_session_id FROM control_plane_threads WHERE thread_id = ?",
@@ -378,6 +382,29 @@ export function createUserThreadFixture({ db, users }) {
         });
       }
       const [alice, bob] = created;
+      const productionBrowser = await verifyExternalBrowser({
+        origin,
+        signal,
+        users: created.map(({ user, project, thread, messageSeq }) => ({
+          login: user.login,
+          projectId: project.projectId,
+          threadId: thread.id,
+          title:
+            db.prepare("SELECT title FROM threads WHERE id = ?").get(thread.id)
+              .title ?? "Untitled thread",
+          messageSeq,
+        })),
+      });
+      if (process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1") {
+        const proof = JSON.parse(
+          await readFile(`${alice.user.home}/bb-personal-browser.json`, "utf8"),
+        );
+        assert.deepEqual(proof, {
+          uid: alice.user.uid,
+          home: alice.user.home,
+          cwd: `${alice.user.projects_root}/personal-api`,
+        });
+      }
       const openStream = async (user, threadId, after) => {
         const child = launch(
           [
@@ -760,6 +787,7 @@ export function createUserThreadFixture({ db, users }) {
       );
       saved = { command, alice, wait, shutdownStream };
       return {
+        ...productionBrowser,
         personalThreadCertificateCliAndFreshEnvironment: true,
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,

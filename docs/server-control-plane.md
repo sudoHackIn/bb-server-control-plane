@@ -40,7 +40,8 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Open a separate personal browser entry with native sidebar navigation, paginated own project/thread metadata and access-loss handling; leave administrative bootstrap and plugin frontends closed.
 - [x] Render owned conversations through the native timeline and scroll surface, personal SSE, older history and deferred tool details; retain the limited API boundary.
 - [x] Connect the native composer and approval/question forms to personal start/send/queue/stop/resolve operations, select approved profiles for new threads and read pinned profiles through SDK/CLI.
-- [x] Support personal project/thread/message URLs, URL-driven sidebar selection and authorized SDK/CLI browser links; validate certificate-login return destinations. Production-browser verification remains separate.
+- [x] Support personal project/thread/message URLs, URL-driven sidebar selection and authorized SDK/CLI browser links; validate certificate-login return destinations.
+- [x] Exercise the production personal text-chat bundle in a real browser with separate client-certificate contexts, native editor submissions, actual Qwen replies, denied foreign links and logout. Broader native UI/cache/background-job coverage remains pending.
 - [ ] Use this fork's native UI for both roles. Keep projects/threads/composer/timeline/model controls for users; remove the right workspace panel and administrative controls in user mode.
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
@@ -916,3 +917,56 @@ protected production bundle and exercises the new link command against actual
 personal Qwen conversations. Rendering, fragment inheritance and native anchor
 scrolling in a production browser remain unverified at this increment. See
 `control-plane-phase-23-verification.json`.
+
+## Twenty-fourth increment: production personal-browser verification
+
+A reproducible `test:control-plane-browser` Turbo task runs the existing real
+fork deployment with an installed headless Chrome controlled by pinned
+Playwright Core. It loads the compiled native personal entry rather than a dev
+server or DOM-only renderer. Separate nonpersistent Alice/Bob browser contexts
+use temporary fixture client certificates. The test does not install trust roots,
+open the operator's existing browser profile or add browser dependencies to the
+runtime image. Certificate/key material is read from the fixture into memory;
+it is not printed or included in artifacts.
+
+The test opens canonical conversation/message links before login, signs in by
+certificate and checks that the original path and fragment survive the form and
+redirects, then reloads the conversation. It renders the actual native sidebar,
+timeline and Composer, selects an approved profile and submits Enter to create a
+real Qwen conversation and send a follow-up. The local model fixture returns real
+streaming responses through stock Qwen/daemon/control-plane execution. An actual
+native command writes a UID/HOME/cwd proof that the container verifies against
+Alice's registry. This is not corporate Qwen authorization verification.
+
+Both users can render their own threads; one user's project is absent from the
+other's navigation. Bob's request for Alice's new thread returns 404, its shell
+shows unavailable without message content or an editor, and the raw native API
+returns 401. Page request tracing checks that initialization and the complete
+submit/logout scenario do not call the full API, raw WebSocket or plugin
+frontend entry points. Logout returns to certificate login, hides the editor and
+revokes subsequent cookie access. Uncaught page errors fail the check. Optional
+screenshots and bounded failure diagnostics can be saved to a private directory.
+
+The browser variant publishes only loopback host port 8080 from its disposable
+container. It retains the read-only root, tmpfs data, anonymous volumes, namespace
+checks, restricted launcher and deterministic model fixture. It is separate from
+the original deployment test, which still uses `--network none` and no published
+ports. The browser-result handshake uses an atomic rename, and all browser
+contexts/processes, test credentials, data and containers are temporary. macOS
+sandbox execution required allowing the separate headless Chrome process; no
+system certificate or normal-browser settings were changed.
+
+Production text-chat coverage does not complete all personal UI work. Attachments,
+scoped autocomplete, first-login project creation, legacy plugin browser storage,
+full administrative browser scenarios and personal workflows/automations/
+schedules remain separate work. Native message-target pagination/scrolling needs
+a long-history browser scenario beyond the fragment/reload checks here.
+
+Verification: the final production-browser Docker task and the default
+network-isolated deployment task each pass all 61 Turbo build/deployment tasks.
+Chrome 155.0.8059.85 completes the certificate/real-editor/Qwen/foreign-link/logout
+scenario with zero uncaught page errors. Actual command identity matches the
+registered UID/HOME/project cwd. Strict app/server typechecks, changed-file
+lint/format and diff checks pass. A screenshot of the successful native
+conversation was inspected. These are focused integration checks, not the full
+repository suite. See `control-plane-phase-24-verification.json`.

@@ -10,7 +10,10 @@ import { verifyManagedRuntime } from "./check-control-plane-managed-runtime.mjs"
 const origin = "http://127.0.0.1:8080";
 const password = "deployment-check-admin-password";
 const controller = new AbortController();
-const deadline = setTimeout(() => controller.abort(), 180000);
+const deadline = setTimeout(
+  () => controller.abort(),
+  process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1" ? 270000 : 180000,
+);
 const children = new Set();
 const status = await readFile("/proc/self/status", "utf8");
 assert.equal(

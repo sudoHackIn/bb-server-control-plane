@@ -1426,3 +1426,27 @@ send messages. Browser Back/Forward follows URL selection.
 `{ "url": "..." }` without opening a browser. The personal SDK equivalent is
 `threads.browserUrl(id, { messageSeq, signal })`. Both first read the current
 authorized thread to obtain its actual project, and never put credentials in URLs.
+
+The production personal-browser check runs with
+`pnpm exec turbo run test:control-plane-browser --filter=@bb/server`.
+It uses the pinned development-only Playwright Core and an installed Chrome
+(default channel `chrome`; `BB_TEST_BROWSER_CHANNEL` can select another installed
+Chromium channel). No browser binary or Playwright is added to the runtime image.
+The task builds the real fork and uses separate nonpersistent contexts with the
+fixture's temporary client certificates, kept in memory. It does not install a CA
+or use the operator's normal browser profile.
+
+Unlike the default network-isolated deployment test, this browser variant
+publishes only `127.0.0.1:8080:8080` from a disposable Docker container; that host
+port must be free. The read-only root, temporary data/volumes, registered UID/HOME
+launcher, namespace/seccomp checks and deterministic local model backend remain.
+The browser variant is not a network-isolation test. Native Qwen executes real
+commands; model replies come from the local OpenAI-compatible fixture rather
+than a corporate authentication endpoint. The default deployment task still
+uses `--network none` and publishes no ports.
+
+`BB_CONTROL_PLANE_BROWSER_ARTIFACTS=/absolute/private/directory` optionally saves
+a conversation screenshot and bounded failure diagnostics without tokens or
+certificate material. Browser contexts, Chrome and the disposable container are
+closed at teardown. macOS execution sandboxes may require allowing the separate
+headless browser process; this does not require changing system certificate trust.

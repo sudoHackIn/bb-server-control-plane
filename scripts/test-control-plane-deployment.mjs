@@ -1,25 +1,77 @@
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeControlPlaneSeccomp } from "./control-plane-seccomp.mjs";
 
+const args = process.argv.slice(2);
+if (args.length > 1 || args.some((arg) => arg !== "--browser"))
+  throw new Error("Usage: test-control-plane-deployment.mjs [--browser]");
+const browserMode = args.includes("--browser");
+let browserTask;
+let browserError;
 const name = `bb-control-plane-check-${randomUUID()}`;
 const directory = await mkdtemp(join(tmpdir(), "bb-control-plane-security-"));
 const seccomp = join(directory, "seccomp.json");
 await writeControlPlaneSeccomp(seccomp);
 function docker(args) {
   return new Promise((complete, reject) => {
-    const child = spawn("docker", args, { stdio: "inherit" });
+    const watchBrowser = browserMode && args.includes("deployment-check.mjs");
+    const child = spawn("docker", args, {
+      stdio: watchBrowser ? ["inherit", "pipe", "inherit"] : "inherit",
+    });
+    if (watchBrowser) {
+      let pending = "";
+      child.stdout.on("data", (chunk) => {
+        process.stdout.write(chunk);
+        pending += chunk.toString();
+        let end;
+        while ((end = pending.indexOf("\n")) !== -1) {
+          const line = pending.slice(0, end);
+          pending = pending.slice(end + 1);
+          if (line.startsWith("BB_BROWSER_READY ") && !browserTask) {
+            browserTask = (async () => {
+              let result;
+              try {
+                const { verifyControlPlaneBrowser } =
+                  await import("./verify-control-plane-browser.mjs");
+                const verification = await verifyControlPlaneBrowser({
+                  name,
+                  ready: JSON.parse(line.slice("BB_BROWSER_READY ".length)),
+                });
+                result = { ok: true, verification };
+              } catch (error) {
+                browserError = error;
+                result = { ok: false };
+              }
+              await promisify(execFile)("docker", [
+                "exec",
+                name,
+                "node",
+                "-e",
+                "const fs=require('node:fs');fs.writeFileSync('/tmp/bb-browser-result.pending',process.argv[1],{mode:0o600});fs.renameSync('/tmp/bb-browser-result.pending','/tmp/bb-browser-result.json')",
+                JSON.stringify(result),
+              ]);
+            })().catch((error) => {
+              browserError ??= error;
+            });
+          }
+        }
+      });
+    }
     child.once("error", reject);
     child.once("exit", (code) => complete(code));
   });
 }
 
-const deadline = setTimeout(() => {
-  void docker(["rm", "--force", name]);
-}, 210000);
+const deadline = setTimeout(
+  () => {
+    void docker(["rm", "--force", name]);
+  },
+  browserMode ? 300000 : 210000,
+);
 try {
   const denied = await docker([
     "run",
@@ -47,8 +99,14 @@ try {
     "--rm",
     "--name",
     name,
-    "--network",
-    "none",
+    ...(browserMode
+      ? [
+          "--publish",
+          "127.0.0.1:8080:8080",
+          "--env",
+          "BB_CONTROL_PLANE_BROWSER_TEST=1",
+        ]
+      : ["--network", "none"]),
     "--user",
     "0:0",
     "--read-only",
@@ -69,6 +127,10 @@ try {
     "bb-control-plane:local",
     "deployment-check.mjs",
   ]);
+  await browserTask;
+  if (browserError) throw browserError;
+  if (browserMode && !browserTask)
+    throw new Error("Browser fixture did not run");
   if (code !== 0) throw new Error(`Deployment check failed (${code})`);
 } finally {
   clearTimeout(deadline);
