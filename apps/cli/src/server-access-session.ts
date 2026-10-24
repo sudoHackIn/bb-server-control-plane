@@ -14,7 +14,7 @@ import { z } from "zod";
 const sessionSchema = z
   .object({
     origin: z.string().url(),
-    token: z.string().regex(/^[A-Za-z0-9_-]{43}$/u),
+    token: z.string().regex(/^(?:agt_)?[A-Za-z0-9_-]{43}$/u),
     expiresAt: z.number().int().positive(),
   })
   .strict();

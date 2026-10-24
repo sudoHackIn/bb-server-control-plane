@@ -10,6 +10,12 @@ async function main() {
       "data-dir": { type: "string" },
       origin: { type: "string" },
       login: { type: "string" },
+      "users-root": { type: "string" },
+      "first-uid": { type: "string" },
+      "last-uid": { type: "string" },
+      "tls-key": { type: "string" },
+      "tls-cert": { type: "string" },
+      "client-ca": { type: "string" },
     },
     strict: true,
   });
@@ -41,6 +47,27 @@ async function main() {
       login: values.login,
       passwordHash: await hashAdminPassword(password),
     },
+    ...([
+      values["users-root"],
+      values["tls-key"],
+      values["tls-cert"],
+      values["client-ca"],
+      values["first-uid"],
+      values["last-uid"],
+    ].some(Boolean)
+      ? {
+          users: {
+            usersRoot: values["users-root"],
+            firstUid: Number(values["first-uid"] ?? "200000"),
+            lastUid: Number(values["last-uid"] ?? "299999"),
+            tls: {
+              keyFile: values["tls-key"],
+              certFile: values["tls-cert"],
+              clientCaFile: values["client-ca"],
+            },
+          },
+        }
+      : {}),
   });
   const dataDir = resolve(values["data-dir"]);
   await mkdir(dataDir, { recursive: true, mode: 0o700 });

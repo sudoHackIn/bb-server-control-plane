@@ -10,7 +10,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Gate the full HTTP API, UI assets, plugin entry points and WebSocket upgrades. Cookies require matching Origin for writes and upgrades. Invalid Bearer credentials never fall back to cookies.
 - [x] Revoke established administrative WebSockets on logout or expiration.
 - [x] Preserve trusted server-plugin SDK calls through a private in-process transport, including inter-plugin RPC. No full-access network credential is supplied to agent processes.
-- [ ] Integrate the existing certificate/PKCE user login, 24-hour user tokens and environment registry as our control-plane module in this repository.
+- [x] Integrate certificate/PKCE user login, 24-hour user tokens and the environment registry into this repository's shared BB database. This allocates identities and paths; provisioning those paths and running processes are the next stage.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [ ] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry.
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
@@ -119,4 +119,28 @@ docker run --detach --name bb-control-plane \
 
 The image always requires control-plane configuration and runs as a non-root service account. It currently packages the BB server, UI and CLI; host-daemon enrollment, Qwen execution and user environment provisioning belong to later stages. Administrative access is the only supported mode at this stage.
 
-The existing BB 0.46.1/Qwen Docker lab was not replaced. The fork's user login, user API/UI, delegated plugin permissions and host-daemon audit remain required before shared multi-user deployment.
+The existing BB 0.46.1/Qwen Docker lab was not replaced. The fork's user project/thread API/UI, delegated plugin permissions and host-daemon audit remain required before shared multi-user deployment.
+
+## Second increment: certificate users and environment registry
+
+The optional `users` configuration enables an HTTPS listener with client-certificate requests. Certificate approval checks the actual TLS socket against the configured client CA; headers cannot supply a login. Clients without a certificate may start and poll a PKCE flow or use an issued token. Only the browser approval step requires a trusted certificate, a valid lowercase CN, a matching Origin and a form proof bound to that CN. This is our platform login, separate from corporate Qwen authorization.
+
+The real Drizzle migration adds users, a durable atomic UID counter, authorization flows and hashed user sessions to BB's database. A user receives a permanent UUID, an incrementing UID/GID and recorded `usersRoot/<uuid>/home` and `usersRoot/<uuid>/projects` paths. Repeated login preserves that identity. New environments have `allocated` status: this increment does not create directories or start a harness. Disabled identities are retained; their UIDs are not recycled.
+
+User tokens last one day, have no refresh token and survive process restarts. Every personal-session request looks up the token hash and current user state in the database. Administrative sessions retain their separate password-based lifecycle. Users still cannot use the raw BB API, native UI or global WebSocket. All remaining project/thread authorization stages are mandatory before making those surfaces available.
+
+Configure a new instance with the private admin password on stdin and these additional setup options:
+
+```sh
+pnpm exec tsx scripts/configure-control-plane.ts \
+  --data-dir /srv/bb --origin https://agents.example.com --login operator \
+  --users-root /srv/agent-users --first-uid 200000 --last-uid 299999 \
+  --tls-key /secure/server.key --tls-cert /secure/server.crt \
+  --client-ca /secure/client-ca.crt < /secure/admin-password
+```
+
+The service account must own the regular TLS files; the key must be private. Mount them at the configured paths in Docker and use HTTPS or TLS passthrough to the listener. A terminating proxy's certificate headers are not accepted. Select a dedicated numeric UID range reserved for these environments.
+
+CLI users run `bb server access authorize --client-name 'My BB CLI'`, approve the displayed URL in their browser, then use `status` or `logout`. SDK clients import `createControlPlaneClient` from `@bb/sdk/node` or `@bb/sdk/browser`; `start(clientName, sha256Base64UrlVerifier)` returns the approval URL, `exchange(flowId, verifier)` polls and exchanges once. Keep the verifier private. Supply a `token` callback or authenticated fetch for `session()` and `logout()`. No token is returned to the browser approval page.
+
+The Docker deployment check now also generates a disposable test CA and separate server/Alice/Bob certificates inside its temporary filesystem. It uses the actual CLI authorization flow, verifies distinct registry UID/HOME records, denies header impersonation and cross-certificate approval, checks single-use PKCE and denies user access to the full BB API. Restart retains user identities and their tokens; disabling Bob and signing Alice out deny subsequent requests. This verifies registry records, not filesystem/process isolation, which remains pending.

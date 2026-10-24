@@ -12,7 +12,7 @@ COPY package.json ./
 COPY server ./apps/server/dist
 COPY app ./apps/app/dist
 COPY cli ./apps/cli/dist
-COPY configure.mjs deployment-check.mjs ./
+COPY configure.mjs deployment-check.mjs check-control-plane-user-deployment.mjs ./
 ENV NODE_ENV=production BB_DATA_DIR=/srv/bb BB_SERVER_PORT=8080 BB_SERVER_BIND_HOST=0.0.0.0 BB_CONTROL_PLANE_REQUIRED=1 BB_TELEMETRY=0
 USER node
 EXPOSE 8080

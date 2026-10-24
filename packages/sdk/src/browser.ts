@@ -51,3 +51,4 @@ export { createBbSdk, createBuiltinPlanCommandTextInput, createHttpTransport };
 export type { BbSdk, BbSdkAreas, BbSdkContext, BbSdkTransport };
 export type * from "./areas/skills.js";
 export type * from "./public-types.js";
+export { createControlPlaneClient } from "./control-plane.js";

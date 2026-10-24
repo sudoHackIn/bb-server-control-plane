@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { access } from "node:fs/promises";
 import WebSocket from "ws";
+import { verifyUserDeployment } from "./check-control-plane-user-deployment.mjs";
 
 const origin = "http://127.0.0.1:8080";
 const password = "deployment-check-admin-password";
@@ -154,6 +155,14 @@ try {
     200,
   );
   await access("/srv/bb/bb.db");
+  server.kill("SIGTERM");
+  await once(server, "exit", { signal: controller.signal });
+  const users = await verifyUserDeployment({
+    launch,
+    command,
+    signal: controller.signal,
+    password,
+  });
   process.stdout.write(
     JSON.stringify({
       deployedServer: true,
@@ -164,6 +173,7 @@ try {
       assetsProtected: true,
       logoutClosesSocket: true,
       restartRevokesSessions: true,
+      users,
     }) + "\n",
   );
 } finally {

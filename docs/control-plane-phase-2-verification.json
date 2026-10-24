@@ -1,0 +1,26 @@
+{
+  "scope": "Certificate/PKCE user login and shared BB database identity registry; no user execution yet",
+  "previousStageCommit": "ab72df23c",
+  "migration": "0147_unknown_dust",
+  "serverSecurityAndPluginSdkTests": 44,
+  "cliFocusedTests": 6,
+  "strictTypechecks": ["@bb/server", "@bb/db", "@bb/cli", "@bb/sdk"],
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "node": "v22.23.4",
+    "temporaryCertificateAuthority": true,
+    "certificateCnIdentity": true,
+    "headerImpersonationDenied": true,
+    "crossCertificateApprovalDenied": true,
+    "singleUsePkce": true,
+    "realCliAuthorizationStatusLogout": true,
+    "distinctUserUidHomeRecords": true,
+    "identitiesAndUserTokensSurviveRestart": true,
+    "disabledUserDenied": true,
+    "userTokenCannotUseFullBbApi": true
+  },
+  "homeDirectoriesProvisioned": false,
+  "userHarnessExecutionVerified": false,
+  "userProjectThreadUiImplemented": false,
+  "fullRepositoryTestSuiteRun": false
+}

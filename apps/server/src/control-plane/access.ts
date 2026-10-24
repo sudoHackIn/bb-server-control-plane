@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { WebSocket, WebSocketServer } from "ws";
 import type { ControlPlaneConfig } from "./config.js";
 import { verifyAdminPassword } from "./credentials.js";
+import { isUserAuthPath, type ControlPlaneUserAccess } from "./user-access.js";
 
 export type ControlPlanePrincipal =
   | { kind: "admin"; login: string }
@@ -34,6 +35,7 @@ function loginPage(): string {
 export function createControlPlaneAccess(
   config: ControlPlaneConfig,
   now = Date.now,
+  users?: ControlPlaneUserAccess,
 ) {
   const sessions = new Map<string, { login: string; expiresAt: number }>();
   const failures = new Map<string, { count: number; until: number }>();
@@ -105,6 +107,7 @@ export function createControlPlaneAccess(
           ["GET", "POST"].includes(context.req.method)
         )
           return next();
+        if (users && isUserAuthPath(path, context.req.method)) return next();
         if (
           path.startsWith("/internal/") &&
           path !== "/internal/hosts/enroll-key"
@@ -244,6 +247,7 @@ export function createControlPlaneAccess(
           ? context.redirect("/control-plane/login", 303)
           : context.json({ ok: true });
       });
+      users?.install(app);
     },
     attachSockets(server: WebSocketServer) {
       server.on("connection", (socket, request) => {

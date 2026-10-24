@@ -17,6 +17,10 @@ try {
     ["apps/app/dist", "app"],
     ["apps/cli/dist", "cli"],
     ["scripts/check-control-plane-deployment.mjs", "deployment-check.mjs"],
+    [
+      "scripts/check-control-plane-user-deployment.mjs",
+      "check-control-plane-user-deployment.mjs",
+    ],
   ]) {
     await cp(join(repo, source), join(directory, target), { recursive: true });
   }

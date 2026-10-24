@@ -1,6 +1,14 @@
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
+import {
+  createServer as createHttpsServer,
+  type ServerOptions as HttpsServerOptions,
+} from "node:https";
+import {
+  controlPlaneTls,
+  loadControlPlaneConfig,
+} from "./control-plane/config.js";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -77,6 +85,7 @@ import {
 interface StartHttpListenerArgs {
   fetch: Parameters<typeof serve>[0]["fetch"];
   serverConfig: Pick<ServerConfig, "BB_SERVER_BIND_HOST" | "BB_SERVER_PORT">;
+  tls?: HttpsServerOptions;
 }
 
 export function startHttpListener(args: StartHttpListenerArgs) {
@@ -84,6 +93,9 @@ export function startHttpListener(args: StartHttpListenerArgs) {
     hostname: args.serverConfig.BB_SERVER_BIND_HOST,
     port: args.serverConfig.BB_SERVER_PORT,
     fetch: args.fetch,
+    ...(args.tls
+      ? { createServer: createHttpsServer, serverOptions: args.tls }
+      : {}),
   });
 }
 
@@ -111,6 +123,7 @@ export function startServerPlugins(
 }
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
+  const tls = controlPlaneTls(loadControlPlaneConfig(serverConfig.BB_DATA_DIR));
   const logger = createLogger({
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
@@ -433,15 +446,13 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     );
   }
   if (sdkFetch !== undefined) {
-    logger.info(
-      {},
-      "Control-plane administrative access enabled; tenant access is not yet available",
-    );
+    logger.info({}, "Control-plane access enabled");
   }
 
   const server = startHttpListener({
     fetch: app.fetch,
     serverConfig,
+    tls,
   });
   injectWebSocket(server);
 

@@ -3,6 +3,9 @@ import { z } from "zod";
 import { action } from "../action.js";
 import { cliFetch } from "../client.js";
 import { createServerAccessStore } from "../server-access-session.js";
+import { createHash, randomBytes } from "node:crypto";
+import { setTimeout } from "node:timers/promises";
+import { createControlPlaneClient } from "@bb/sdk/node";
 
 function endpoint(base: string, path: string): URL {
   const url = new URL(base);
@@ -26,6 +29,47 @@ export function registerServerAccessCommands(
   const access = server
     .command("access")
     .description("Sign in to a protected shared BB server");
+  access
+    .command("authorize")
+    .description("Authorize as a user through a browser client certificate")
+    .option(
+      "--client-name <name>",
+      "Name displayed by the browser approval page",
+      "BB CLI",
+    )
+    .action(
+      action(async (options: { clientName: string }) => {
+        const target = endpoint(getUrl(), "/control-plane/auth/start");
+        const client = createControlPlaneClient({
+          origin: target.origin,
+          fetch: cliFetch,
+        });
+        const verifier = randomBytes(32).toString("base64url");
+        const signal = AbortSignal.timeout(10 * 60 * 1000);
+        const flow = await client.start(
+          options.clientName,
+          createHash("sha256").update(verifier).digest("base64url"),
+          signal,
+        );
+        console.log(
+          `Open this URL in your browser and sign in with your user certificate:\n${flow.authorizationUrl}`,
+        );
+        while (Date.now() < flow.expiresAt) {
+          const result = await client.exchange(flow.flowId, verifier, signal);
+          if (result.status === "authorized") {
+            createServerAccessStore().save({
+              origin: target.origin,
+              token: result.accessToken,
+              expiresAt: result.expiresAt,
+            });
+            console.log("Signed in as user");
+            return;
+          }
+          await setTimeout(flow.pollIntervalMs, undefined, { signal });
+        }
+        throw new Error("User authorization expired");
+      }),
+    );
   access
     .command("login")
     .requiredOption("--login <name>", "Administrator login")
@@ -77,6 +121,19 @@ export function registerServerAccessCommands(
     .description("Show the current administrative session")
     .action(
       action(async () => {
+        const target = endpoint(getUrl(), "/control-plane/session");
+        if (
+          createServerAccessStore()
+            .read(target.origin)
+            ?.token.startsWith("agt_")
+        ) {
+          const result = await createControlPlaneClient({
+            origin: target.origin,
+            fetch: cliFetch,
+          }).session();
+          console.log(`User: ${result.user.login}`);
+          return;
+        }
         const response = await cliFetch(
           endpoint(getUrl(), "/control-plane/session"),
         );
@@ -96,6 +153,19 @@ export function registerServerAccessCommands(
     .action(
       action(async () => {
         const target = endpoint(getUrl(), "/control-plane/logout");
+        if (
+          createServerAccessStore()
+            .read(target.origin)
+            ?.token.startsWith("agt_")
+        ) {
+          await createControlPlaneClient({
+            origin: target.origin,
+            fetch: cliFetch,
+          }).logout();
+          createServerAccessStore().remove(target.origin);
+          console.log("Signed out");
+          return;
+        }
         const response = await cliFetch(target, { method: "POST" });
         if (!response.ok)
           throw new Error(`Server sign-out failed (${response.status})`);

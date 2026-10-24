@@ -1,5 +1,6 @@
 import { lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
+import type { ServerOptions } from "node:https";
 import { z } from "zod";
 import { isAdminPasswordHash } from "./credentials.js";
 
@@ -26,10 +27,62 @@ export const controlPlaneConfigSchema = z
         passwordHash: z.string().refine(isAdminPasswordHash),
       })
       .strict(),
+    users: z
+      .object({
+        usersRoot: z
+          .string()
+          .refine(
+            (value) =>
+              isAbsolute(value) && normalize(value) === value && value !== "/",
+          ),
+        firstUid: z.number().int().min(200000).max(2147483646),
+        lastUid: z.number().int().min(200000).max(2147483646),
+        tls: z
+          .object({
+            keyFile: z.string().refine(isAbsolute),
+            certFile: z.string().refine(isAbsolute),
+            clientCaFile: z.string().refine(isAbsolute),
+          })
+          .strict(),
+      })
+      .strict()
+      .refine((value) => value.firstUid <= value.lastUid)
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => !value.users || value.publicOrigin.startsWith("https:"),
+    "Certificate login requires HTTPS",
+  );
 
 export type ControlPlaneConfig = z.infer<typeof controlPlaneConfigSchema>;
+
+export function controlPlaneTls(
+  config: ControlPlaneConfig | null,
+): ServerOptions | undefined {
+  if (!config?.users) return undefined;
+  const { keyFile, certFile, clientCaFile } = config.users.tls;
+  for (const path of [keyFile, certFile, clientCaFile]) {
+    const stat = lstatSync(path);
+    if (
+      !stat.isFile() ||
+      (process.platform !== "win32" &&
+        (stat.uid !== process.getuid?.() ||
+          (path === keyFile && (stat.mode & 0o077) !== 0)))
+    )
+      throw new Error(
+        "TLS files must be regular files owned by the server user; the key must be private",
+      );
+  }
+  return {
+    key: readFileSync(keyFile),
+    cert: readFileSync(certFile),
+    ca: readFileSync(clientCaFile),
+    requestCert: true,
+    rejectUnauthorized: false,
+    minVersion: "TLSv1.2",
+  };
+}
 
 export function loadControlPlaneConfig(
   dataDir: string,

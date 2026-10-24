@@ -4,6 +4,8 @@ import {
   type ControlPlaneAccess,
 } from "./control-plane/access.js";
 import { loadControlPlaneConfig } from "./control-plane/config.js";
+import { ControlPlaneRegistry } from "@bb/db";
+import { createControlPlaneUserAccess } from "./control-plane/user-access.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import {
@@ -482,7 +484,18 @@ export function createApp(
     : loadControlPlaneConfig(deps.config.dataDir);
   const controlPlane =
     options?.controlPlane ??
-    (accessConfig ? createControlPlaneAccess(accessConfig) : null);
+    (accessConfig
+      ? createControlPlaneAccess(
+          accessConfig,
+          Date.now,
+          accessConfig.users
+            ? createControlPlaneUserAccess(
+                new ControlPlaneRegistry(deps.db, accessConfig.users),
+                accessConfig.publicOrigin,
+              )
+            : undefined,
+        )
+      : null);
   if (controlPlane) {
     if (
       deps.config.appUrl &&

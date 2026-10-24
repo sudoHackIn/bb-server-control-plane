@@ -101,3 +101,4 @@ export function createBbSdk(
   };
   return "guide" in args ? { ...areas, guide: args.guide } : areas;
 }
+export { createControlPlaneClient } from "./control-plane.js";

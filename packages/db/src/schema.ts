@@ -41,6 +41,49 @@ import type {
 } from "@bb/domain";
 import type { RetainedEventOutputPath } from "./retained-event-output.js";
 
+export const controlPlaneUsers = sqliteTable("control_plane_users", {
+  id: text("id").primaryKey(),
+  login: text("login").notNull().unique(),
+  uid: integer("uid").notNull().unique(),
+  gid: integer("gid").notNull(),
+  home: text("home").notNull().unique(),
+  projectsRoot: text("projects_root").notNull().unique(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull(),
+  environmentStatus: text("environment_status", {
+    enum: ["allocated", "provisioning", "ready", "failed"],
+  }).notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const controlPlaneCounters = sqliteTable("control_plane_counters", {
+  name: text("name").primaryKey(),
+  nextValue: integer("next_value").notNull(),
+});
+
+export const controlPlaneAuthFlows = sqliteTable("control_plane_auth_flows", {
+  id: text("id").primaryKey(),
+  clientName: text("client_name").notNull(),
+  challenge: text("challenge").notNull(),
+  status: text("status", {
+    enum: ["pending", "approved", "denied", "consumed"],
+  }).notNull(),
+  approvalLogin: text("approval_login"),
+  csrfHash: text("csrf_hash"),
+  userId: text("user_id").references(() => controlPlaneUsers.id),
+  expiresAt: integer("expires_at").notNull(),
+});
+
+export const controlPlaneUserSessions = sqliteTable(
+  "control_plane_user_sessions",
+  {
+    digest: text("digest").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    expiresAt: integer("expires_at").notNull(),
+  },
+);
+
 export const authUsers = sqliteTable(
   "user",
   {

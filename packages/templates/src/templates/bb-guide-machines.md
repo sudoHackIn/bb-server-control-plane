@@ -203,6 +203,14 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 
 ## Server access
 
+For a shared fork with certificate users enabled, run
+`bb server access authorize [--client-name <name>]`, open the printed URL in
+your browser and approve with your client certificate. The CLI waits for
+approval and saves a private 24-hour user token without printing it. `status`
+and `logout` work for user sessions as well. User sessions survive a server
+restart until expiry or revocation; their available operations depend on the
+server's user API and permissions. A user token cannot access the full BB API.
+
 On a protected deployment of the server-control-plane fork, administrators sign
 in with `bb server access login --login <name> --password-stdin`, supplying the
 password from private stdin. `bb server access status` shows the current login;

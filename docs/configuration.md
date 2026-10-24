@@ -6,6 +6,10 @@ This fork loads administrative access settings from a private `control-plane.jso
 
 Configure the file with `pnpm exec tsx scripts/configure-control-plane.ts --data-dir <path> --origin <https-origin> --login <name>`, supplying the password through private stdin. The browser login is `/control-plane/login`. CLI administrators use `bb server access login --login <name> --password-stdin`, then normal commands. CLI sessions are stored per origin in private `~/.bb/server-access/*.json`; they last one day and are revoked by logout or server restart. They must never be supplied to tenant agents.
 
+Optional `users` configuration enables direct HTTPS certificate authorization: `usersRoot`, `firstUid`, `lastUid` and `tls: { keyFile, certFile, clientCaFile }`. The setup script accepts `--users-root`, `--first-uid` (default 200000), `--last-uid` (default 299999), `--tls-key`, `--tls-cert` and `--client-ca`; supply all paths together. TLS paths must be absolute regular files owned by the service user, and the private key must have no group/other permissions. The server validates the client certificate against that CA and uses its CN as the user login. Forwarded identity headers are ignored. TLS termination must reach this listener directly or through TLS passthrough for certificate approval.
+
+`bb server access authorize [--client-name <name>]` prints a browser URL, waits for certificate approval, exchanges PKCE and saves a 24-hour opaque user token without printing it. `status` and `logout` support both user and administrator sessions. User tokens persist in the shared BB database as hashes, survive server restarts until expiry and stop working when the user is disabled. The current user endpoints provide only login and personal session inspection; project/thread access and HOME provisioning remain later stages.
+
 The packaged `npx bb-app` flow stores persistent package settings under
 `~/.bb/config.json`, provider environment values under `~/.bb/env.json`, and
 client SSH target mappings under `~/.bb/client.json`.
