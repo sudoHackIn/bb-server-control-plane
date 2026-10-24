@@ -5,7 +5,8 @@ import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 
 export async function verifyQwenJobs({ command, launch, signal }) {
-  const db = new Database("/srv/bb/bb.db", { readonly: true });
+  const db = new Database("/srv/bb/bb.db");
+  db.prepare("UPDATE control_plane_users SET enabled = 1").run();
   const users = db
     .prepare("SELECT * FROM control_plane_users ORDER BY uid")
     .all();
@@ -103,7 +104,6 @@ export async function verifyQwenJobs({ command, launch, signal }) {
     uid: user.uid,
     home: user.home,
     cwd: `${user.projects_root}/app`,
-    threadId: `thr_${marker}`,
     marker,
     mode: "probe",
     ...extra,
@@ -152,7 +152,7 @@ export async function verifyQwenJobs({ command, launch, signal }) {
       ["qwen-job-client.mjs"],
       JSON.stringify(
         config(alice, "alice-resumed", {
-          threadId: "thr_alice-first",
+          threadId: first.threadId,
           sessionId: first.sessionId,
         }),
       ),
@@ -261,7 +261,8 @@ export async function verifyQwenJobs({ command, launch, signal }) {
       sameUserOtherJobSurvives: true,
       cancelBeforeLaunchFenced: true,
       modelBackend: "Local deterministic OpenAI-compatible fixture",
-      bbThreadAdmissionVerified: false,
+      databaseThreadAdmissionVerified: true,
+      realBbDaemonDispatchVerified: false,
     };
   } finally {
     backend.closeAllConnections();

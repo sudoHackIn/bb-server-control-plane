@@ -1,5 +1,17 @@
 import type { DbConnection } from "../../src/index.js";
 
+function dropControlPlaneSchemaForRewind(db: DbConnection): void {
+  db.$client.exec(`
+    DROP TABLE IF EXISTS control_plane_threads;
+    DROP TABLE IF EXISTS control_plane_project_access;
+    DROP TABLE IF EXISTS control_plane_projects;
+    DROP TABLE IF EXISTS control_plane_auth_flows;
+    DROP TABLE IF EXISTS control_plane_user_sessions;
+    DROP TABLE IF EXISTS control_plane_counters;
+    DROP TABLE IF EXISTS control_plane_users;
+  `);
+}
+
 export function dropPluginEnabledFollowsDefaultColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], { name: string }>("PRAGMA table_info(plugins)")
@@ -10,6 +22,7 @@ export function dropPluginEnabledFollowsDefaultColumn(db: DbConnection): void {
 }
 
 export function rewindThreadPruningWork(db: DbConnection): void {
+  dropControlPlaneSchemaForRewind(db);
   db.$client.exec(`
     DROP TABLE IF EXISTS thread_pruning_work;
     DELETE FROM __drizzle_migrations WHERE created_at >= 1791399370294;
@@ -80,6 +93,7 @@ export function rewindQueuedMessageStateMigration(db: DbConnection): void {
     .prepare<[], QueuedTableColumn>("PRAGMA table_info(queued_thread_messages)")
     .all();
   if (!columns.some((column) => column.name === "state")) return;
+  dropControlPlaneSchemaForRewind(db);
   const keptColumns = columns.filter((column) => column.name !== "state");
   const definitions = keptColumns
     .map((column) =>

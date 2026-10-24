@@ -49,6 +49,16 @@ try {
     packageRoot: repo,
     sourcemap: false,
   });
+  await buildNodeEsmEntry({
+    cleanDist: false,
+    entryPoint: join(
+      repo,
+      "apps/server/test/fixtures/control-plane-runtime-fixture.ts",
+    ),
+    outfile: join(directory, "qwen-runtime-fixture.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
   await new Promise((complete, reject) => {
     const child = spawn(
       "docker",

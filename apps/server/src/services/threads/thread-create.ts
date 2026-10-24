@@ -2,6 +2,7 @@ import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
 import { markThreadDeleted, getEnvironment, getThread } from "@bb/db";
+import { controlPlaneThreadOwnerForCreate } from "../../control-plane/thread-authority.js";
 import {
   describeSessionOptionConflict,
   modelSessionOptionConflict,
@@ -396,24 +397,6 @@ function requireLiveSourceThread(
   return sourceThread;
 }
 
-/**
- * Creates the thread row and hands its first message to the dispatch
- * checkpoint.
- *
- * This is the whole of thread creation's dispatch story now, and it replaced a
- * pair of near-identical functions — one that provisioned immediately and one
- * that queued the first turn — whose only real difference was
- * whether anything was allowed to run yet. That is a question the checkpoint
- * answers, so asking it here as well meant two code paths that had to be kept
- * in agreement about forks, execution defaults, telemetry and cleanup.
- *
- * The row inserts `pending`: created, with its provider resolved, and nothing
- * provisioned. Creation itself is unhooked — it is a cheap row — and admission
- * happens at the first message's attempt. A cleared attempt moves the thread
- * to `starting` and provisions with the message riding along; a queued one
- * leaves the thread exactly where it is, with the start context recorded so a
- * later drain (or a later server) can start it.
- */
 async function createPendingThreadAndAttemptFirstDispatch(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
@@ -574,6 +557,7 @@ export async function createThreadFromRequest(
     forkSourceEnvironmentId?: string;
   } = {},
 ) {
+  controlPlaneThreadOwnerForCreate(deps.db, rawRequestInput);
   const project = requirePublicProjectForThreadCreate(
     deps,
     rawRequestInput.projectId,

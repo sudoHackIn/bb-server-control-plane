@@ -1,5 +1,6 @@
 import {
   getLatestThreadSequence,
+  requireControlPlaneThreadDispatch,
   getNonDestroyedHostByLaunchKey,
 } from "@bb/db";
 import { sweepProviderMachine } from "../machines/provider-orchestration.js";
@@ -237,10 +238,6 @@ async function startThreadIfEnvironmentReady(
     throw new Error("Thread did not reach workspace-ready provisioning state");
   }
 
-  // The workspace exists, so anything that queued waiting for it stops
-  // waiting here rather than after the dispatch below: the wait is over at
-  // this line, and the `run.succeeded` branch below returns without
-  // dispatching anything. A thread with nothing queued no-ops.
   requestQueuedMessageDispatch(deps, {
     kind: "workspace-ready",
     threadId: args.thread.id,
@@ -506,6 +503,7 @@ async function advanceThreadProvisioningOnce(
   }
 
   try {
+    requireControlPlaneThreadDispatch(deps.db, thread.id);
     const ready = await ensureThreadProvisionEnvironmentReady(deps, {
       context,
       thread,
@@ -545,11 +543,6 @@ export async function advanceThreadProvisioning(
   );
 }
 
-/**
- * Drives provisioning off the caller's stack. Creation returns the thread row
- * before the workspace exists, and a cold-start row whose wait cleared returns
- * to its sweep or route the same way, so neither waits on the daemon.
- */
 export function scheduleThreadProvisioningAdvance(
   deps: ThreadProvisioningDeps & Pick<AppDeps, "config" | "logger">,
   threadId: string,

@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm";
 import {
   getLatestThreadSequence,
+  requireControlPlaneThreadDispatch,
   deleteThread,
   environments,
   events,
@@ -978,6 +979,7 @@ export async function prepareReadyThreadTurnCommand(
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   const providerThreadId = requireDispatchableProviderThreadId(
     deps,
     args.thread.id,
@@ -1150,16 +1152,6 @@ export function requestThreadStorageDeletion(
     });
 }
 
-/**
- * The drain a settled stop owes the rows that were waiting on it.
- *
- * A completed turn wakes the queue; a stopped one never did, because the
- * manual-stop pause meant there was nothing for the drain to find. Rows
- * carrying a `stopping` wait are outside that pause — the user asked for them
- * after requesting the stop — so the moment the stop lands is the moment they
- * become dispatchable, and nothing else would tell the queue about it before
- * the next recovery sweep.
- */
 function drainQueuedMessagesAfterStopAction(
   threadId: string,
 ): CommandResultPostCommitAction {
@@ -1277,6 +1269,7 @@ async function requestThreadStartOnce(
   deps: CommandResultSideEffectsDeps,
   args: ThreadStartCommandArgs,
 ): Promise<void> {
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   if (hasLiveThreadStartInFlight(args.thread.id)) {
     return;
   }
@@ -1291,6 +1284,7 @@ async function requestThreadStartOnce(
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   const result = dispatchThreadStartFromRequest(deps, {
     command,
     sourceThreadStatus: args.thread.status,
@@ -1393,10 +1387,6 @@ function requestPreStartThreadStop(
   deps: RequestThreadStopForCurrentStateDeps,
   thread: RequestThreadStopForCurrentStateThread,
 ): void {
-  // Stopping a thread abandons the provisioning anything was waiting on, so
-  // those waits end here. This runs outside the transaction below because
-  // clearing a wait notifies, and it runs first so no row is left waiting on
-  // provisioning by an early return inside it.
   requestQueuedMessageDispatch(deps, {
     kind: "provisioning-ended",
     threadId: thread.id,

@@ -15,6 +15,7 @@ import { ApiError } from "../../errors.js";
 import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
 import type { ThreadCreateServiceRequest } from "./thread-create-request.js";
 import { sanitizeGeneratedBranchSlug } from "./title-generation.js";
+import { controlPlaneThreadOwnerForCreate } from "../../control-plane/thread-authority.js";
 
 type EnvironmentProvisionCommand = Extract<
   HostDaemonCommand,
@@ -102,6 +103,10 @@ export function createThreadRecord(
 
   try {
     const thread = createThread(deps.db, deps.hub, {
+      controlPlaneOwnerUserId: controlPlaneThreadOwnerForCreate(
+        deps.db,
+        args.request,
+      ),
       projectId: args.request.projectId,
       environmentId: args.environmentId,
       providerId: args.request.providerId,
@@ -117,11 +122,7 @@ export function createThreadRecord(
       pluginMetadata: args.request.pluginMetadata,
       visibility: args.request.visibility,
       parentNotifications: args.request.parentNotifications,
-      // Every thread starts `pending`, with no exception to parameterise.
-      // Creation is unhooked and provisions nothing; admission happens at the
-      // first message's dispatch attempt, and clearing it is what moves the
-      // thread to `starting`. A caller that could pass `starting` here would
-      // be claiming a thread had been admitted before anything decided so.
+
       status: "pending",
       startupContext: args.startupContext,
     });

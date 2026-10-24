@@ -1,5 +1,5 @@
 import { and, asc, eq, gt, isNull } from "drizzle-orm";
-import type { DbConnection } from "../connection.js";
+import type { DbQueryConnection } from "../connection.js";
 import {
   controlPlaneProjects,
   controlPlaneProjectAccess,
@@ -9,7 +9,7 @@ import {
   hosts,
 } from "../schema.js";
 
-function accessibleProjects(db: DbConnection) {
+function accessibleProjects(db: DbQueryConnection) {
   return db
     .select({
       projectId: projects.id,
@@ -57,7 +57,7 @@ function accessibleProjects(db: DbConnection) {
 }
 
 export function getControlPlaneProject(
-  db: DbConnection,
+  db: DbQueryConnection,
   userId: string,
   projectId: string,
 ) {
@@ -72,7 +72,7 @@ export function getControlPlaneProject(
 }
 
 export function listControlPlaneProjects(
-  db: DbConnection,
+  db: DbQueryConnection,
   userId: string,
   options: { cursor: string | null; limit: number },
 ) {

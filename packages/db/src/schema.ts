@@ -261,6 +261,26 @@ export const controlPlaneProjectAccess = sqliteTable(
   ],
 );
 
+export const controlPlaneThreads = sqliteTable(
+  "control_plane_threads",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    qwenSessionId: text("qwen_session_id"),
+  },
+  (table) => [
+    index("control_plane_threads_owner_idx").on(
+      table.ownerUserId,
+      table.threadId,
+    ),
+    uniqueIndex("control_plane_threads_session_idx").on(table.qwenSessionId),
+  ],
+);
+
 export const projectExecutionDefaults = sqliteTable(
   "project_execution_defaults",
   {

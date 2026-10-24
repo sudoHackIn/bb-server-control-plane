@@ -1,40 +1,14 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { serverQuery } from "./qwen-server-query.mjs";
+import { createRuntimeFixture } from "./qwen-runtime-fixture.mjs";
 
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const config = JSON.parse(input);
-const directory = await mkdtemp(join(tmpdir(), "qwen-job-client-"));
-const socket = join(directory, "context.sock");
+const runtime = await createRuntimeFixture(config);
 const sessionId = config.sessionId ?? randomUUID();
-const context = {
-  id: config.id,
-  user: config.login,
-  uid: config.uid,
-  gid: config.uid,
-  home: config.home,
-  cwd: config.cwd,
-  threadId: config.threadId,
-  sessionId,
-};
-const resolver = createServer(async (req, res) => {
-  let body = "";
-  for await (const chunk of req) body += chunk;
-  assert.deepEqual(JSON.parse(body), {
-    cwd: context.cwd,
-    sessionId,
-    threadId: context.threadId,
-  });
-  res.writeHead(200, { "content-type": "application/json" });
-  res.end(JSON.stringify(context));
-});
-await new Promise((resolve) => resolver.listen(socket, resolve));
-process.env.QWEN_SERVER_CONTEXT_SOCKET = socket;
+process.env.QWEN_SERVER_CONTEXT_SOCKET = runtime.socketPath;
 const abort = new AbortController();
 const stopRequested = new Promise((resolve) =>
   process.once("SIGUSR2", resolve),
@@ -57,7 +31,7 @@ const prompt = (async function* () {
 })();
 const query = serverQuery({
   prompt,
-  threadId: config.threadId,
+  threadId: runtime.threadId,
   options: {
     cwd: config.cwd,
     model: "qwen-job-test",
@@ -107,13 +81,16 @@ try {
   }
   assert.ok(result, "Qwen did not complete");
   process.stdout.write(
-    JSON.stringify({ sessionId, marker: config.marker, completed: true }) +
-      "\n",
+    JSON.stringify({
+      sessionId,
+      threadId: runtime.threadId,
+      marker: config.marker,
+      completed: true,
+    }) + "\n",
   );
 } finally {
   clearTimeout(deadline);
   abort.abort();
   await query.close();
-  await new Promise((resolve) => resolver.close(resolve));
-  await rm(directory, { recursive: true, force: true });
+  await runtime.close();
 }

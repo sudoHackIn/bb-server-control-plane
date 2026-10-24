@@ -12,6 +12,7 @@ import { isUserAuthPath, type ControlPlaneUserAccess } from "./user-access.js";
 
 export type ControlPlanePrincipal =
   | { kind: "admin"; login: string }
+  | { kind: "user"; userId: string }
   | { kind: "service" };
 const principals = new AsyncLocalStorage<ControlPlanePrincipal>();
 const cookieName = "bb_admin_session";
@@ -22,6 +23,10 @@ const loginSchema = z
 
 export function currentControlPlanePrincipal(): ControlPlanePrincipal | null {
   return principals.getStore() ?? null;
+}
+
+export function withControlPlaneUser<T>(userId: string, run: () => T): T {
+  return principals.run({ kind: "user", userId }, run);
 }
 
 function tokenKey(token: string): string {
@@ -39,7 +44,7 @@ export function createControlPlaneAccess(
 ) {
   const sessions = new Map<string, { login: string; expiresAt: number }>();
   const failures = new Map<string, { count: number; until: number }>();
-  const trustedRequests = new WeakSet<Request>();
+  const trustedRequests = new WeakMap<Request, ControlPlanePrincipal>();
   const sockets = new Map<WebSocket, string>();
   let verifying = 0;
   const secure = config.publicOrigin.startsWith("https:");
@@ -78,8 +83,11 @@ export function createControlPlaneAccess(
     },
     install(app: Hono) {
       app.use("*", async (context, next) => {
-        if (trustedRequests.delete(context.req.raw))
-          return principals.run({ kind: "service" }, next);
+        const trusted = trustedRequests.get(context.req.raw);
+        if (trusted) {
+          trustedRequests.delete(context.req.raw);
+          return principals.run(trusted, next);
+        }
         const path = context.req.path;
         let decodedPath: string;
         try {
@@ -298,7 +306,10 @@ export function createControlPlaneAccess(
       const path = new URL(request.url).pathname;
       if (!path.startsWith("/api/v1/"))
         throw new Error("Internal SDK must use the BB API");
-      trustedRequests.add(request);
+      trustedRequests.set(
+        request,
+        currentControlPlanePrincipal() ?? { kind: "service" },
+      );
       try {
         return await app.fetch(request);
       } finally {

@@ -542,3 +542,4 @@ export type {
 } from "./diff-viewed-files.js";
 export * from "./control-plane.js";
 export * from "./control-plane-projects.js";
+export * from "./control-plane-threads.js";
