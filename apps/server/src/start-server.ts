@@ -475,7 +475,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const managedRuntime =
     controlPlaneConfig?.runtime && pendingServerMove === null
       ? await startControlPlaneRuntime(
-          { db, machineAuth, logger },
+          { ...sweepDeps, sharedPorts },
           controlPlaneConfig,
           serverConfig.BB_DATA_DIR,
         )

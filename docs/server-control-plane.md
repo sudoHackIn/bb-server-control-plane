@@ -18,7 +18,9 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Supervise one internal local daemon with private machine enrollment, no local HTTP API, and real native Qwen dispatch/timeline/resume checks across restart and parent crash in Docker.
 - [x] Complete trusted in-process SDK realtime transport, reuse the native notification protocol and automatically release plugin SDK subscriptions on disposal.
 - [x] Reclaim stale private context-socket directories after a server crash without disturbing active listeners, ordinary files or symlinks.
-- [ ] Protect launcher context and descendant command metadata across agent UIDs before releasing user execution; verify process visibility through the actual launcher with hostile-agent /proc probes.
+- [x] Protect launcher context and descendant command metadata across agent UIDs through separate job user/PID/mount namespaces; verify process visibility through the actual launcher with hostile-agent /proc probes. This is not a filesystem jail or a network boundary.
+- [ ] Persist approved agent profiles with immutable versions and user grants: prompt, provider/model/reasoning, tools, MCP and permissions. Expose administrative management and the user's permitted catalog through API/SDK/CLI; a catalog record alone does not enforce execution.
+- [ ] Bind native threads to approved profile versions and enforce current profile/model/tool/MCP grants at create, actual dispatch, turn submission and resume. Reject unsupported settings rather than accepting ignored restrictions.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
@@ -119,12 +121,15 @@ Initialize a dedicated volume with a private password file, then start the image
 docker volume create bb-control-plane-data
 docker volume create bb-control-plane-users
 docker volume create bb-control-plane-launcher
+node scripts/control-plane-seccomp.mjs /secure/bb-seccomp.json
 docker run --rm -i \
   --mount type=volume,src=bb-control-plane-data,dst=/srv/bb \
   --entrypoint node bb-control-plane:local configure.mjs \
   --data-dir /srv/bb --origin https://agents.example.com --login operator \
   < /secure/admin-password
 docker run --detach --name bb-control-plane \
+  --security-opt seccomp=/secure/bb-seccomp.json \
+  --security-opt systempaths=unconfined \
   --mount type=volume,src=bb-control-plane-data,dst=/srv/bb \
   --mount type=volume,src=bb-control-plane-users,dst=/srv/agent-users \
   --mount type=volume,src=bb-control-plane-launcher,dst=/var/lib/bb-agent-launcher \
@@ -264,4 +269,14 @@ The same SDK project-update notification contract runs against an authenticated 
 
 The Docker deployment check observes the bundled concurrency-limit plugin receiving native host changes through its private SDK subscription and publishing its normal configuration-change signal. It also restarts the managed daemon, crashes the parent server, recovers the same native thread/host identity and verifies that context directories are gone after recovery and normal shutdown. Earlier native Qwen UID/HOME/tool/timeline/resume and cancellation checks remain passing. The limited user thread API, profile grants, user UI, delegated MCP and personal workflows/schedules remain unfinished.
 
-A separate hostile-UID Docker probe confirmed that ordinary Linux UID separation still permits reading another process's initial command line. The existing launcher places cwd and optional inline instructions in argv. Protecting launch context and agent-authored child command lines from other users, then testing the actual launcher boundary, is required before user execution is released; filesystem access denials alone do not prove process-metadata confidentiality. This is recorded as an open feature above, not as a completed isolation property.
+A separate hostile-UID Docker probe confirmed that ordinary Linux UID separation still permits reading another process's initial command line. This finding led to the namespace boundary in the ninth increment below; filesystem access denials alone did not prove process-metadata confidentiality.
+
+## Ninth increment: isolate agent process metadata
+
+The root-owned launcher now drops to the registered UID/GID with cleared supplementary groups and no-new-privileges, then runs the fixed Node/Qwen executable inside separate user, PID and mount namespaces. The same numeric UID/GID is mapped inside; Node runs with no effective capabilities. Each job mounts its own nosuid/nodev/noexec proc, so the CLI and its native tools cannot enumerate BB, root supervisors, other users or sibling jobs. Same-user jobs retain their shared HOME and native Qwen history. Namespace setup failure prevents execution, with no UID-only fallback. Filesystem permissions still govern readable paths outside HOME; networking remains shared.
+
+Docker deployment uses a derived profile preserving the pinned Moby default deny rules, adding only the required unshare flag combinations and mount flags. `systempaths=unconfined` permits the new proc mount; seccomp remains enforced, and neither `CAP_SYS_ADMIN` nor a privileged container is used. The base profile, license, generator and installation requirements are committed under [deployment security](../deploy/control-plane/security/README.md). Non-Docker installations require Linux unprivileged user namespaces allowed by their kernel/LSM policy. Untrusted code must enter through this launcher, not an outer-namespace shell.
+
+The deployment check first proves that the actual launcher fails closed under Docker's default seccomp policy and leaves no job lease or CLI output. Under the derived policy, three actual Qwen jobs run simultaneously for two users, including two jobs sharing one HOME. Native shell tools refresh their own proc snapshots after all three jobs are ready. Their views contain only their own UID and instruction/command markers; the root observer verifies the corresponding real CLI and tool processes in its outer proc view. Cancellation checks resolve namespace-local PIDs through the root job lease and outer process ancestry before verifying complete cleanup and sibling survival. Managed BB dispatch, timeline, history resume, daemon restart, parent SIGKILL cleanup and recovery remain passing with these namespaces.
+
+The repeated deployment test also exposed a managed-daemon shutdown race: a session could be committed before its WebSocket opened, leaving an active database row with no close event. Managed shutdown now explicitly passes its remaining session through the native disconnect handler after the child stops. A real SQLite test covers the pre-WebSocket session and preserves an unrelated host's active session. Six targeted runtime/session-status tests, strict server typechecks, changed-file lint/format and the complete Docker deployment pass. See `control-plane-phase-9-verification.json`. User thread APIs, approved profile versions, user UI, delegated tools/MCP and personal workflows/automations/schedules remain pending.

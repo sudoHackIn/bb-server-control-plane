@@ -1,9 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createHostId } from "@bb/db";
+import { createHostId, getLatestSessionForHost } from "@bb/db";
 import { z } from "zod";
-import type { AppDeps } from "../types.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../types.js";
+import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
 import type { ControlPlaneConfig } from "./config.js";
 import { issueHostEnrollKey } from "../services/hosts/host-enrollment.js";
 import { startControlPlaneQwenContextService } from "./qwen-context.js";
@@ -37,7 +41,7 @@ async function persistentHostId(dataDir: string) {
 }
 
 export async function startControlPlaneRuntime(
-  deps: Pick<AppDeps, "db" | "machineAuth" | "logger">,
+  deps: LoggedPendingInteractionWorkSessionDeps & Pick<AppDeps, "sharedPorts">,
   config: ControlPlaneConfig,
   dataDir: string,
 ) {
@@ -162,6 +166,9 @@ export async function startControlPlaneRuntime(
             clearTimeout(deadline);
           }
         }
+        const session = getLatestSessionForHost(deps.db, { hostId });
+        if (session?.status === "active")
+          handleDaemonSocketClosed(deps, { sessionId: session.id });
         await context.close();
       })();
       return closePromise;

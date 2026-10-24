@@ -2,8 +2,10 @@ import { readFile, writeFile, lstat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { z } from "zod";
+import { getSessionById } from "@bb/db";
 import { startControlPlaneRuntime } from "../../src/control-plane/runtime.js";
 import { withTestHarness } from "../helpers/test-app.js";
+import { seedHostSession } from "../helpers/seed.js";
 
 const observationSchema = z.array(
   z.object({
@@ -85,7 +87,17 @@ it("bootstraps a supervised child privately, restarts it with the same host iden
       expect(second.keyHash).not.toBe(first.keyHash);
       expect(second.pid).not.toBe(first.pid);
       expect(second.secretInEnvironment).toBe(false);
+      const pending = seedHostSession(harness.deps, { id: runtime.hostId });
+      const unrelated = seedHostSession(harness.deps, { id: "unrelated-host" });
+      harness.deps.hub.unregisterDaemon(pending.session.id);
+      expect(harness.deps.hub.hasDaemonForHost(runtime.hostId)).toBe(false);
       await runtime.close();
+      expect(
+        getSessionById(harness.db, { sessionId: pending.session.id }),
+      ).toMatchObject({ status: "closed", closeReason: "daemon-disconnect" });
+      expect(
+        getSessionById(harness.db, { sessionId: unrelated.session.id }),
+      ).toMatchObject({ status: "active" });
       expect(() => process.kill(second.pid, 0)).toThrow();
       await expect(lstat(runtime.socketPath)).rejects.toMatchObject({
         code: "ENOENT",

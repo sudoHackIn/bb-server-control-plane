@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { readFile, rmdir } from "node:fs/promises";
+import { readFile, readdir, rmdir } from "node:fs/promises";
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 
@@ -56,11 +56,15 @@ export async function verifyQwenJobs({ command, launch, signal }) {
         ? users[0].home
         : users[1].home;
       const permissionsProbe = `const denied=(path)=>{try{fs.readdirSync(path);return false}catch(error){return error.code==="EACCES"}};const otherHomeDenied=denied(${JSON.stringify(foreignHome)}),serviceDataDenied=denied("/srv/bb");const noNewPrivileges=/NoNewPrivs:\\s+1/.test(fs.readFileSync("/proc/self/status","utf8"));`;
+      const metadataProbe =
+        'const processes=fs.readdirSync("/proc").filter(p=>/^\\d+$/.test(p)).flatMap(p=>{try{return [{pid:Number(p),uid:Number(fs.readFileSync("/proc/"+p+"/status","utf8").match(/^Uid:\\s+(\\d+)/m)[1]),command:fs.readFileSync("/proc/"+p+"/cmdline","utf8")}]}catch{return []}});';
       const code =
         mode === "hang"
-          ? 'const fs=require("node:fs"),cp=require("node:child_process");const child=cp.spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{detached:true,stdio:"ignore"});child.unref();fs.writeFileSync(process.env.HOME+"/' +
+          ? 'const fs=require("node:fs"),cp=require("node:child_process");const child=cp.spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{detached:true,stdio:"ignore"});child.unref();const snapshot=()=>{const path=process.env.HOME+"/' +
             marker +
-            '.json",JSON.stringify({pid:process.pid,child:child.pid,uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()}));setInterval(()=>{},1000)'
+            '.json";fs.writeFileSync(path+".next",JSON.stringify({scanAt:Date.now(),pid:process.pid,child:child.pid,jobId:process.env.BB_AGENT_JOB_ID,uid:process.getuid(),home:process.env.HOME,cwd:process.cwd(),effectiveCapabilities:fs.readFileSync("/proc/self/status","utf8").match(/^CapEff:\\s+(\\w+)/m)[1],processes:(()=>{' +
+            metadataProbe +
+            'return processes})()}));fs.renameSync(path+".next",path)};snapshot();setInterval(snapshot,100)'
           : 'const fs=require("node:fs");' +
             permissionsProbe +
             'fs.writeFileSync(process.env.HOME+"/' +
@@ -188,7 +192,8 @@ export async function verifyQwenJobs({ command, launch, signal }) {
         error = "";
       child.stdout.on("data", (part) => (output += part));
       child.stderr.on("data", (part) => (error += part));
-      child.stdin.end(JSON.stringify(config(alice, marker, { mode: "hang" })));
+      const user = marker.startsWith("bob-") ? bob : alice;
+      child.stdin.end(JSON.stringify(config(user, marker, { mode: "hang" })));
       const complete = new Promise((resolve, reject) => {
         child.once("error", reject);
         child.once("exit", (code) =>
@@ -207,13 +212,16 @@ export async function verifyQwenJobs({ command, launch, signal }) {
     };
     const one = hang("alice-stop-one");
     const two = hang("alice-stop-two");
-    const waitForProbe = async (marker, job) => {
+    const three = hang("bob-stop-three");
+    const waitForProbe = async (marker, job, scannedAfter = 0) => {
       const probing = (async () => {
         while (!signal.aborted) {
           try {
-            return JSON.parse(
-              await readFile(`${alice.home}/${marker}.json`, "utf8"),
+            const user = marker.startsWith("bob-") ? bob : alice;
+            const probe = JSON.parse(
+              await readFile(`${user.home}/${marker}.json`, "utf8"),
             );
+            if (probe.scanAt > scannedAfter) return probe;
           } catch (error) {
             if (error.code !== "ENOENT") throw error;
           }
@@ -231,23 +239,116 @@ export async function verifyQwenJobs({ command, launch, signal }) {
     await Promise.all([
       waitForProbe("alice-stop-one", one),
       waitForProbe("alice-stop-two", two),
+      waitForProbe("bob-stop-three", three),
     ]);
+    const allJobsReady = Date.now();
+    const probes = await Promise.all([
+      waitForProbe("alice-stop-one", one, allJobsReady),
+      waitForProbe("alice-stop-two", two, allJobsReady),
+      waitForProbe("bob-stop-three", three, allJobsReady),
+    ]);
+    const hostPids = [];
+    for (const [index, probe] of probes.entries()) {
+      assert.ok(probe.processes.length >= 3);
+      assert.equal(BigInt(`0x${probe.effectiveCapabilities}`), 0n);
+      assert.ok(probe.processes.every((entry) => entry.uid === probe.uid));
+      const marker = ["alice-stop-one", "alice-stop-two", "bob-stop-three"][
+        index
+      ];
+      const commands = probe.processes.map((entry) => entry.command).join("\n");
+      assert.ok(commands.includes(`BB_ARGV_PRIVATE_${marker}`));
+      assert.ok(commands.includes(`${marker}.json`));
+      for (const other of [
+        "alice-stop-one",
+        "alice-stop-two",
+        "bob-stop-three",
+      ]) {
+        if (other !== marker) {
+          assert.ok(!commands.includes(`BB_ARGV_PRIVATE_${other}`));
+          assert.ok(!commands.includes(`${other}.json`));
+        }
+      }
+      const lease = JSON.parse(
+        await readFile(
+          `/var/lib/bb-agent-launcher/jobs/${probe.jobId}.json`,
+          "utf8",
+        ),
+      );
+      assert.equal(lease.uid, probe.uid);
+      const tree = new Map();
+      for (const name of await readdir("/proc")) {
+        if (!/^\d+$/u.test(name)) continue;
+        try {
+          const stat = await readFile(`/proc/${name}/stat`, "utf8");
+          const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+          const status = await readFile(`/proc/${name}/status`, "utf8");
+          tree.set(Number(name), {
+            parent: Number(fields[1]),
+            uid: Number(status.match(/^Uid:\s+(\d+)/mu)[1]),
+            localPid: Number(
+              status
+                .match(/^NSpid:\s+(.+)/mu)[1]
+                .trim()
+                .split(/\s+/u)
+                .at(-1),
+            ),
+          });
+        } catch (error) {
+          if (error.code !== "ENOENT" && error.code !== "ESRCH") throw error;
+        }
+      }
+      const descendants = new Set([lease.pid]);
+      let added = true;
+      while (added) {
+        added = false;
+        for (const [pid, info] of tree) {
+          if (descendants.has(info.parent) && !descendants.has(pid)) {
+            descendants.add(pid);
+            added = true;
+          }
+        }
+      }
+      const resolvePid = (localPid) => {
+        const entries = [...tree].filter(
+          ([pid, info]) =>
+            descendants.has(pid) &&
+            info.uid === probe.uid &&
+            info.localPid === localPid,
+        );
+        assert.equal(
+          entries.length,
+          1,
+          "Expected exactly one live namespaced process",
+        );
+        return entries[0][0];
+      };
+      const cliPid = resolvePid(1);
+      assert.ok(
+        (await readFile(`/proc/${cliPid}/cmdline`, "utf8")).includes(
+          `BB_ARGV_PRIVATE_${marker}`,
+        ),
+      );
+      const toolPid = resolvePid(probe.pid);
+      assert.ok(
+        (await readFile(`/proc/${toolPid}/cmdline`, "utf8")).includes(
+          `${marker}.json`,
+        ),
+      );
+      hostPids.push([toolPid, resolvePid(probe.child), cliPid]);
+    }
     one.child.kill("SIGUSR2");
     await one.complete;
-    const info = JSON.parse(
-      await readFile(`${alice.home}/alice-stop-two.json`, "utf8"),
-    );
     assert.ok(
-      await readFile(`/proc/${info.child}/stat`, "utf8"),
+      await readFile(`/proc/${hostPids[1][1]}/stat`, "utf8"),
       "Stopping another session killed this job",
     );
+    assert.ok(await readFile(`/proc/${hostPids[2][1]}/stat`, "utf8"));
     two.child.kill("SIGUSR2");
     await two.complete;
-    for (const marker of ["alice-stop-one", "alice-stop-two"]) {
-      const probe = JSON.parse(
-        await readFile(`${alice.home}/${marker}.json`, "utf8"),
-      );
-      for (const pid of [probe.pid, probe.child])
+    three.child.kill("SIGUSR2");
+    await three.complete;
+    for (const pids of hostPids) {
+      for (const pid of pids)
         await assert.rejects(
           readFile(`/proc/${pid}/stat`),
           (error) => error.code === "ENOENT",
@@ -260,6 +361,9 @@ export async function verifyQwenJobs({ command, launch, signal }) {
       stopKillsDetachedDescendants: true,
       sameUserOtherJobSurvives: true,
       cancelBeforeLaunchFenced: true,
+      actualAgentCannotSeeForeignProcessMetadata: true,
+      sameUidConcurrentJobsHaveSeparateProc: true,
+      privateInstructionsAndToolCommandsRemainInsideJobProc: true,
       modelBackend: "Local deterministic OpenAI-compatible fixture",
       databaseThreadAdmissionVerified: true,
       realBbDaemonDispatchVerified: false,

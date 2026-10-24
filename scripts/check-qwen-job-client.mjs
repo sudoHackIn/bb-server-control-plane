@@ -41,6 +41,11 @@ const query = serverQuery({
     abortController: abort,
     ...(config.sessionId ? { resume: sessionId } : { sessionId }),
     timeout: { controlRequest: 30000 },
+    systemPrompt: {
+      type: "preset",
+      preset: "qwen_code",
+      append: `BB_ARGV_PRIVATE_${config.marker}`,
+    },
   },
 });
 const deadline = setTimeout(() => abort.abort(), 45000);

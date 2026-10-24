@@ -163,14 +163,16 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock):
     signal.signal(signal.SIGTERM, interrupt)
     signal.signal(signal.SIGINT, interrupt)
     env = {'PATH': '/usr/local/bin:/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': home,
-           'USER': user_id, 'LOGNAME': user_id, 'PWD': cwd}
+           'USER': user_id, 'LOGNAME': user_id, 'PWD': cwd, 'BB_AGENT_JOB_ID': session_id}
     for name in ('OPENAI_API_KEY', 'OPENAI_BASE_URL'):
         if name in os.environ:
             env[name] = os.environ[name]
     os.umask(0o077)
     try:
         child = subprocess.Popen(['/usr/bin/setpriv', '--reuid=' + str(uid), '--regid=' + str(uid),
-                                  '--clear-groups', '--no-new-privs', '--', policy['node'],
+                                  '--clear-groups', '--no-new-privs', '--', '/usr/bin/unshare',
+                                  '--user', '--map-user=' + str(uid), '--map-group=' + str(uid),
+                                  '--pid', '--fork', '--mount-proc', policy['node'],
                                   '--dns-result-order=ipv4first', policy['cli'], *arguments],
                                  env=env, close_fds=True, start_new_session=True)
         while clients_alive(clients):

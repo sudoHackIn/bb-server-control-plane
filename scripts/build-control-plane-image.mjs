@@ -24,6 +24,10 @@ try {
     ["apps/host-daemon/dist", "host-daemon"],
     ["scripts/check-control-plane-deployment.mjs", "deployment-check.mjs"],
     [
+      "scripts/check-control-plane-namespace-denial.mjs",
+      "namespace-denial.mjs",
+    ],
+    [
       "scripts/check-control-plane-qwen-jobs.mjs",
       "check-control-plane-qwen-jobs.mjs",
     ],

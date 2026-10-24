@@ -28,6 +28,14 @@ privileges, and owns cancellation of that job's descendants. Agent UIDs have no
 sudo rule. Unix permissions protect personal data; they do not restrict all
 readable system paths.
 
+Execution also requires `/usr/bin/unshare` and Linux unprivileged user namespaces.
+Each job preserves its numeric UID/GID inside separate user/PID/mount namespaces,
+with a proc view containing only that job's processes. Concurrent jobs for one
+user share HOME. Namespace failure rejects execution with no UID-only fallback.
+For Docker, use the derived seccomp profile and proc-mount options documented in
+`deploy/control-plane/security/README.md`; do not add `CAP_SYS_ADMIN` or use a
+privileged container. The root supervisor retains the outer PID view for cleanup.
+
 Deployment environment on the host bridge:
 
 - `QWEN_SERVER_CONTEXT_SOCKET`: private control-plane execution socket.

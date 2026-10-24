@@ -406,13 +406,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       if (!/^\d+$/u.test(name)) continue;
       const info = await processInfo(Number(name));
       if (info) processTree.set(Number(name), info);
-      if (info && leases.some((lease) => lease.pid === info.parent))
-        qwenProcesses.push({ pid: Number(name), start: info.start });
     }
-    assert.ok(
-      qwenProcesses.length > 0,
-      "Expected actual Qwen children before parent death",
-    );
     const descendantIds = new Set([daemonPid]);
     let changed = true;
     while (changed) {
@@ -428,6 +422,22 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       const info = processTree.get(pid);
       return info ? [{ pid, start: info.start }] : [];
     });
+    for (const entry of descendants) {
+      const argv = await readFile(`/proc/${entry.pid}/cmdline`, "utf8").catch(
+        () => "",
+      );
+      if (
+        argv
+          .split("\0")
+          .includes("/opt/bb/node_modules/@qwen-code/sdk/dist/cli/cli.js") &&
+        argv.split("\0")[0] === "/usr/local/bin/node"
+      )
+        qwenProcesses.push(entry);
+    }
+    assert.ok(
+      qwenProcesses.length > 0,
+      "Expected actual namespaced Qwen processes before parent death",
+    );
     const supervised = [...leases, ...qwenProcesses, ...descendants];
     const exited = once(child, "exit", { signal });
     child.kill("SIGKILL");

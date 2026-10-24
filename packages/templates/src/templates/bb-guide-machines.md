@@ -244,6 +244,12 @@ private server CA, start the server with `NODE_EXTRA_CA_CERTS`. Administrators
 enable the bundled Qwen Server provider through normal plugin management;
 packaging the provider does not authorize arbitrary user workspaces.
 
+Managed Qwen jobs require Linux unprivileged user/PID/mount namespaces in addition
+to registered UID/GID and HOME permissions. Each job mounts its own proc view;
+namespace setup failure rejects the launch. Docker execution requires the derived
+seccomp profile and proc-mount options described in the fork deployment guide.
+No privileged container or `CAP_SYS_ADMIN` is required.
+
 Set Machines → Server URL reachable by machines, or run `bb settings general
 machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
 Set Default machine access with

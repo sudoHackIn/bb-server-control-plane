@@ -16,6 +16,7 @@
     ".codex/",
     ".claude/",
     "pnpm-lock.yaml",
+    "deploy/control-plane/security/moby-default-seccomp.json",
     "plugins/provider-codex/src/generated/",
     "packages/templates/src/generated/",
     "packages/plugin-sdk/bundled-types/",

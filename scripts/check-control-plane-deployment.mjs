@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import WebSocket from "ws";
 import { verifyUserDeployment } from "./check-control-plane-user-deployment.mjs";
 import { verifyQwenJobs } from "./check-control-plane-qwen-jobs.mjs";
@@ -12,6 +12,12 @@ const password = "deployment-check-admin-password";
 const controller = new AbortController();
 const deadline = setTimeout(() => controller.abort(), 180000);
 const children = new Set();
+const status = await readFile("/proc/self/status", "utf8");
+assert.equal(
+  BigInt(`0x${status.match(/^CapEff:\s+(\w+)/mu)[1]}`) & (1n << 21n),
+  0n,
+  "Deployment must not have CAP_SYS_ADMIN",
+);
 
 function launch(args, extra = {}) {
   const { file = process.execPath, ...options } = extra;

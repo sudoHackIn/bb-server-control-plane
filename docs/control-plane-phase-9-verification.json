@@ -1,0 +1,43 @@
+{
+  "scope": "Per-job process namespaces, hostile native-tool proc scans and managed daemon pre-WebSocket shutdown",
+  "previousStageCommit": "5354e12bd",
+  "tests": {
+    "targetedRuntimeAndSessionStatus": 6,
+    "strictServerTypecheck": true,
+    "changedFileLintAndFormatting": true
+  },
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "testedArchitecture": "aarch64",
+    "actualLauncherFailsClosedUnderDefaultSeccomp": true,
+    "noUidOnlyExecutionFallback": true,
+    "pinnedMobyDefaultPlusRestrictedNamespaceRules": true,
+    "seccompUnconfined": false,
+    "privilegedContainer": false,
+    "capSysAdmin": false,
+    "dockerSystempathsUnconfinedRequiredForPrivateProc": true,
+    "threeConcurrentNativeQwenJobsForTwoUsers": true,
+    "twoJobsShareOneUserHome": true,
+    "nativeToolProcScansAfterAllJobsReady": true,
+    "noForeignUidOrSiblingCommandMarkersVisible": true,
+    "realCliAndToolsVerifiedFromOuterProcessView": true,
+    "sameNumericUidGidAndZeroNodeEffectiveCapabilities": true,
+    "outerPidCancellationKillsDetachedDescendants": true,
+    "otherJobsSurviveCancellation": true,
+    "nativeSessionResume": true,
+    "realManagedDaemonDispatchAndTimeline": true,
+    "parentDeathStopsDaemonAndQwen": true,
+    "crashRecoveryRetainsIdentityAndThreads": true,
+    "managedShutdownClosesSessionBeforeWebSocketOpen": true,
+    "backend": "Deterministic local OpenAI-compatible fixture"
+  },
+  "filesystemJail": false,
+  "networkNamespaceIsolation": false,
+  "limitedUserThreadApiComplete": false,
+  "tenantScopedPluginSdkOperationsComplete": false,
+  "approvedProfileVersionsAndModelToolsMcpGrantsComplete": false,
+  "personalWorkflowsAutomationsSchedulesComplete": false,
+  "corporateQwenAuthorizationVerified": false,
+  "liveExternalModelBackendVerified": false,
+  "fullRepositorySuiteRun": false
+}
