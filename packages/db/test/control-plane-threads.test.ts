@@ -107,6 +107,29 @@ it("commits ownership before notifications and rolls back missing or foreign aut
     expect(start(alice, { parentThreadId: parent.id }).parentThreadId).toBe(
       parent.id,
     );
+    const another = createControlPlaneProject(db, noopNotifier, {
+      userId: alice.user.id,
+      hostId: alice.environment.hostId,
+      name: "Another",
+      slug: "another",
+    }).project;
+    db.delete(controlPlaneProjectAccess)
+      .where(eq(controlPlaneProjectAccess.projectId, alice.project.id))
+      .run();
+    expect(() =>
+      start(alice, {
+        projectId: another.id,
+        environmentId: null,
+        parentThreadId: parent.id,
+      }),
+    ).toThrow(ControlPlaneThreadError);
+    db.insert(controlPlaneProjectAccess)
+      .values({
+        projectId: alice.project.id,
+        userId: alice.user.id,
+        role: "owner",
+      })
+      .run();
     for (const field of [
       "parentThreadId",
       "sourceThreadId",

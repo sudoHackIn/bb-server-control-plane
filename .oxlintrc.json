@@ -166,6 +166,9 @@
     {
       "files": [
         "apps/server/src/control-plane/config.ts",
+        "apps/server/src/control-plane/runtime.ts",
+        "apps/server/src/start-server.ts",
+        "apps/server/src/services/plugins/builtin-registry.ts",
         "apps/server/src/control-plane/qwen-context.ts"
       ],
       "rules": {

@@ -8,6 +8,15 @@ description: Diagnose the shared-server Qwen provider and its registered Unix ex
 Provider ID: `qwen-server`. This provider is for the shared control-plane
 deployment, not an unrestricted local Qwen executable.
 
+The fork bundles this plugin disabled by default. An administrator enables it
+through ordinary plugin management after configuring `runtime.daemonEntrypoint`
+and `runtime.cliDirectory` in the private control-plane configuration. The managed
+runtime supplies the execution-context socket, enrolls one daemon with a private
+machine credential and disables that daemon's local HTTP API. Linux deployment
+requires `/usr/bin/setpriv`; parent-death protection stops the daemon when the
+server exits unexpectedly. The root job supervisor independently checks its
+original service ancestors before retaining an agent process.
+
 Every launch requires a private execution-context socket and a server-owned BB
 thread identity. The provider requests the registered user UID/GID, HOME, cwd
 and native Qwen session binding; caller-selected paths and identities are not

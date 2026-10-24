@@ -234,6 +234,16 @@ Shared deployments must set `BB_CONTROL_PLANE_REQUIRED=1`; a private
 origin and administrator password hash. Without configuration and without the
 required flag, upstream single-user behavior is preserved.
 
+The fork can supervise one local daemon when private `control-plane.json`
+contains `runtime.daemonEntrypoint` (the built host-daemon `control-plane.js`)
+and `runtime.cliDirectory` (the built CLI directory). Both are absolute paths;
+certificate users must also be configured. This mode keeps the host identity
+in the server data directory, uses private machine bootstrap and a Unix socket
+for Qwen execution context, and disables the daemon's local HTTP API. For a
+private server CA, start the server with `NODE_EXTRA_CA_CERTS`. Administrators
+enable the bundled Qwen Server provider through normal plugin management;
+packaging the provider does not authorize arbitrary user workspaces.
+
 Set Machines → Server URL reachable by machines, or run `bb settings general
 machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
 Set Default machine access with

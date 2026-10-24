@@ -16,6 +16,8 @@ async function main() {
       "tls-key": { type: "string" },
       "tls-cert": { type: "string" },
       "client-ca": { type: "string" },
+      "daemon-entrypoint": { type: "string" },
+      "cli-directory": { type: "string" },
     },
     strict: true,
   });
@@ -47,6 +49,14 @@ async function main() {
       login: values.login,
       passwordHash: await hashAdminPassword(password),
     },
+    ...(values["daemon-entrypoint"] || values["cli-directory"]
+      ? {
+          runtime: {
+            daemonEntrypoint: values["daemon-entrypoint"],
+            cliDirectory: values["cli-directory"],
+          },
+        }
+      : {}),
     ...([
       values["users-root"],
       values["tls-key"],

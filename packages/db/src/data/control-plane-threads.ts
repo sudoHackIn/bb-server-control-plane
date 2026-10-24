@@ -65,7 +65,10 @@ export function requireControlPlaneThreadOwner(
   for (const id of input.relatedThreadIds) {
     if (!id) continue;
     const owner = db
-      .select({ ownerUserId: controlPlaneThreads.ownerUserId })
+      .select({
+        ownerUserId: controlPlaneThreads.ownerUserId,
+        projectId: threads.projectId,
+      })
       .from(controlPlaneThreads)
       .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
       .where(
@@ -76,7 +79,10 @@ export function requireControlPlaneThreadOwner(
         ),
       )
       .get();
-    if (owner?.ownerUserId !== input.ownerUserId)
+    if (
+      owner?.ownerUserId !== input.ownerUserId ||
+      !getControlPlaneProject(db, input.ownerUserId, owner.projectId)
+    )
       throw new ControlPlaneThreadError();
   }
   return { user, project };

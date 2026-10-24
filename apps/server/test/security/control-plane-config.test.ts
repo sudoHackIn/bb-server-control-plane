@@ -46,6 +46,32 @@ it("requires HTTPS and private server-owned TLS files when certificate users are
       requestCert: true,
       rejectUnauthorized: false,
     });
+    const runtime = {
+      daemonEntrypoint: "/opt/bb/apps/host-daemon/dist/control-plane.js",
+      cliDirectory: "/opt/bb/apps/cli/dist",
+    };
+    expect(
+      controlPlaneConfigSchema.safeParse({ ...config, runtime }).success,
+    ).toBe(true);
+    expect(
+      controlPlaneConfigSchema.safeParse({
+        ...config,
+        runtime,
+        users: undefined,
+      }).success,
+    ).toBe(false);
+    expect(
+      controlPlaneConfigSchema.safeParse({
+        ...config,
+        runtime: { ...runtime, daemonEntrypoint: "../daemon.js" },
+      }).success,
+    ).toBe(false);
+    expect(
+      controlPlaneConfigSchema.safeParse({
+        ...config,
+        runtime: { daemonEntrypoint: runtime.daemonEntrypoint },
+      }).success,
+    ).toBe(false);
     expect(
       controlPlaneConfigSchema.safeParse({
         ...config,

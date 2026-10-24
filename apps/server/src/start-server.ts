@@ -9,6 +9,7 @@ import {
   controlPlaneTls,
   loadControlPlaneConfig,
 } from "./control-plane/config.js";
+import { startControlPlaneRuntime } from "./control-plane/runtime.js";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -123,7 +124,8 @@ export function startServerPlugins(
 }
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
-  const tls = controlPlaneTls(loadControlPlaneConfig(serverConfig.BB_DATA_DIR));
+  const controlPlaneConfig = loadControlPlaneConfig(serverConfig.BB_DATA_DIR);
+  const tls = controlPlaneTls(controlPlaneConfig);
   const logger = createLogger({
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
@@ -468,6 +470,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     baseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
     fetch: sdkFetch,
   });
+  const managedRuntime =
+    controlPlaneConfig?.runtime && pendingServerMove === null
+      ? await startControlPlaneRuntime(
+          { db, machineAuth, logger },
+          controlPlaneConfig,
+          serverConfig.BB_DATA_DIR,
+        )
+      : null;
   let sweepInterval: ReturnType<typeof setInterval> | null = null;
   if (pendingServerMove === null) {
     telemetry.capture({ name: "app_started" });
@@ -507,6 +517,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      await managedRuntime?.close();
       serverMove.dispose();
       appUpdate.dispose();
       providerModelCatalogPrewarm?.stop();

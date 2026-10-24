@@ -32,6 +32,7 @@ import {
 } from "./machine-auth-proxy.js";
 
 interface StartHostDaemonOptions {
+  localApi?: boolean;
   enrollKey?: string;
   hostId?: string;
   bbExecutableDirectory?: string;
@@ -117,9 +118,12 @@ export async function startHostDaemon(
       });
     }
 
-    const localApiConfig = resolveHostDaemonLocalApiConfig({
-      hostDaemonPort: hostDaemonConfig.BB_HOST_DAEMON_PORT,
-    });
+    const localApiConfig =
+      options.localApi === false
+        ? null
+        : resolveHostDaemonLocalApiConfig({
+            hostDaemonPort: hostDaemonConfig.BB_HOST_DAEMON_PORT,
+          });
     const bbExecutablePath =
       options.bbExecutableDirectory !== undefined
         ? resolveBbExecutablePathInDirectory(options.bbExecutableDirectory)
@@ -156,7 +160,7 @@ export async function startHostDaemon(
       prepareRuntimeShellEnv({
         bbExecutableDirectory,
         bbExecutablePath,
-        hostDaemonPort: localApiConfig.port,
+        hostDaemonPort: localApiConfig?.port,
         inheritedPath: (await resolveUserShellPath()) ?? process.env.PATH,
         powershellExecutionPolicy:
           await resolvePowerShellExecutionPolicyDefault(),

@@ -5,6 +5,7 @@ import { access } from "node:fs/promises";
 import WebSocket from "ws";
 import { verifyUserDeployment } from "./check-control-plane-user-deployment.mjs";
 import { verifyQwenJobs } from "./check-control-plane-qwen-jobs.mjs";
+import { verifyManagedRuntime } from "./check-control-plane-managed-runtime.mjs";
 
 const origin = "http://127.0.0.1:8080";
 const password = "deployment-check-admin-password";
@@ -172,6 +173,11 @@ try {
     launch,
     signal: controller.signal,
   });
+  const managedRuntime = await verifyManagedRuntime({
+    launch,
+    signal: controller.signal,
+    password,
+  });
   process.stdout.write(
     JSON.stringify({
       deployedServer: true,
@@ -184,6 +190,7 @@ try {
       restartRevokesSessions: true,
       users,
       qwen,
+      managedRuntime,
     }) + "\n",
   );
 } finally {

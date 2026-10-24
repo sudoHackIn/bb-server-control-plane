@@ -1,0 +1,42 @@
+{
+  "scope": "Managed daemon bootstrap, native Qwen dispatch, timeline and lifecycle; limited user thread API remains pending",
+  "previousStageCommit": "1e0d88915",
+  "tests": {
+    "database": 636,
+    "serverControlPlane": 19,
+    "daemonLifecycleAuthConnection": 36
+  },
+  "strictDbServerDaemonTypechecks": true,
+  "changedTypeScriptLintAndFormatting": true,
+  "daemonProtocolFieldsChanged": false,
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "realNativeHostEnrollment": true,
+    "machineScopedBootstrapViaStdin": true,
+    "localDaemonHttpApiDisabled": true,
+    "realAdministratorApiThreadCreation": true,
+    "realHostDaemonBundledProviderDispatch": true,
+    "actualNativeToolUidGidGroupsHomeCwd": true,
+    "machineEnrollKeyAbsentFromAgentEnvironment": true,
+    "nativeTimelineIncludesAnswer": true,
+    "nativeSessionHistoryResumeAfterNormalRestart": true,
+    "stableHostIdWithNewDaemonInstance": true,
+    "parentSigkillStopsDaemonAndCapturedDescendants": true,
+    "parentSigkillStopsActualQwenAndRootSupervisor": true,
+    "crashRecoveryReconnectsAndReadsPersistedThread": true,
+    "sameUserSiblingJobIsolation": true,
+    "detachedDescendantCleanup": true,
+    "cancelBeforeLaunchFencing": true,
+    "backend": "Deterministic local OpenAI-compatible fixture"
+  },
+  "daemonProcessSupervision": "Linux setpriv parent-death SIGKILL; normal shutdown uses native daemon lifecycle",
+  "qwenProcessSupervision": "Fixed root helper checks original service ancestor PID/start-time identities and reaps its own subtree",
+  "userThreadApiImplemented": false,
+  "trustedPluginRealtimeTransportComplete": false,
+  "staleContextDirectoryReclamationComplete": false,
+  "approvedProfileVersionsAndModelToolsMcpGrantsComplete": false,
+  "perUserWorkflowsAutomationsSchedulesComplete": false,
+  "corporateQwenAuthorizationVerified": false,
+  "liveExternalModelBackendVerified": false,
+  "fullRepositorySuiteRun": false
+}

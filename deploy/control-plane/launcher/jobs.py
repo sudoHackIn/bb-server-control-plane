@@ -18,6 +18,34 @@ def process_info(pid):
         return None
 
 
+def client_ancestors(service_uid):
+    found = []
+    current = os.getppid()
+    visited = set()
+    while current > 1 and current not in visited:
+        visited.add(current)
+        info = process_info(current)
+        if not info:
+            raise RuntimeError('Launcher ancestry changed before start')
+        with open('/proc/' + str(current) + '/status', encoding='utf8') as file:
+            line = next(line for line in file if line.startswith('Uid:'))
+        real_uid, effective_uid = map(int, line.split()[1:3])
+        if service_uid in (real_uid, effective_uid):
+            found.append((current, info['start']))
+        current = info['parent']
+    if not found:
+        raise RuntimeError('Launcher service ancestry is unavailable')
+    return found
+
+
+def clients_alive(clients):
+    for pid, start in clients:
+        info = process_info(pid)
+        if not info or info['start'] != start or info['state'] == 'Z':
+            return False
+    return True
+
+
 def descendants(root):
     processes = {}
     for name in os.listdir('/proc'):
@@ -112,6 +140,7 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock):
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise RuntimeError('Could not supervise agent descendants')
     pid = os.getpid()
+    clients = client_ancestors(policy['serviceUid'])
     info = process_info(pid)
     if not info:
         raise RuntimeError('Could not identify supervisor')
@@ -144,7 +173,12 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock):
                                   '--clear-groups', '--no-new-privs', '--', policy['node'],
                                   '--dns-result-order=ipv4first', policy['cli'], *arguments],
                                  env=env, close_fds=True, start_new_session=True)
-        return child.wait()
+        while clients_alive(clients):
+            try:
+                return child.wait(timeout=0.25)
+            except subprocess.TimeoutExpired:
+                pass
+        return 125
     finally:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)

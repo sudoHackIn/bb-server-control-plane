@@ -27,6 +27,13 @@ export const controlPlaneConfigSchema = z
         passwordHash: z.string().refine(isAdminPasswordHash),
       })
       .strict(),
+    runtime: z
+      .object({
+        daemonEntrypoint: z.string().refine(isAbsolute),
+        cliDirectory: z.string().refine(isAbsolute),
+      })
+      .strict()
+      .optional(),
     users: z
       .object({
         usersRoot: z
@@ -53,6 +60,10 @@ export const controlPlaneConfigSchema = z
   .refine(
     (value) => !value.users || value.publicOrigin.startsWith("https:"),
     "Certificate login requires HTTPS",
+  )
+  .refine(
+    (value) => !value.runtime || value.users !== undefined,
+    "Managed execution requires the user registry",
   );
 
 export type ControlPlaneConfig = z.infer<typeof controlPlaneConfigSchema>;

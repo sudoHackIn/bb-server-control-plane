@@ -136,6 +136,11 @@ export const BUILTIN_PLUGINS = [
     defaultEnabled: true,
   },
   {
+    name: "provider-qwen-server",
+    pluginId: "provider-qwen-server",
+    defaultEnabled: false,
+  },
+  {
     name: "provider-usage",
     pluginId: "bb--provider-usage",
     defaultEnabled: true,

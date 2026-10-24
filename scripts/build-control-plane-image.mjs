@@ -29,6 +29,10 @@ try {
     ],
     ["scripts/check-qwen-job-client.mjs", "qwen-job-client.mjs"],
     [
+      "scripts/check-control-plane-managed-runtime.mjs",
+      "check-control-plane-managed-runtime.mjs",
+    ],
+    [
       "scripts/check-control-plane-user-deployment.mjs",
       "check-control-plane-user-deployment.mjs",
     ],

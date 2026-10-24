@@ -1807,6 +1807,9 @@ importers:
       bb-plugin-provider-pi:
         specifier: workspace:*
         version: link:../../plugins/provider-pi
+      bb-plugin-provider-qwen-server:
+        specifier: workspace:*
+        version: link:../../plugins/provider-qwen-server
       bb-plugin-provider-retry:
         specifier: workspace:*
         version: link:../../plugins/provider-retry

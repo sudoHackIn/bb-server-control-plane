@@ -66,6 +66,10 @@
     "category": "agents-and-providers",
     "screenshots": []
   },
+  "provider-qwen-server": {
+    "category": "agents-and-providers",
+    "screenshots": []
+  },
   "provider-acp": {
     "category": "agents-and-providers",
     "screenshots": []
