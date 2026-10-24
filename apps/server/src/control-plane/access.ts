@@ -25,6 +25,11 @@ export function currentControlPlanePrincipal(): ControlPlanePrincipal | null {
   return principals.getStore() ?? null;
 }
 
+export function assertServiceRealtimePrincipal(): void {
+  if (currentControlPlanePrincipal()?.kind === "user")
+    throw new Error("User realtime requires a scoped transport");
+}
+
 export function withControlPlaneUser<T>(userId: string, run: () => T): T {
   return principals.run({ kind: "user", userId }, run);
 }

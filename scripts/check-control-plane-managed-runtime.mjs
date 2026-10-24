@@ -4,6 +4,7 @@ import { request } from "node:https";
 import { once } from "node:events";
 import { readFile, writeFile, readdir } from "node:fs/promises";
 import Database from "better-sqlite3";
+import WebSocket from "ws";
 
 export async function verifyManagedRuntime({ launch, signal, password }) {
   const config = JSON.parse(
@@ -138,6 +139,22 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       req.end(body === undefined ? undefined : JSON.stringify(body));
     });
   let child;
+  let observer;
+  let verified = false;
+  const processInfo = async (pid) => {
+    try {
+      const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+      const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      return {
+        parent: Number(fields[1]),
+        start: fields[19],
+        state: fields[0],
+      };
+    } catch (error) {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    }
+  };
   let log = "";
   const wait = async (check, label) => {
     const deadline = Date.now() + 30000;
@@ -275,6 +292,42 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       );
       created.push({ threadId, sessionId: owner.qwen_session_id });
     }
+    const sdkSignals = [];
+    let observerReady = false;
+    observer = new WebSocket(
+      config.publicOrigin.replace(/^http/u, "ws") + "/ws",
+      { ca, headers: { authorization: `Bearer ${token}` } },
+    );
+    observer.on("message", (data) => {
+      const message = JSON.parse(data.toString());
+      if (message.type === "pong") observerReady = true;
+      if (
+        message.type === "plugin-signal" &&
+        message.pluginId === "concurrency-limit" &&
+        message.channel === "configuration-changed"
+      )
+        sdkSignals.push(message);
+    });
+    await once(observer, "open", { signal });
+    observer.send(JSON.stringify({ type: "ping" }));
+    await wait(() => observerReady, "administrative realtime observer");
+    let daemonToRestart;
+    for (const name of await readdir("/proc")) {
+      if (!/^\d+$/u.test(name)) continue;
+      const info = await processInfo(Number(name));
+      if (info?.parent !== child.pid) continue;
+      const command = await readFile(`/proc/${name}/cmdline`, "utf8");
+      if (command.split("\0").includes(config.runtime.daemonEntrypoint))
+        daemonToRestart = Number(name);
+    }
+    assert.ok(daemonToRestart, "Missing daemon for private SDK event check");
+    sdkSignals.length = 0;
+    process.kill(daemonToRestart, "SIGTERM");
+    await wait(() => sdkSignals.length > 0, "trusted plugin SDK host event");
+    await wait(() => {
+      const current = connected();
+      return current && current.instance_id !== firstSession.instance_id;
+    }, "supervised daemon restart");
     child.kill("SIGTERM");
     await once(child, "exit", { signal });
     assert.equal(
@@ -325,20 +378,6 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         .get(created[0].threadId).qwen_session_id,
       created[0].sessionId,
     );
-    const processInfo = async (pid) => {
-      try {
-        const stat = await readFile(`/proc/${pid}/stat`, "utf8");
-        const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-        return {
-          parent: Number(fields[1]),
-          start: fields[19],
-          state: fields[0],
-        };
-      } catch (error) {
-        if (error.code === "ENOENT") return null;
-        throw error;
-      }
-    };
     let daemonPid;
     for (const name of await readdir("/proc")) {
       if (!/^\d+$/u.test(name)) continue;
@@ -438,8 +477,11 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       token,
     );
     assert.equal(recoveredThread.status, 200);
+    verified = true;
     return {
       realDaemonEnrollment: true,
+      trustedPluginSdkRealtimeEvents: true,
+      staleContextReclaimedAfterCrash: true,
       localDaemonApiDisabled: true,
       privateMachineBootstrap: true,
       realBbThreadDispatch: true,
@@ -458,8 +500,18 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       child.kill("SIGTERM");
       await once(child, "exit", { signal });
     }
+    observer?.terminate();
+    const remainingContexts = (await readdir("/srv/bb")).filter((name) =>
+      name.startsWith("qwen-execution-"),
+    );
     backend.closeAllConnections();
     await new Promise((resolve) => backend.close(resolve));
     db.close();
+    if (verified)
+      assert.deepEqual(
+        remainingContexts,
+        [],
+        "Stale context directories remain after crash recovery",
+      );
   }
 }

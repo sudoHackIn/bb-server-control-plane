@@ -1,4 +1,5 @@
 import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
+import { assertServiceRealtimePrincipal } from "../../control-plane/access.js";
 import type { ContractTagDeclarations } from "@bb/domain";
 import {
   environmentCompositionSchema,
@@ -164,17 +165,10 @@ export function isNeedsConfigurationError(error: unknown): error is Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
 }
 
-/**
- * The handler this plugin registered per hook, or null where it registered
- * none. A mapped type over the hook-name union rather than a loose map: a hook
- * added to the contract without an entry here fails to compile, which is what
- * keeps the registry and the contract from drifting.
- */
 export type PluginHookRecords = {
   [K in PluginHookName]: PluginHookHandler<K> | null;
 };
 
-/** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
 type PluginThreadEventHandlers = {
   [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
 };
@@ -261,7 +255,7 @@ type PluginSettingsListener = (
 export interface PluginApiHandle {
   api: BbPluginApi;
   disposeHooks: Array<() => void | Promise<void>>;
-  /** Handlers recorded by `bb.onInstall`; run once after a fresh install. */
+
   installHandlers: Array<() => void | Promise<void>>;
   settings: {
     descriptors: PluginSettingDescriptors;
@@ -269,7 +263,7 @@ export interface PluginApiHandle {
   };
   databaseHandles: Database.Database[];
   threadEventHandlers: PluginThreadEventHandlers;
-  /** Hook handlers recorded by `bb.experimental_hooks.on`. */
+
   hooks: PluginHookRecords;
   environmentCompositions: Map<string, NormalizedPluginEnvironmentComposition>;
   environmentProviders: Map<string, NormalizedPluginEnvironmentProvider>;
@@ -278,7 +272,7 @@ export interface PluginApiHandle {
     string,
     import("@get-bb/plugin-sdk").ServerAccessProviderDeclaration
   >;
-  /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
+
   httpRoutes: PluginHttpRouteRecord[];
   websocketRoutes: PluginWebSocketRouteRecord[];
   rpcHandlers: Map<string, PluginRpcHandler>;
@@ -353,9 +347,26 @@ function wrapSdkForPlugin(
   sdk: BbSdk,
   pluginId: string,
   rpcCallerSdk: BbSdk,
+  disposeHooks: Array<() => void | Promise<void>>,
+  assertLive: () => void,
 ): PluginBbSdk {
   return {
     ...sdk,
+    subscribe(args) {
+      assertLive();
+      assertServiceRealtimePrincipal();
+      const stop = sdk.subscribe(args);
+      let active = true;
+      const unsubscribe = () => {
+        if (!active) return;
+        active = false;
+        stop();
+        const index = disposeHooks.indexOf(unsubscribe);
+        if (index !== -1) disposeHooks.splice(index, 1);
+      };
+      disposeHooks.push(unsubscribe);
+      return unsubscribe;
+    },
     plugins: {
       ...sdk.plugins,
       callRpc(args) {
@@ -497,11 +508,7 @@ export function createPluginApi(options: {
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
   openTunnelIngress: (audience: string) => Promise<TunnelIngressLease>;
-  /**
-   * This load's rpc caller token, attached to the plugin's
-   * `bb.sdk.plugins.callRpc` requests so handlers see it as the caller.
-   * Revoked when the handle is invalidated.
-   */
+
   rpcCaller: PluginRpcCallerCredential;
   invalidateRpc: (tags: readonly string[] | null) => void;
   whileRpcWatched?: (
@@ -515,18 +522,9 @@ export function createPluginApi(options: {
   isEnvironmentProviderIdTaken: (id: string) => string | undefined;
   isMachineProviderIdTaken: (id: string) => string | undefined;
   reportAgentToolProblem: (message: string) => void;
-  /**
-   * Schedules a re-attempt of every plugin-queued row
-   * (`bb.experimental_hooks.recheck`). Coalescing, pacing and the walk
-   * itself belong to the queue; this only asks for it.
-   */
+
   requestQueueDrain: () => void;
-  /**
-   * The names this plugin's manifest declares under
-   * `bb.branding.experimental_icons`: what a namespaced glyph
-   * (`"<pluginId>/<name>"`) in a tool presentation or a provider icon must
-   * name. Empty when the manifest declares none.
-   */
+
   declaredIconNames: ReadonlySet<string>;
   brandingIcon: string | undefined;
   requestInteraction: (
@@ -1231,21 +1229,15 @@ export function createPluginApi(options: {
     on(hook, handler) {
       assertLive();
       if (hooks[hook] !== null) {
-        // Two handlers from one plugin for one hook would make the order
-        // within the plugin invisible. Say so at registration rather than
-        // silently keeping one.
         throw new Error(pluginHookAlreadyRegisteredMessage(hook));
       }
       storePluginHook(hooks, hook, handler);
     },
     async recheck(hook) {
       assertLive();
-      // One hook key exists; the parameter selects which question to re-pose
-      // and widens additively when a second key ever ships.
+
       void hook;
-      // Resolves on SCHEDULING. The walk runs on a later macrotask, and the
-      // caller is not the one it reports to — a failed re-attempt lands on the
-      // row it failed, like every other background drain.
+
       requestQueueDrain();
     },
   };
@@ -1450,6 +1442,8 @@ export function createPluginApi(options: {
           token: rpcCaller.token,
           fetch: options.getSdkFetch?.(),
         }),
+        disposeHooks,
+        assertLive,
       );
       return wrappedSdk;
     },

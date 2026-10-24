@@ -321,6 +321,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   const {
     app,
     sdkFetch,
+    sdkWebsocket,
     closeWebSockets,
     injectWebSocket,
     pluginCatalogService,
@@ -469,6 +470,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   pluginService.bindSdk({
     baseUrl: `http://127.0.0.1:${serverConfig.BB_SERVER_PORT}`,
     fetch: sdkFetch,
+    websocket: sdkWebsocket,
   });
   const managedRuntime =
     controlPlaneConfig?.runtime && pendingServerMove === null

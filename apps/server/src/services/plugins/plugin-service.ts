@@ -242,16 +242,17 @@ export interface PluginStartOptions {
 export interface PluginService {
   isBuiltin(id: string): boolean;
   events: PluginThreadEventEmitter;
-  /** The hook chain the dispatch pipeline consults; registered in createApp. */
+
   hooks: PluginHookProvider;
   environmentProviders: PluginEnvironmentProviderBridge;
   machineProviders: PluginMachineProviderBridge;
   serverAccessProviders: import("./plugin-server-access-registry.js").ServerAccessBridge;
-  /**
-   * Bind the in-process BB SDK to the running server. Call once the HTTP
-   * listener is up, before start(): bb.sdk throws until this runs.
-   */
-  bindSdk(args: { baseUrl: string; fetch?: typeof fetch }): void;
+
+  bindSdk(args: {
+    baseUrl: string;
+    fetch?: typeof fetch;
+    websocket?: import("@bb/sdk").BbRealtimeSocketFactory;
+  }): void;
   start(options?: PluginStartOptions): Promise<void>;
   stop(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
@@ -307,26 +308,9 @@ export interface PluginService {
   getSafeMode(): boolean;
   setSafeMode(enabled: boolean): Promise<PluginSafeModeUpdateResponse>;
   getApi(id: string): BbPluginApi | undefined;
-  /**
-   * Whether this server still means to run this plugin, which is what decides
-   * a `plugin:<id>` queue wait's fate: core clears a wait whose owner is gone
-   * rather than stranding the user's turn.
-   *
-   * Loaded is the obvious case and not the only one. A plugin the current load
-   * pass has not reached yet counts, because nothing is loaded while the server
-   * boots and holds released then are released seconds before their plugin
-   * could restate them. So does one paused for a server move, which resumes on
-   * rollback or on the target. Everything else — uninstalled, disabled, failed,
-   * incompatible, or never reached by a pass that has since ended — does not,
-   * and its waits clear.
-   */
+
   isPluginExpectedToRun(id: string): boolean;
-  /**
-   * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
-   * plus the current content hash (the route compares ?h against it for
-   * cache policy). Undefined when the plugin has no loadable bundle, or no
-   * CSS for kind "css".
-   */
+
   getAppAsset(
     id: string,
     kind: "js" | "css",
@@ -375,11 +359,7 @@ export interface PluginService {
   ): PluginWireLookup<PluginWebSocketRouteRecord>;
   discoverRpc(query: PluginRpcDiscoveryQuery): PublishedPluginRpcMethod[];
   getRpcHandler(id: string, method: string): PluginWireLookup<PluginRpcHandler>;
-  /**
-   * The caller of a plugin rpc request: a plugin when `token` is the live
-   * per-load token its `bb.sdk.plugins.callRpc` attaches, the client when no
-   * token was sent, and not ok for any other token.
-   */
+
   resolveRpcCaller(token: string | undefined): PluginRpcCallerResolution;
   invokeHttpRoute(
     id: string,
@@ -1113,9 +1093,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             loadedPlugin?.handle
               .listProviderDeclarations()
               .map((declaration) => declaration.id) ?? [],
-          // Declared icons ride the identity like the compact icon, so a
-          // row referencing "<pluginId>/<name>" resolves while the plugin is
-          // disabled and stops resolving only once it is uninstalled.
+
           icons: Object.fromEntries(
             [...(brandingSet?.icons ?? [])].map(([name, asset]) => [
               name,
@@ -1270,8 +1248,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   ): Promise<void> {
     deps.onPluginUnregistered?.(row.id);
     forgetPluginProviders(deps.db, row.id, providerIds);
-    // The uninstalled tree is no longer reloadable, so stop the module
-    // resolve hook from scanning it on every later import.
+
     forgetMutableRoot(row.rootDir);
     deletePluginSchedules(deps.db, row.id);
     deleteAllPluginSettings(deps.db, row.id);
@@ -1446,8 +1423,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         buildQueuedMessageEventEmitter("message.dispatched"),
       emitMessageCancelled: buildQueuedMessageEventEmitter("message.cancelled"),
       emitTurnFailed(threadId) {
-        // Built lazily inside the emitter: with no listener the failure path
-        // pays one map lookup and never touches the database.
         emitThreadEvent("turn.failed", () =>
           buildTurnFailedEvent(deps.db, threadId),
         );
@@ -1521,8 +1496,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               const manifest = await readPluginManifest(bundled.rootDir);
               const hasApp = manifest.appEntry !== undefined;
               const hasHost = manifest.hostEntry !== undefined;
-              // A dropped entry can no longer rebuild, so its last build
-              // problem would otherwise stick forever.
+
               if (!hasApp) setDevBuildProblem(row.id, "frontend", null);
               if (!hasHost) setDevBuildProblem(row.id, "host", null);
               return { hasApp, hasHost };

@@ -159,12 +159,15 @@ import {
 } from "./services/server-move/pending-boot.js";
 
 type CloseWebSockets = () => Promise<void>;
+import type { BbRealtimeSocketFactory } from "@bb/sdk";
+import { createPrivateRealtime } from "./control-plane/realtime.js";
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
 type WebSocketCloseError = Error | undefined;
 
 interface ServerApp {
   app: Hono;
   sdkFetch: typeof fetch | undefined;
+  sdkWebsocket: BbRealtimeSocketFactory | undefined;
   closeWebSockets: CloseWebSockets;
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
@@ -520,6 +523,7 @@ export function createApp(
   const sdkFetch: typeof fetch | undefined = controlPlane
     ? (input, init) => controlPlane.dispatch(app, input, init)
     : undefined;
+  const privateRealtime = controlPlane ? createPrivateRealtime(deps.hub) : null;
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
     app,
   });
@@ -855,18 +859,14 @@ export function createApp(
         pluginId,
       });
     },
-    // `bb.experimental_hooks.recheck()`: a plugin whose wait condition
-    // may have changed asks core to re-attempt the plugin-queued rows. Core
-    // owns the walk, the coalescing and the pacing; the plugin owns knowing
-    // when to ask.
+
     requestQueueDrain: () => {
       requestQueuedMessageDispatch(deps, { kind: "plugin-recheck" });
     },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
-  // Messages queued while a thread awaited user interaction stop waiting once
-  // that interaction settles (#1650); the idle drain then delivers them.
+
   deps.pendingInteractions.setThreadInteractionSettledListener((threadId) => {
     requestQueuedMessageDispatch(deps, {
       kind: "interaction-settled",
@@ -875,8 +875,7 @@ export function createApp(
   });
   setTurnTelemetryDeps(deps);
   setPluginThreadEventEmitter(pluginService.events);
-  // Bridge the dispatch pipeline to this service's hooks. Until this runs
-  // there are no hooks, which is exactly the zero-overhead path.
+
   setPluginHookProvider(pluginService.hooks);
   setPluginEnvironmentProviderBridge(pluginService.environmentProviders);
   setEnvironmentProvisioningRecheckHandler((threadId) =>
@@ -897,7 +896,7 @@ export function createApp(
     deps.hub.notifySystem(["config-changed"]);
     void recheckEnvironmentProviderCreations(deps, pluginId);
   });
-  // Bridge runtime-config assembly to plugin skills + context (§4.4).
+
   setPluginAgentContributions(pluginService);
   const serverMove = createServerMoveCoordinator(
     createDefaultServerMoveEnvironment({
@@ -1119,12 +1118,15 @@ export function createApp(
   return {
     app,
     sdkFetch,
-    closeWebSockets: () =>
-      closeWebSocketServer({
+    sdkWebsocket: privateRealtime?.websocket,
+    closeWebSockets: () => {
+      privateRealtime?.close();
+      return closeWebSocketServer({
         forceCloseAfterMs: WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS,
         reason: WEB_SOCKET_SHUTDOWN_REASON,
         server: wss,
-      }),
+      });
+    },
     injectWebSocket,
     pluginService,
     pluginCatalogService,

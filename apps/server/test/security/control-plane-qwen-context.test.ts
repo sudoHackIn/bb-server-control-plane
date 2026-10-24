@@ -1,6 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { request } from "node:http";
-import { lstat, mkdtemp, rm } from "node:fs/promises";
+import {
+  lstat,
+  mkdtemp,
+  rm,
+  mkdir,
+  writeFile,
+  readFile,
+  symlink,
+} from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -107,6 +117,54 @@ it("serves only validated owned thread/session bindings on a private Unix socket
     await expect(lstat(service.socketPath)).rejects.toMatchObject({
       code: "ENOENT",
     });
+    db.$client.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("reclaims a crashed listener without touching active listeners, ordinary files or symlinks", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "bb-context-reclaim-"));
+  const db = createMigratedConnection();
+  const staleDir = join(directory, "qwen-execution-stale");
+  await mkdir(staleDir, { mode: 0o700 });
+  const staleSocket = join(staleDir, "context.sock");
+  const child = spawn(
+    process.execPath,
+    [
+      "-e",
+      'const net=require("node:net"),fs=require("node:fs");const path=process.argv[1];net.createServer(()=>{}).listen(path,()=>{fs.chmodSync(path,0o600);process.stdout.write("ready")});',
+      staleSocket,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  await once(child.stdout, "data");
+  const exited = once(child, "exit");
+  child.kill("SIGKILL");
+  await exited;
+  const preserved = join(directory, "qwen-execution-ordinary");
+  await mkdir(preserved, { mode: 0o700 });
+  await writeFile(join(preserved, "context.sock"), "preserve this file", {
+    mode: 0o600,
+  });
+  await symlink(preserved, join(directory, "qwen-execution-link"));
+  const first = await startControlPlaneQwenContextService(db, directory);
+  try {
+    await expect(lstat(staleDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readFile(join(preserved, "context.sock"), "utf8")).toBe(
+      "preserve this file",
+    );
+    expect(
+      (await lstat(join(directory, "qwen-execution-link"))).isSymbolicLink(),
+    ).toBe(true);
+    const second = await startControlPlaneQwenContextService(db, directory);
+    try {
+      expect((await send(first.socketPath, {})).status).toBe(400);
+      expect((await send(second.socketPath, {})).status).toBe(400);
+    } finally {
+      await second.close();
+    }
+  } finally {
+    await first.close();
     db.$client.close();
     await rm(directory, { recursive: true, force: true });
   }

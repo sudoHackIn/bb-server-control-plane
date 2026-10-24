@@ -168,6 +168,10 @@
         "apps/server/src/control-plane/config.ts",
         "apps/server/src/control-plane/runtime.ts",
         "apps/server/src/start-server.ts",
+        "apps/server/src/server.ts",
+        "apps/server/src/services/plugins/plugin-api.ts",
+        "apps/server/src/services/plugins/plugin-runtime.ts",
+        "apps/server/src/services/plugins/plugin-service.ts",
         "apps/server/src/services/plugins/builtin-registry.ts",
         "apps/server/src/control-plane/qwen-context.ts"
       ],

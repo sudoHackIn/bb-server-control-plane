@@ -705,10 +705,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
-  /**
-   * The handlers registered for one hook, in plugin install order (the `loaded`
-   * map's insertion order, which is the order `listInstalledPlugins` returns).
-   */
   function listPluginHooks<K extends PluginHookName>(
     hook: K,
   ): PluginHookRegistration<K>[] {
@@ -884,18 +880,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (pending.size === 0) pendingInvocations.delete(id);
   }
 
-  /**
-   * Fire-and-forget dispatch: the lifecycle seam returns immediately; the
-   * payload is assembled and handlers run on the next macrotask, after the
-   * transition (and any surrounding transaction) has settled. Handlers are
-   * looked up live at dispatch time, so a plugin disposed in between
-   * receives nothing.
-   *
-   * A builder may return null for "on second look there is nothing to
-   * announce" — a `turn.failed` on a thread that never dispatched a turn, say.
-   * The builder runs only when a handler is listening, so that second look
-   * costs nothing on a stock install.
-   */
   function emitThreadEvent<E extends PluginThreadEventName>(
     event: E,
     buildPayload: () => PluginThreadEventPayloads[E] | null,
@@ -1699,8 +1683,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         reportAgentToolProblem(row.id, message);
       },
       requestQueueDrain: () => {
-        // Unwired in isolated plugin-runtime tests, which have no thread
-        // queue to walk; asking for a drain there is honestly a no-op.
         deps.requestQueueDrain?.();
       },
       requestInteraction: (args) => {
@@ -2077,9 +2059,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return { outcome: "found", value };
   }
 
-  function bindSdk(args: { baseUrl: string; fetch?: typeof fetch }): void {
+  function bindSdk(args: {
+    baseUrl: string;
+    fetch?: typeof fetch;
+    websocket?: import("@bb/sdk").BbRealtimeSocketFactory;
+  }): void {
     boundFetch = args.fetch;
-    boundSdk = createNodeBbSdk({ baseUrl: args.baseUrl, fetch: args.fetch });
+    boundSdk = createNodeBbSdk({
+      baseUrl: args.baseUrl,
+      fetch: args.fetch,
+      websocket: args.websocket,
+    });
     boundLoopbackBaseUrl = args.baseUrl;
   }
 

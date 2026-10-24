@@ -1428,6 +1428,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Use bb's own API from plugin server code. With this, a plugin can:",
         bullets: [
           "Create threads attributed to the plugin, send messages, and manage projects and machines",
+          "Subscribe to native SDK notifications; subscriptions are released when the plugin is disposed, or earlier through the returned unsubscribe function",
           "Start plugin updates in the background and follow their progress or rollback",
           "Read Viewed state for up to 500 file paths; mark and clear return acknowledgements",
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
@@ -1435,6 +1436,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "BbPluginApi",
           "PluginServerApi",
+          "PluginBbSdk.subscribe",
           "PluginBbSdk.hosts.get",
           "PluginBbSdk.hosts.experimental_discoverRepos",
           "PluginBbSdk.experimental_promptHistory.list",

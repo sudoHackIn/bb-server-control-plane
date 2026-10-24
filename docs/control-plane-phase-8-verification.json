@@ -1,0 +1,42 @@
+{
+  "scope": "Private trusted-plugin SDK realtime, subscription disposal and stale Unix-context recovery",
+  "previousStageCommit": "890b0043e",
+  "tests": {
+    "selectedServer": 45,
+    "realtimeContractAndLifecycle": 4,
+    "qwenContext": 2
+  },
+  "strictServerAndPluginGuideTypechecks": true,
+  "changedTypeScriptLintAndFormatting": true,
+  "nativeProtocolHandlersReused": true,
+  "privateRealtimeUsesNoNetworkConnectionOrCredential": true,
+  "publicAndPrivateSdkEventContract": true,
+  "pluginDisablementReleasesSdkSubscriptions": true,
+  "savedDisposedSdkCannotSubscribe": true,
+  "userGlobalSubscriptionsDeniedIncludingSharedTargets": true,
+  "malformedMessageAndPendingOpenCleanup": true,
+  "crashedSocketReclaimed": true,
+  "activeListenersFilesAndSymlinksPreserved": true,
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "trustedBundledPluginReceivesNativeSdkHostEvent": true,
+    "normalPluginSignalObservedAfterDaemonRestart": true,
+    "privateContextReclaimedAfterRealParentSigkill": true,
+    "nativeQwenUidHomeToolsTimelineAndResume": true,
+    "parentDeathCleanupAndCrashRecovery": true,
+    "publicApiAuthenticationRemainsRequired": true,
+    "backend": "Deterministic local OpenAI-compatible fixture"
+  },
+  "crossUidProcessArgvProbe": {
+    "otherUidCanReadInitialCommandLine": true,
+    "dummyPrivateMarkerWasVisible": true,
+    "privateLauncherArgvProtectionComplete": false
+  },
+  "limitedUserThreadApiComplete": false,
+  "tenantScopedPluginSdkOperationsComplete": false,
+  "approvedProfileVersionsAndModelToolsMcpGrantsComplete": false,
+  "personalWorkflowsAutomationsSchedulesComplete": false,
+  "corporateQwenAuthorizationVerified": false,
+  "liveExternalModelBackendVerified": false,
+  "fullRepositorySuiteRun": false
+}
