@@ -35,8 +35,8 @@ export const controlPlaneConfigSchema = z
             (value) =>
               isAbsolute(value) && normalize(value) === value && value !== "/",
           ),
-        firstUid: z.number().int().min(200000).max(2147483646),
-        lastUid: z.number().int().min(200000).max(2147483646),
+        firstUid: z.number().int().min(200000).max(299999),
+        lastUid: z.number().int().min(200000).max(299999),
         tls: z
           .object({
             keyFile: z.string().refine(isAbsolute),

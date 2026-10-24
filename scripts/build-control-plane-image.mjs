@@ -11,6 +11,11 @@ try {
   for (const name of ["Dockerfile", "package.json", "package-lock.json"]) {
     await cp(join(repo, "deploy/control-plane", name), join(directory, name));
   }
+  await cp(
+    join(repo, "deploy/control-plane/launcher"),
+    join(directory, "launcher"),
+    { recursive: true },
+  );
   for (const [source, target] of [
     ["apps/server/dist", "server"],
     ["packages/bundled-plugins/dist", "server/builtin-plugins"],

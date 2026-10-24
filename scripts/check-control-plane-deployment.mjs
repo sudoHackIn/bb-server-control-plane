@@ -12,10 +12,13 @@ const deadline = setTimeout(() => controller.abort(), 60000);
 const children = new Set();
 
 function launch(args, extra = {}) {
-  const child = spawn(process.execPath, args, {
+  const { file = process.execPath, ...options } = extra;
+  const child = spawn(file, args, {
+    uid: 1000,
+    gid: 1000,
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, BB_APP_URL: origin },
-    ...extra,
+    env: { ...process.env, HOME: "/home/node", BB_APP_URL: origin },
+    ...options,
   });
   children.add(child);
   child.once("exit", () => children.delete(child));

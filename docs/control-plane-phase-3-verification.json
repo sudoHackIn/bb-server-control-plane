@@ -1,0 +1,29 @@
+{
+  "scope": "Personal directory provisioning, not BB thread or Qwen execution",
+  "previousStageCommit": "ccdd647ec",
+  "serverSecurityAndPluginSdkTests": 46,
+  "strictTypechecks": ["@bb/server", "@bb/db", "@bb/cli", "@bb/sdk"],
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "serverUid": 1000,
+    "testControllerRootOnlyForUidSwitching": true,
+    "actualUserUids": [200000, 200001],
+    "supplementaryGroupsCleared": true,
+    "noNewPrivileges": true,
+    "cliProvisioning": true,
+    "homeAndProjectWritesAllowed": true,
+    "otherHomeAndProjectDenied": true,
+    "parentListingDenied": true,
+    "serviceDatabaseAndLauncherStateDenied": true,
+    "callerSelectedUidHomeRejected": true,
+    "helperUidReassignmentRejected": true,
+    "agentUidCannotInvokePrivilegedHelper": true,
+    "symlinkReplacementRejected": true,
+    "retryPreservesIdentity": true,
+    "usersFilesystem": "Disposable Docker volume with POSIX ACL support",
+    "tmpfsAclFallback": false
+  },
+  "bbProjectObjectsCreated": false,
+  "qwenExecutionVerified": false,
+  "fullRepositoryTestSuiteRun": false
+}

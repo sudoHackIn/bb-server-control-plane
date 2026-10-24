@@ -11,6 +11,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Revoke established administrative WebSockets on logout or expiration.
 - [x] Preserve trusted server-plugin SDK calls through a private in-process transport, including inter-plugin RPC. No full-access network credential is supplied to agent processes.
 - [x] Integrate certificate/PKCE user login, 24-hour user tokens and the environment registry into this repository's shared BB database. This allocates identities and paths; provisioning those paths and running processes are the next stage.
+- [x] Provision registered HOME/project directories through a fixed privileged helper, with immutable UUID/UID bindings and Docker checks under actual numeric UIDs. Qwen/thread execution remains a later stage.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [ ] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry.
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
@@ -107,6 +108,8 @@ Initialize a dedicated volume with a private password file, then start the image
 
 ```sh
 docker volume create bb-control-plane-data
+docker volume create bb-control-plane-users
+docker volume create bb-control-plane-launcher
 docker run --rm -i \
   --mount type=volume,src=bb-control-plane-data,dst=/srv/bb \
   --entrypoint node bb-control-plane:local configure.mjs \
@@ -114,6 +117,8 @@ docker run --rm -i \
   < /secure/admin-password
 docker run --detach --name bb-control-plane \
   --mount type=volume,src=bb-control-plane-data,dst=/srv/bb \
+  --mount type=volume,src=bb-control-plane-users,dst=/srv/agent-users \
+  --mount type=volume,src=bb-control-plane-launcher,dst=/var/lib/bb-agent-launcher \
   --publish 127.0.0.1:8080:8080 bb-control-plane:local
 ```
 
@@ -144,3 +149,24 @@ The service account must own the regular TLS files; the key must be private. Mou
 CLI users run `bb server access authorize --client-name 'My BB CLI'`, approve the displayed URL in their browser, then use `status` or `logout`. SDK clients import `createControlPlaneClient` from `@bb/sdk/node` or `@bb/sdk/browser`; `start(clientName, sha256Base64UrlVerifier)` returns the approval URL, `exchange(flowId, verifier)` polls and exchanges once. Keep the verifier private. Supply a `token` callback or authenticated fetch for `session()` and `logout()`. No token is returned to the browser approval page.
 
 The Docker deployment check now also generates a disposable test CA and separate server/Alice/Bob certificates inside its temporary filesystem. It uses the actual CLI authorization flow, verifies distinct registry UID/HOME records, denies header impersonation and cross-certificate approval, checks single-use PKCE and denies user access to the full BB API. Restart retains user identities and their tokens; disabling Bob and signing Alice out deny subsequent requests. This verifies registry records, not filesystem/process isolation, which remains pending.
+
+## Third increment: provision personal directories
+
+Authenticated users inspect their registry entry with `GET /control-plane/user/environment` and request creation/verification with `POST` to that same endpoint. The request accepts only an empty body or `{}`: the caller cannot choose a UUID, UID/GID or filesystem path. CLI: `bb server access environment [--provision]`. SDK: `createControlPlaneClient(...).environment()` and `.provisionEnvironment()`. This creates directories, not BB project objects or agent sessions.
+
+The service invokes one fixed root-owned helper through a service-account-only sudo rule. Agent UIDs do not receive sudo rules or Unix account entries. The helper supports provisioning/project directories only; harness execution is explicitly rejected at this stage. A root-owned manifest and lock preserve immutable UUID/UID bindings independently of the BB database, including rejection of a reused UID after a database rollback. Requests for the same user coalesce, and failed provisioning can retry without changing identity.
+
+The root-owned parent uses 0711, HOME uses 0700 and project ACLs grant the trusted BB service access. Other user UIDs cannot list the parent, enter another HOME/project or read service data. Directory operations reject symlinks and unexpected ownership/modes instead of recursively fixing user-controlled paths. Unix permissions do not confine an agent to HOME: readable system files remain available. Qwen launch, lifecycle and per-thread execution admission are still pending.
+
+The Docker image installs the helper and its fixed policy for service user `node`, UID range 200000–299999 and `/srv/agent-users`. Persist **all three** data, users and launcher-manifest volumes when replacing a container; restore them consistently. The users filesystem must support POSIX ACLs. The deployment check uses disposable Docker volumes because this Docker environment's tmpfs rejects `setfacl`; there is no fallback that makes private data more readable.
+
+For installation without Docker, copy the launcher directory from this repository, install Python 3, sudo, util-linux and POSIX ACL utilities, then run the installer as an administrator:
+
+```sh
+python3 -I deploy/control-plane/launcher/install.py \
+  --service-user bb-service --users-root /srv/agent-users
+```
+
+The service account must already exist and the configured `usersRoot` must match the helper policy. The installer writes only fixed launcher/policy/state/sudo-rule locations; it creates no agent accounts. Keep these artifacts root-owned. Install on a Linux filesystem with ACL support.
+
+Verification covers real migrated SQLite provisioning state, concurrent-request coalescing, mismatched helper identities, retry and revocation during provisioning. The real Docker server and CLI provision Alice/Bob directories, then numeric UID/GID processes with cleared groups write their own HOME/project and are denied the other user's paths and service database. Helper UID reassignment, non-service invocation and a symlink replacement are rejected; recovery preserves the same identity. The test controller uses root only to start processes under their actual service/user UIDs; BB itself runs as UID 1000.

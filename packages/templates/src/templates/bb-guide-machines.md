@@ -211,6 +211,11 @@ and `logout` work for user sessions as well. User sessions survive a server
 restart until expiry or revocation; their available operations depend on the
 server's user API and permissions. A user token cannot access the full BB API.
 
+`bb server access environment` inspects your allocated UID/HOME and directory
+state. Add `--provision` to create or verify your registered HOME and project
+directories. The server selects their identity and paths; this command creates
+no BB conversation or project object.
+
 On a protected deployment of the server-control-plane fork, administrators sign
 in with `bb server access login --login <name> --password-stdin`, supplying the
 password from private stdin. `bb server access status` shows the current login;

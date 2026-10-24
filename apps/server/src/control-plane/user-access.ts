@@ -5,6 +5,7 @@ import { ControlPlaneRegistry } from "@bb/db";
 import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { createControlPlaneProvisioner } from "./provisioning.js";
 
 const loginSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/u);
 const startSchema = z
@@ -51,6 +52,8 @@ export function certificateLogin(context: Context): string | null {
 }
 
 export function isUserAuthPath(path: string, method: string): boolean {
+  if (path === "/control-plane/user/environment")
+    return ["GET", "POST"].includes(method);
   if (path === "/control-plane/user") return method === "GET";
   if (
     [
@@ -71,6 +74,7 @@ export function createControlPlaneUserAccess(
   publicOrigin: string,
   now = Date.now,
 ) {
+  const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
     const authorization = context.req.header("authorization");
     if (
@@ -85,6 +89,48 @@ export function createControlPlaneUserAccess(
   return {
     authenticate,
     install(app: Hono) {
+      app.use("/control-plane/user/environment", bodyLimit({ maxSize: 1024 }));
+      app.get("/control-plane/user/environment", (context) => {
+        const value = authenticate(context);
+        if (!value)
+          return context.json({ error: "authentication_required" }, 401);
+        const user = value.user;
+        return context.json({
+          userId: user.id,
+          uid: user.uid,
+          gid: user.gid,
+          home: user.home,
+          projectsRoot: user.projectsRoot,
+          status: user.environmentStatus,
+        });
+      });
+      app.post("/control-plane/user/environment", async (context) => {
+        const value = authenticate(context);
+        if (!value)
+          return context.json({ error: "authentication_required" }, 401);
+        const text = await context.req.text();
+        let body: unknown = {};
+        try {
+          if (text) body = JSON.parse(text);
+        } catch {
+          body = null;
+        }
+        if (!z.object({}).strict().safeParse(body).success)
+          return context.json({ error: "invalid_request" }, 400);
+        try {
+          const user = await provision(value.user);
+          return context.json({
+            userId: user.id,
+            uid: user.uid,
+            gid: user.gid,
+            home: user.home,
+            projectsRoot: user.projectsRoot,
+            status: user.environmentStatus,
+          });
+        } catch {
+          return context.json({ error: "environment_unavailable" }, 503);
+        }
+      });
       app.use("/control-plane/auth/*", bodyLimit({ maxSize: 4096 }));
       app.post("/control-plane/auth/start", async (context) => {
         const parsed = startSchema.safeParse(

@@ -24,6 +24,14 @@ const userSchema = z.object({
   }),
   expiresAt: z.number(),
 });
+const environmentSchema = z.object({
+  userId: z.string().uuid(),
+  uid: z.number().int(),
+  gid: z.number().int(),
+  home: z.string(),
+  projectsRoot: z.string(),
+  status: z.enum(["allocated", "provisioning", "ready", "failed"]),
+});
 
 export function createControlPlaneClient(args: {
   origin: string;
@@ -67,6 +75,26 @@ export function createControlPlaneClient(args: {
     return response.json();
   };
   return {
+    async environment(signal?: AbortSignal) {
+      return environmentSchema.parse(
+        await request(
+          "/control-plane/user/environment",
+          "GET",
+          undefined,
+          signal,
+        ),
+      );
+    },
+    async provisionEnvironment(signal?: AbortSignal) {
+      return environmentSchema.parse(
+        await request(
+          "/control-plane/user/environment",
+          "POST",
+          undefined,
+          signal,
+        ),
+      );
+    },
     async start(clientName: string, challenge: string, signal?: AbortSignal) {
       const result = flowSchema.parse(
         await request(

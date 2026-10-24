@@ -30,6 +30,28 @@ export function registerServerAccessCommands(
     .command("access")
     .description("Sign in to a protected shared BB server");
   access
+    .command("environment")
+    .description(
+      "Inspect your server environment, or provision its directories",
+    )
+    .option(
+      "--provision",
+      "Create or verify your registered HOME and project directories",
+    )
+    .action(
+      action(async (options: { provision?: boolean }) => {
+        const target = endpoint(getUrl(), "/control-plane/user/environment");
+        const client = createControlPlaneClient({
+          origin: target.origin,
+          fetch: cliFetch,
+        });
+        const result = options.provision
+          ? await client.provisionEnvironment()
+          : await client.environment();
+        console.log(JSON.stringify(result, null, 2));
+      }),
+    );
+  access
     .command("authorize")
     .description("Authorize as a user through a browser client certificate")
     .option(

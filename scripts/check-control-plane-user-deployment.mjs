@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { once } from "node:events";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { chown, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { request } from "node:https";
 import Database from "better-sqlite3";
 
@@ -73,6 +73,9 @@ export async function verifyUserDeployment({
       "copy",
     );
   }
+  for (const name of await readdir(directory))
+    await chown(`${directory}/${name}`, 1000, 1000);
+  await chown(directory, 1000, 1000);
   await command(
     [
       "configure.mjs",
@@ -138,7 +141,7 @@ export async function verifyUserDeployment({
   };
   const start = async () => {
     const child = launch(["apps/server/dist/index.js"], {
-      env: { ...process.env, BB_APP_URL: origin },
+      env: { ...process.env, HOME: "/home/node", BB_APP_URL: origin },
     });
     let log = "";
     child.stdout.on("data", (data) => (log = (log + data).slice(-8000)));
@@ -229,6 +232,12 @@ export async function verifyUserDeployment({
     assert.equal((await completed)[0], 0, error);
     assert.doesNotMatch(output, /agt_[A-Za-z0-9_-]{43}/u);
     assert.match(await command([...cli, "status"], "", { env }), /alice/);
+    assert.equal(
+      JSON.parse(
+        await command([...cli, "environment", "--provision"], "", { env }),
+      ).status,
+      "ready",
+    );
     const sessionDirectory = `${env.HOME}/.bb/server-access`;
     const session = JSON.parse(
       await readFile(
@@ -269,6 +278,15 @@ export async function verifyUserDeployment({
     const bobToken = JSON.parse(exchanged.text).accessToken;
     assert.equal(
       (
+        await send("/control-plane/user/environment", {
+          headers: { authorization: `Bearer ${bobToken}` },
+          body: {},
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
         await send("/control-plane/auth/exchange", {
           body: { flowId: flow.flowId, verifier },
         })
@@ -289,6 +307,132 @@ export async function verifyUserDeployment({
       );
       for (const user of users)
         assert.equal(user.home, `/srv/agent-users/${user.id}/home`);
+      for (const user of users) {
+        const other = users.find((candidate) => candidate.id !== user.id);
+        const result = JSON.parse(
+          await command(
+            [
+              `--reuid=${user.uid}`,
+              `--regid=${user.gid}`,
+              "--clear-groups",
+              "--no-new-privs",
+              "--",
+              process.execPath,
+              "-e",
+              `
+            const fs = require("node:fs");
+            const assert = require("node:assert/strict");
+            const [home, otherHome, project] = process.argv.slice(1);
+            assert.equal(process.getuid(), Number(process.env.EXPECTED_UID));
+            assert.deepEqual(process.getgroups(), [process.getgid()]);
+            fs.writeFileSync(home + "/private-probe", "private");
+            fs.writeFileSync(project + "/project-probe", "project");
+            assert.equal(fs.readFileSync(home + "/private-probe", "utf8"), "private");
+            assert.throws(() => fs.readdirSync(otherHome), (error) => error.code === "EACCES");
+            assert.throws(() => fs.readdirSync("/srv/agent-users"), (error) => error.code === "EACCES");
+            assert.throws(() => fs.readdirSync(otherHome.replace(/home$/, "projects/default")), (error) => error.code === "EACCES");
+            assert.throws(() => fs.readFileSync("/srv/bb/bb.db"), (error) => error.code === "EACCES");
+            assert.throws(() => fs.readdirSync("/var/lib/bb-agent-launcher"), (error) => error.code === "EACCES");
+            console.log(JSON.stringify({ uid: process.getuid(), homeWritable: true, projectWritable: true, foreignHomeDenied: true, serviceDataDenied: true }));
+          `,
+              user.home,
+              other.home,
+              `${user.projects_root}/default`,
+            ],
+            "",
+            {
+              file: "/usr/bin/setpriv",
+              uid: 0,
+              gid: 0,
+              env: {
+                ...process.env,
+                HOME: user.home,
+                EXPECTED_UID: String(user.uid),
+              },
+            },
+          ),
+        );
+        assert.equal(result.uid, user.uid);
+      }
+      const alice = users[0];
+      const bob = users[1];
+      assert.equal(
+        (
+          await send("/control-plane/user/environment", {
+            headers: aliceHeaders,
+            body: { uid: bob.uid, home: bob.home },
+          })
+        ).status,
+        400,
+      );
+      for (const [actor, args] of [
+        [1000, ["provision", alice.id, String(bob.uid)]],
+        [
+          1000,
+          [
+            "provision",
+            "33333333-3333-4333-8333-333333333333",
+            String(alice.uid),
+          ],
+        ],
+        [1000, ["launch", alice.id, String(alice.uid)]],
+        [alice.uid, ["provision", alice.id, String(alice.uid)]],
+      ]) {
+        const rejected = launch(
+          ["-n", "--", "/opt/bb-control-plane/launcher/helper.py", ...args],
+          { file: "/usr/bin/sudo", uid: actor, gid: actor },
+        );
+        rejected.stdout.resume();
+        rejected.stderr.resume();
+        assert.notEqual((await once(rejected, "exit", { signal }))[0], 0);
+      }
+      const asAlice = { file: "/usr/bin/setpriv", uid: 0, gid: 0 };
+      const aliceCommand = [
+        `--reuid=${alice.uid}`,
+        `--regid=${alice.gid}`,
+        "--clear-groups",
+        "--no-new-privs",
+        "--",
+        process.execPath,
+        "-e",
+      ];
+      await command(
+        [
+          ...aliceCommand,
+          'const fs=require("node:fs");fs.renameSync(process.argv[1]+"/default",process.argv[1]+"/saved-default");fs.symlinkSync(process.argv[2],process.argv[1]+"/default")',
+          alice.projects_root,
+          bob.home,
+        ],
+        "",
+        asAlice,
+      );
+      assert.equal(
+        (
+          await send("/control-plane/user/environment", {
+            headers: aliceHeaders,
+            body: {},
+          })
+        ).status,
+        503,
+      );
+      await command(
+        [
+          ...aliceCommand,
+          'const fs=require("node:fs");fs.unlinkSync(process.argv[1]+"/default");fs.renameSync(process.argv[1]+"/saved-default",process.argv[1]+"/default")',
+          alice.projects_root,
+        ],
+        "",
+        asAlice,
+      );
+      assert.equal(
+        (
+          await send("/control-plane/user/environment", {
+            headers: aliceHeaders,
+            body: {},
+          })
+        ).status,
+        200,
+      );
       assert.equal(
         db
           .prepare(
@@ -340,6 +484,10 @@ export async function verifyUserDeployment({
       certificatePkce: true,
       realUserCli: true,
       distinctUserUidHomes: true,
+      homeDirectoriesProvisioned: true,
+      numericUidFilesystemIsolation: true,
+      uidReassignmentDenied: true,
+      symlinkReplacementDenied: true,
       persistedUserSessions: true,
       revokedUserDenied: true,
       userCannotUseRawBbApi: true,

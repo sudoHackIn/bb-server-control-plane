@@ -6,7 +6,9 @@ RUN npm ci --omit=dev --no-audit --no-fund
 
 FROM node:22.23.4-bookworm-slim
 WORKDIR /opt/bb
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git util-linux && rm -rf /var/lib/apt/lists/* && mkdir -p /srv/bb && chown node:node /srv/bb
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git util-linux python3 sudo acl && rm -rf /var/lib/apt/lists/* && mkdir -p /srv/bb && chown node:node /srv/bb
+COPY launcher /opt/bb-control-plane/launcher
+RUN python3 -I /opt/bb-control-plane/launcher/install.py --service-user node --users-root /srv/agent-users
 COPY --from=dependencies /opt/bb/node_modules ./node_modules
 COPY package.json ./
 COPY server ./apps/server/dist

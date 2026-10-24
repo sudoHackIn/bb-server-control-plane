@@ -219,4 +219,21 @@ export class ControlPlaneRegistry {
       .where(eq(controlPlaneUserSessions.digest, digest))
       .run();
   }
+
+  environmentState(
+    userId: string,
+    status: ControlPlaneUser["environmentStatus"],
+  ) {
+    return this.db
+      .update(controlPlaneUsers)
+      .set({ environmentStatus: status })
+      .where(
+        and(
+          eq(controlPlaneUsers.id, userId),
+          eq(controlPlaneUsers.enabled, true),
+        ),
+      )
+      .returning()
+      .get();
+  }
 }
