@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createApprovalFixture } from "./check-control-plane-approvals.mjs";
 import { createServer } from "node:http";
 import { request } from "node:https";
 import { once } from "node:events";
@@ -22,6 +23,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   const users = db
     .prepare("SELECT * FROM control_plane_users ORDER BY uid")
     .all();
+  const approvals = createApprovalFixture({ db, users });
+  let approvalVerification;
   const toolCalls = new Map();
   const delegatedResults = new Set();
   let resumedWithHistory = false;
@@ -29,6 +32,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     let text = "";
     for await (const part of req) text += part;
     const body = JSON.parse(text);
+    if (approvals.handle(body, res)) return;
     const marker = JSON.stringify(body.messages).includes("BB_MANAGED_ALICE")
       ? "alice"
       : "bob";
@@ -445,6 +449,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         profileVersionId: approved.body.version.id,
       });
     }
+    approvalVerification = await approvals.verify({ send, wait, token });
     assert.equal(
       (
         await send(
@@ -690,6 +695,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     verified = true;
     return {
       realDaemonEnrollment: true,
+      ...approvalVerification,
       trustedPluginSdkRealtimeEvents: true,
       staleContextReclaimedAfterCrash: true,
       localDaemonApiDisabled: true,

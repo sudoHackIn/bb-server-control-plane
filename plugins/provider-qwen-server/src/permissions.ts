@@ -1,8 +1,13 @@
-import type { BridgeExecutionOptions } from "@get-bb/plugin-sdk/provider-bridge";
+import type {
+  BridgeExecutionOptions,
+  PermissionMode,
+} from "@get-bb/plugin-sdk/provider-bridge";
+
+export function qwenPermissionMode(mode: PermissionMode) {
+  return mode === "full" ? "yolo" : mode === "auto" ? "auto" : "default";
+}
 
 export function validatePermissionMode(options: BridgeExecutionOptions) {
-  if (options.permissionMode !== "full")
-    throw new Error(
-      "Qwen Server supports Full access only, isolated by its registered Unix UID",
-    );
+  if (!["accept-edits", "auto", "full"].includes(options.permissionMode))
+    throw new Error("Unsupported Qwen Server permission mode");
 }

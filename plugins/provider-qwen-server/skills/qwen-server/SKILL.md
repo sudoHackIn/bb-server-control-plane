@@ -49,13 +49,12 @@ can render a sign-in URL; do not claim that a corporate fork emits it unless
 that executable has been verified.
 
 Server integration is under development. Do not enable this provider for
-unowned threads or infer identity from a cwd alone. Approved dynamic BB tools use the provider-owned `bb` SDK MCP adapter. Only Full access
-inside the registered Unix identity is supported; automatic/manual approval
-and service-user execution are rejected.
+unowned threads or infer identity from a cwd alone. Approved dynamic BB tools use the provider-owned `bb` SDK MCP adapter. Permission modes must match the bound profile; service-user harness execution
+is rejected.
 
 The profile fixes the model, reasoning, appended instructions and exact native
 Qwen tool allowlist. Caller exclusions can reduce capabilities. Unsupported
-MCP transports, non-Full approval modes, unknown tools and mismatching model
+MCP transports, unknown tools, permission mismatches and mismatching model
 requests fail before launch. SDK MCP instances are not connected as the shared
 service user. Model fallback configuration, hooks, extension loading and
 user-configured MCP are disabled in the protected execution policy.
@@ -81,3 +80,24 @@ provider-owned adapter, including an impostor named `bb`. User-supplied SDK MCP
 instances and arbitrary stdio/HTTP MCP transports are rejected. Full private
 SDK calls from user-principal plugin code remain denied until their scoped
 adapters are implemented; central service/admin plugin code retains its access.
+
+`full` selects Qwen `yolo`. `accept-edits` approves canonical project-local
+`edit`/`write_file` requests automatically and routes other native requests to
+BB's interaction UI. `auto` selects the pinned CLI's native classifier mode;
+classifier failure falls back to the BB approval channel. These policies do not
+add a filesystem jail. HOME permission rules and auto-allow settings are cleared.
+Native nested-agent/workflow/team and mode-changing tools are rejected in
+restricted profiles until their adapter is verified.
+
+Approvals preserve native request/tool/turn IDs, offer only allow-once/deny and
+recheck current grants after a positive decision. Stop, timeout, transport exit
+and bridge disposal deny outstanding requests. The deadline is at most five
+minutes. Administrative integrations use `threads.interactions` and
+`bb thread interactions list|approve|deny`; the personal API is still pending.
+Do not replace this transport with the SDK's high-level `canUseTool` callback
+without preserving tool-use IDs: that SDK callback omits them.
+
+Managed `bb_workflow_run` is currently blocked by core even when a profile lists
+it: tenant-authored workflow scripts must receive the registered UID adapter
+before that tool can be enabled. Trusted unmanaged administrative workflows
+retain their ordinary behavior.

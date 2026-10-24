@@ -18,7 +18,7 @@ export default async function plugin(bb: BbPluginApi) {
       supportsManualCompaction: false,
       supportsThreadArchive: false,
       supportsThreadRename: false,
-      permissionModes: ["full"],
+      permissionModes: ["accept-edits", "auto", "full"],
       reasoningLevels: ["none"],
     },
     reasoningLevels: [{ id: "none", label: "Qwen default" }],

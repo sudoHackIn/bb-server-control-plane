@@ -11,7 +11,7 @@ function allowed(profile: ControlPlaneProfileDefinition, tool: string) {
   return (
     profile.mcpServers.includes("bb") &&
     profile.tools.includes(`bb:${tool}`) &&
-    tool !== "update_environment_directory"
+    !["update_environment_directory", "bb_workflow_run"].includes(tool)
   );
 }
 

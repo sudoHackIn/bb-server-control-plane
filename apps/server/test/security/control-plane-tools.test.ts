@@ -55,7 +55,11 @@ it("checks each managed daemon tool call against current grants and invokes only
         model: "qwen-test",
         reasoningLevel: "none",
         permissionMode: "full",
-        tools: ["bb:approved_tool", "bb:update_environment_directory"],
+        tools: [
+          "bb:approved_tool",
+          "bb:update_environment_directory",
+          "bb:bb_workflow_run",
+        ],
         mcpServers: ["bb"],
       },
     });
@@ -123,7 +127,12 @@ it("checks each managed daemon tool call against current grants and invokes only
         filterControlPlaneTools(
           harness.db,
           thread.id,
-          ["approved_tool", "foreign_tool", "update_environment_directory"],
+          [
+            "approved_tool",
+            "foreign_tool",
+            "update_environment_directory",
+            "bb_workflow_run",
+          ],
           (value) => value,
         ),
       ).toEqual(["approved_tool"]);
@@ -131,7 +140,11 @@ it("checks each managed daemon tool call against current grants and invokes only
       expect(ok.status).toBe(200);
       expect(await ok.json()).toMatchObject({ success: true });
       expect(calls).toBe(1);
-      for (const tool of ["foreign_tool", "update_environment_directory"])
+      for (const tool of [
+        "foreign_tool",
+        "update_environment_directory",
+        "bb_workflow_run",
+      ])
         expect((await invoke(tool)).status).toBe(403);
       for (const change of [
         {

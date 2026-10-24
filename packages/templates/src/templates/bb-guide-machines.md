@@ -252,10 +252,18 @@ version atomically with thread ownership and rechecks it on actual dispatch and
 resume. New publications do not upgrade existing threads. A legacy unbound
 thread remains historical data but cannot execute. Qwen Server applies the native profile subset through protected per-job
 settings: fixed model/reasoning, appended prompt and exact native tool allowlist.
-Unsupported MCP transports, non-Full permissions, safe mode and model overrides
-fail before launch. The personal thread API remains closed pending delegated
+Unsupported MCP transports, safe mode and model overrides fail before launch.
+Native permission mode must match the bound profile. The personal thread API remains closed pending delegated
 MCP/approval enforcement. The installer pins the reviewed stock CLI artifact;
 a corporate fork requires separate verification.
+
+Qwen Server accepts `--permission-mode full|accept-edits|auto` only when it
+matches the profile. Project edits can be accepted automatically; other asks
+use the native `threads.interactions` SDK and `bb thread interactions
+list|approve|deny` in administrative integrations. The transport retains native
+tool IDs, expires pending asks and rechecks current grants after approval.
+Personal approval endpoints and restricted native subagent adapters are pending.
+These modes do not add a filesystem jail to the numeric-UID execution boundary.
 
 Delegated BB tools reserve `mcpServers: ["bb"]` plus exact `bb:<tool-name>`
 profile entries. The server rechecks current grants before plugin invocation.
@@ -264,7 +272,8 @@ permissions on MCP requests and forwards through the guarded native tool route.
 Missing tools and arbitrary stdio/HTTP MCP transports fail explicitly.
 User plugin SDK calls require a scoped adapter; the full private SDK is not
 available to user-principal code. Managed `update_environment_directory` remains
-disabled pending registered-project validation.
+disabled pending registered-project validation. Managed `bb_workflow_run` is
+also blocked until tenant scripts use the registered UID execution adapter.
 
 `profiles grant <profile-id> <user-id>` and `profiles revoke <profile-id>
 <user-id>` change a registered user's access to that profile's enabled versions.

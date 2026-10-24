@@ -19,6 +19,12 @@ import {
   selectDelegatedTools,
   type DelegatedTools,
 } from "./delegated-mcp.js";
+import {
+  createApprovalTransport,
+  type ApprovalAdapter,
+  type NativeApproval,
+} from "./approval-transport.js";
+import { approvalPayload } from "./approval-requests.js";
 import { profilePolicy } from "./profile-policy.js";
 import type { QwenQuery } from "./bridge.js";
 const exec = promisify(execFile);
@@ -26,6 +32,7 @@ const helper = "/opt/bb-control-plane/launcher/helper.py";
 class ProcessTransport implements Transport {
   private readonly jobId = randomUUID();
   private stop: Promise<void> | null = null;
+  private readonly approvals;
   readonly child;
   readonly lines;
   private readonly exited: Promise<void>;
@@ -39,6 +46,7 @@ class ProcessTransport implements Transport {
     options: QueryOptions,
     readonly context: ServiceContext,
     delegatedNames: string[],
+    approve: (value: NativeApproval) => Promise<boolean>,
   ) {
     if (!options.cwd) throw new Error("A registered workspace is required");
     const registry = {
@@ -93,6 +101,11 @@ class ProcessTransport implements Transport {
         stdio: "pipe",
       },
     );
+    this.approvals = createApprovalTransport({
+      request: approve,
+      timeoutMs: options.timeout?.canUseTool,
+      write: (value) => this.write(JSON.stringify(value)),
+    });
     this.lines = createInterface({
       input: this.child.stdout,
       crlfDelay: Infinity,
@@ -126,15 +139,19 @@ class ProcessTransport implements Transport {
     this.child.stdin.write(message.endsWith("\n") ? message : `${message}\n`);
   }
   async *readMessages(): AsyncGenerator<unknown> {
-    for await (const line of this.lines) {
-      if (!line.trim()) continue;
-      let value: unknown;
-      try {
-        value = JSON.parse(line);
-      } catch {
-        throw new Error("Invalid Qwen protocol stdout (payload omitted)");
+    try {
+      for await (const line of this.lines) {
+        if (!line.trim()) continue;
+        let value: unknown;
+        try {
+          value = JSON.parse(line);
+        } catch {
+          throw new Error("Invalid Qwen protocol stdout (payload omitted)");
+        }
+        if (!this.approvals.handle(value)) yield value;
       }
-      yield value;
+    } finally {
+      this.approvals.cancel();
     }
     await this.waitForExit();
   }
@@ -147,6 +164,7 @@ class ProcessTransport implements Transport {
   }
   async close() {
     if (this.stop) return this.stop;
+    this.approvals.cancel();
     if (this.finished) return;
     this.closing = true;
     this.endInput();
@@ -178,11 +196,13 @@ export function serverQuery({
   options,
   threadId,
   delegatedTools,
+  approval,
 }: {
   prompt: AsyncIterable<SDKUserMessage>;
   options: QueryOptions;
   threadId?: string;
   delegatedTools?: DelegatedTools;
+  approval?: ApprovalAdapter;
 }): QwenQuery {
   if (!threadId)
     throw new Error("A server-owned BB thread is required to launch Qwen");
@@ -207,8 +227,50 @@ export function serverQuery({
     );
     const delegatedNames = tools.map((tool) => tool.name);
     profilePolicy(context, options, delegatedNames);
+    if (
+      (approval?.mode ?? "full") !== context.profile.definition.permissionMode
+    )
+      throw new Error("Permission mode is fixed by the selected profile");
+    if (context.profile.definition.permissionMode !== "full" && !approval)
+      throw new Error("The profile requires the native approval adapter");
+    const authorize = () =>
+      resolveServiceContext(
+        socket,
+        context.cwd,
+        context.sessionId,
+        context.threadId,
+      );
+    const approve = async (request: NativeApproval) => {
+      const validate = async () => {
+        const latest = await authorize();
+        if (
+          latest.id !== context.id ||
+          latest.profile.versionId !== context.profile.versionId
+        )
+          throw new Error("Approval authority changed");
+        const name = request.toolName.startsWith("mcp__bb__")
+          ? `bb:${request.toolName.slice(9)}`
+          : request.toolName;
+        if (!latest.profile.definition.tools.includes(name))
+          throw new Error("Tool is not authorized");
+      };
+      await validate();
+      if (context.profile.definition.permissionMode === "full") return true;
+      const payload = await approvalPayload(request, context.cwd);
+      if (
+        context.profile.definition.permissionMode === "accept-edits" &&
+        payload?.subject.kind === "file_change"
+      ) {
+        await validate();
+        return !request.signal.aborted;
+      }
+      if (request.signal.aborted || !(await approval?.request(request)))
+        return false;
+      await validate();
+      return !request.signal.aborted;
+    };
     if (closing) throw new Error("Transport closed before launch");
-    transport = new ProcessTransport(options, context, delegatedNames);
+    transport = new ProcessTransport(options, context, delegatedNames, approve);
     const level = context.profile.definition.reasoningLevel;
     const effort: EffortTier | undefined =
       level === "low" ||

@@ -23,6 +23,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Bind native threads atomically to approved profile versions and recheck current profile grants and availability at create, dispatch, turn submission and resume. Legacy unbound rows remain historical and cannot execute; this admission check does not translate profile settings into the harness.
 - [x] Enforce a native Qwen profile subset through protected per-job policy: exact native tool allowlist, appended instructions, fixed model, SDK reasoning acknowledgement, disabled hooks/extensions/unapproved MCP; reject unsupported modes before launch.
 - [x] Connect approved `bb` MCP tools through the native Qwen SDK/BB tool channel, revalidate context on MCP requests and invoke the mandatory core guard; verify actual two-user model → plugin → model round trips in Docker. Other MCP transports and interactive approvals remain pending.
+- [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
@@ -462,3 +463,66 @@ changed-file lint/format checks pass. The complete fork Docker deployment passes
 with the actual model → Qwen → BB plugin → model round trips. The backend remains
 a deterministic local fixture, not a corporate CLI or a live external model.
 See `control-plane-phase-14-verification.json`.
+
+## Fifteenth increment: native approval lifecycle
+
+Qwen Server now advertises `accept-edits`, `auto` and `full`. A native request's
+mode must match the bound profile; mismatches fail before harness launch.
+`full` maps to Qwen `yolo`. `accept-edits` uses Qwen `default` and approves
+`edit`/`write_file` automatically only when their canonical target is inside
+the registered project. Missing path arguments or uninspectable ancestors, symlink escapes and
+provider-blocked paths do not receive that automatic file approval. Other
+operations go to the normal BB interaction UI. `auto` selects the stock CLI's
+native classifier mode and uses the same BB callback when it falls back to
+manual approval. This does not introduce a filesystem jail: numeric UID/HOME,
+process namespaces and registered-project admission remain the OS boundaries.
+
+Protected settings clear inherited permission rules, legacy tool allow/exclude
+rules and automatic acceptance. Profiles and explicit caller exclusions remain
+authoritative. Caller-supplied SDK approval callbacks/auto-allow lists are
+rejected. Restricted profiles cannot enable unreviewed native nested-agent,
+workflow, team-creation or permission-mode-changing tools; their adapter remains
+pending rather than running those paths with an assumed policy. The managed
+core tool guard also denies `bb_workflow_run` until tenant-authored workflow
+scripts can run under the registered UID; granting a tool name must not enable
+untrusted JavaScript in the shared service process. Unmanaged administrative
+workflow behavior is preserved.
+
+The high-level SDK callback drops `tool_use_id`. Our existing custom transport
+therefore handles the pinned CLI's native `can_use_tool` control requests,
+preserving both request ID and actual tool-use ID. It sends other SDK traffic
+through unchanged, processes approvals concurrently and never matches them by
+arguments. BB receives `interaction/request` with native item/turn IDs, after
+the translator has ensured that item's timeline entry exists. Only one-time
+approval and denial are offered; persistent grants and edited input are not
+accepted. No public SDK or host-daemon wire fields were added.
+
+The private resolver rechecks current authority before a request and again
+after a positive decision, including automatic project edits. An approval is
+not a substitute for the profile grant. Stop, control cancellation, transport
+exit/error and bridge disposal settle outstanding requests as denied; late
+responses cannot execute the action. The transport permits at most 64 pending
+requests and defaults to a five-minute deadline; an internal caller can only
+shorten it through `timeout.canUseTool` (1–300000 ms). Bridge callbacks also
+honor denied escalation for background turns. The bridge keeps
+`approvalEnforcedBy: "provider"`: native classifier/file policy executes before
+a manual request, and BB is the manual interaction channel.
+
+The actual fork Docker lab now exercises seven cases: allow, deny, stop while
+waiting, revoke a profile while waiting then approve, automatic project edit,
+native-auto project edit, and a project-local native-auto command whose observed classifier query
+receives malformed output before manual denial. Before manual decisions the side-effect file is absent. It appears
+only for allowed operations; revocation prevents it even after an explicit
+approval. Resolved/stopped threads have no pending interactions. Hostile HOME
+auto-allow rules cannot bypass these asks. Existing two-user MCP, namespaces,
+timeline, resume and parent-crash checks still pass. Public personal thread and
+approval endpoints remain closed until their scoped API is implemented.
+
+Verification: 30 provider tests and 94 selected server security/tool/runtime-config
+tests pass, including parallel identical native
+requests with different IDs, timeout/cancellation, late-reply fencing, canonical
+path/symlink classification and native interaction mapping. Strict provider/server
+typechecks and changed-file lint/format checks pass. The full Docker deployment
+passes with the pinned stock CLI and deterministic local model backend. This
+does not verify a corporate fork or real external classifier/model quality.
+See `control-plane-phase-15-verification.json`.

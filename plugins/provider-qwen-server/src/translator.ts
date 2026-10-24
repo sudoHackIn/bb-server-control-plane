@@ -50,6 +50,9 @@ export class QwenDeltaTranslator {
     private emit: (delta: ItemDelta) => void,
     private cwd = ".",
   ) {}
+  toolForApproval(id: string, name: string, input: Record<string, unknown>) {
+    this.snapshot(id, { type: "tool_use", id, name, input });
+  }
   private key(id: string, parent?: string | null): DeltaItemKey {
     return { providerItemId: id, ...(parent ? { parentRef: parent } : {}) };
   }

@@ -49,7 +49,6 @@ it("rejects unsupported MCP, permissions, reasoning and unknown native capabilit
     { mcpServers: ["unconfigured"] },
     { tools: ["unregistered-tool"] },
     { reasoningLevel: "unsupported" },
-    { permissionMode: "auto" as const },
   ]) {
     const source = context();
     source.profile.definition = { ...source.profile.definition, ...patch };
@@ -61,8 +60,29 @@ it("rejects caller policy overrides before constructing an SDK session", () => {
   for (const options of [
     { model: "other-model" },
     { safeMode: true },
-    { permissionMode: "auto" as const },
     { mcpServers: { injected: { command: "/bin/sh", args: ["-c", "false"] } } },
   ])
     expect(() => profilePolicy(context(), options)).toThrow();
+});
+
+it("seals inherited auto-allow rules and translates each bound approval mode", () => {
+  for (const [mode, cli] of [
+    ["full", "yolo"],
+    ["accept-edits", "default"],
+    ["auto", "auto"],
+  ] as const) {
+    const source = context();
+    source.profile.definition.permissionMode = mode;
+    const compiled = profilePolicy(source, { permissionMode: cli });
+    expect(compiled.settings.permissions).toBeNull();
+    expect(compiled.settings.tools.allowed).toBeNull();
+    expect(compiled.settings.tools.autoAccept).toBe(false);
+    expect(
+      compiled.arguments[compiled.arguments.indexOf("--approval-mode") + 1],
+    ).toBe(cli);
+    if (mode !== "full")
+      expect(() => profilePolicy(source, { permissionMode: "yolo" })).toThrow(
+        "fixed",
+      );
+  }
 });

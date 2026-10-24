@@ -23,6 +23,12 @@ import {
   type PromptInput,
   type ThreadDelta,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  createApprovalRequests,
+  approvalPayload,
+} from "./approval-requests.js";
+import type { ApprovalAdapter } from "./approval-transport.js";
+import { qwenPermissionMode } from "./permissions.js";
 import type { DelegatedTools } from "./delegated-mcp.js";
 import { InputQueue } from "./input-queue.js";
 import { modelsFromQwen, controlProbeInput } from "./models.js";
@@ -44,6 +50,7 @@ export type QueryFactory = (config: {
   prompt: AsyncIterable<SDKUserMessage>;
   options: QueryOptions;
   delegatedTools?: DelegatedTools;
+  approval?: ApprovalAdapter;
 }) => QwenQuery;
 type ActiveTurn = {
   id: string;
@@ -138,6 +145,7 @@ export function createQwenBridge({
   const tracker = createPendingToolCallTracker({
     sendToolCall: (request) => io.send(request),
   });
+  const approvals = createApprovalRequests((request) => io.send(request));
   let initialized = false;
   let closed = false;
   let closing: Promise<void> | null = null;
@@ -156,6 +164,7 @@ export function createQwenBridge({
     const active = session.active;
     if (!active) return;
     session.active = undefined;
+    approvals.cancel(session);
     tracker.resolvePendingToolCalls(session, error ?? "Qwen turn ended");
     active.translator.finish(status);
     delta(session, {
@@ -170,6 +179,7 @@ export function createQwenBridge({
     const live = session.live;
     session.live = undefined;
     if (!live) return;
+    approvals.cancel(session);
     tracker.resolvePendingToolCalls(session, "Qwen session closed");
     live.input.close();
     live.abort.abort();
@@ -231,7 +241,9 @@ export function createQwenBridge({
         ? options.providerOptions.executable.trim()
         : "qwen";
     const backend = await backendOptionsForHost(options);
-    const permissions: QueryOptions = { permissionMode: "yolo" };
+    const permissions: QueryOptions = {
+      permissionMode: qwenPermissionMode(options.permissionMode),
+    };
     if (
       closed ||
       sessions.get(session.threadId) !== session ||
@@ -241,6 +253,28 @@ export function createQwenBridge({
     const qwen = queryFactory({
       threadId: session.threadId,
       delegatedTools: delegatedTools(session),
+      approval: {
+        mode: options.permissionMode,
+        async request(request) {
+          const turn = session.active;
+          if (!turn || options.permissionEscalation === "deny") return false;
+          turn.translator.toolForApproval(
+            request.toolUseId,
+            request.toolName,
+            request.input,
+          );
+          const payload = await approvalPayload(request, session.cwd);
+          if (!payload || session.active !== turn || request.signal.aborted)
+            return false;
+          return approvals.request(session, {
+            threadId: session.threadId,
+            providerThreadId: session.providerThreadId,
+            turnId: turn.id,
+            signal: request.signal,
+            payload,
+          });
+        },
+      },
       prompt: input,
       options: {
         cwd: session.cwd,
@@ -571,7 +605,8 @@ export function createQwenBridge({
     if (message.jsonrpc !== "2.0") return;
     if (typeof message.method !== "string") {
       const response = decodeBridgeJsonRpcResponse(value);
-      if (response) tracker.handleToolCallResponse(response);
+      if (response && !approvals.handle(response))
+        tracker.handleToolCallResponse(response);
       return;
     }
     if (typeof message.id !== "number" && typeof message.id !== "string")

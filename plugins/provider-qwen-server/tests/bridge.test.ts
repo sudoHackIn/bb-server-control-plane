@@ -1,5 +1,6 @@
 import { test } from "vitest";
 import { z } from "zod";
+import type { ApprovalAdapter } from "../src/approval-transport.js";
 import type { DelegatedTools } from "../src/delegated-mcp.js";
 import assert from "node:assert/strict";
 import {
@@ -194,6 +195,7 @@ test("rejects unsupported policy, attachments and malformed params without runni
           cwd: "/tmp",
           instructionMode: "append",
           options: {
+            promptMode: "plan",
             permissionMode: "accept-edits",
             permissionScope: "workspace",
             approvalReviewer: "user",
@@ -286,6 +288,105 @@ test("forwards approved MCP adapter calls through the native BB tool channel wit
     assert.deepEqual((await pending).content, [
       { type: "text", text: "Delegated response" },
     ]);
+  } finally {
+    await h.bridge.onClose?.();
+  }
+});
+
+test("binds approval UI to the native item and turn and denies pending requests on stop", async () => {
+  let adapter: ApprovalAdapter | undefined;
+  const sdk = fakeSdk();
+  const h = harness((config) => {
+    adapter = config.approval;
+    return sdk.factory(config);
+  });
+  const policy = {
+    permissionMode: "accept-edits",
+    permissionScope: "workspace",
+    permissionEscalation: "ask",
+    approvalReviewer: "user",
+  } as const;
+  try {
+    await h.initialize();
+    const started = await h.rpc("thread/start", {
+      threadId: "bb-test",
+      cwd: "/tmp",
+      options: policy,
+      instructionMode: "append",
+    });
+    const { providerThreadId } = z
+      .object({ providerThreadId: z.string() })
+      .parse(started.result);
+    await h.turn(providerThreadId, "wait", { options: policy });
+    const active = await until(() => adapter);
+    assert.equal(active.mode, "accept-edits");
+    assert.equal(sdk.calls[0]?.permissionMode, "default");
+    const request = (id: string) =>
+      active.request({
+        toolName: "run_shell_command",
+        toolUseId: id,
+        input: { command: "git push" },
+        blockedPath: null,
+        signal: new AbortController().signal,
+      });
+    const first = request("native-tool");
+    const schema = z.object({
+      id: z.string(),
+      method: z.literal("interaction/request"),
+      params: z.object({
+        threadId: z.string(),
+        providerThreadId: z.string(),
+        turnId: z.string(),
+        providerNativeIds: z.literal(true),
+        payload: z.object({
+          subject: z.object({
+            itemId: z.string(),
+            kind: z.literal("command"),
+            command: z.string(),
+          }),
+        }),
+      }),
+    });
+    const sent = await until(
+      () =>
+        h.messages.flatMap((message) => {
+          const parsed = schema.safeParse(message);
+          return parsed.success ? [parsed.data] : [];
+        })[0],
+    );
+    assert.equal(sent.params.threadId, "bb-test");
+    assert.equal(sent.params.providerThreadId, providerThreadId);
+    assert.equal(sent.params.payload.subject.itemId, "native-tool");
+    assert.ok(
+      h
+        .deltas()
+        .some(
+          (delta) =>
+            delta.kind === "item.open" &&
+            delta.key.providerItemId === "native-tool",
+        ),
+    );
+    h.bridge.handleLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: sent.id,
+        result: { decision: "allow_once", grantedPermissions: null },
+      }),
+    );
+    assert.equal(await first, true);
+    const pending = request("native-stopped");
+    await until(
+      () =>
+        h.messages.filter((message) => schema.safeParse(message).success)
+          .length === 2 || undefined,
+    );
+    await h.rpc("thread/stop", {
+      threadId: "bb-test",
+      providerThreadId,
+      intent: "interrupt",
+      activeTurnId: null,
+    });
+    assert.equal(await pending, false);
   } finally {
     await h.bridge.onClose?.();
   }
