@@ -1,4 +1,5 @@
 import { notifyComposerSubmitted } from "@/lib/composer-submissions";
+import { useThreadInteractionSource } from "./thread-interaction-source";
 import {
   mutationOptions,
   type QueryClient,
@@ -514,6 +515,7 @@ export function useDeleteThreadQueuedMessage() {
 
 export function useStopThread() {
   const queryClient = useQueryClient();
+  const source = useThreadInteractionSource();
 
   return useMutation({
     meta: {
@@ -521,7 +523,8 @@ export function useStopThread() {
       lifecycleOperation: "stop_thread",
     },
     mutationFn: async (threadId: string) => {
-      await sdk.threads.stop({ threadId });
+      if (source) await source.stop(threadId);
+      else await sdk.threads.stop({ threadId });
     },
     onMutate: async (threadId): Promise<StopThreadTransaction> =>
       beginStopThreadTransaction({

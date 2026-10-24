@@ -30,7 +30,7 @@ export function isControlPlaneThreadPath(path: string, method: string) {
   if (path === "/control-plane/user/threads")
     return ["GET", "POST"].includes(method);
   if (
-    /^\/control-plane\/user\/threads\/[^/]+(?:\/(?:events|result|interactions|stream|timeline|timeline-details))?$/u.test(
+    /^\/control-plane\/user\/threads\/[^/]+(?:\/(?:events|result|interactions|stream|timeline|timeline-details|profile))?$/u.test(
       path,
     )
   )
@@ -111,6 +111,16 @@ export function installControlPlaneThreadRoutes(
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
       return context.json(service.events(userId, id, parsed.data));
+    }),
+  );
+  app.get(
+    `${base}/:id/profile`,
+    handled((context, userId) => {
+      if (Object.keys(context.req.query()).length)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(
+        service.profile(userId, context.req.param("id") ?? ""),
+      );
     }),
   );
   app.get(

@@ -237,7 +237,10 @@ Secure, SameSite=Strict cookie. No token is returned in the page or URL.
 Successful sign-in redirects to `/control-plane/app`: native sidebar navigation
 for personal projects and thread summaries, with paginated limited SDK reads.
 The selected conversation uses the native live timeline and expandable tool
-details. Composer/model controls remain a subsequent integration step.
+details. The native composer starts with an approved agent profile, sends or
+queues messages, stops owned work and answers approval/question forms. Existing
+conversations keep their pinned profile/model; arbitrary execution overrides
+are not enabled by these controls.
 Switching browser identities revokes the previous browser credential. Switching
 between administrator and personal sign-in retires the opposite browser session.
 PKCE-issued CLI/plugin credentials remain separate.
@@ -313,6 +316,12 @@ Use `--message-stdin` for piped text; it is mutually exclusive with `--message`.
 The service chooses UID, HOME, host and cwd from your registered project.
 `threads list [--project <id>] [--limit 1..100] [--cursor <id>]` and `threads get
 <thread-id>` return only your current project access and thread ownership.
+`threads profile <thread-id>` / `threads.profile(id, signal)` reads the pinned
+profile version, subject to current profile grants. Publishing a newer profile
+version does not silently replace the version of an existing conversation.
+Revocation denies this configuration read and subsequent sends; authorized
+history and stopping remain available.
+
 `threads send <thread-id> --message <text>` continues the pinned native session;
 active turns queue the message. Steering and execution-option overrides are
 not supported. `threads stop <thread-id>` can stop your job after its profile

@@ -120,7 +120,10 @@ import {
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { useComposerReplacement } from "./composer-provider";
 import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
-import { ComposerSearchProvider } from "./composer-search";
+import {
+  ComposerSearchProvider,
+  type ComposerSearches,
+} from "./composer-search";
 import type { CommandSuggestionSource } from "@/hooks/useCommandSuggestions";
 import type { PromptMentionSource } from "@/hooks/usePromptMentions";
 import { ComposerMaxHeightContext } from "./composer-max-height";
@@ -374,24 +377,28 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
   else if (ref) ref.current = value;
 }
 
-function useComposerRendererHostApi({
-  value,
-  mentionRanges,
-  onChange,
-  onSubmit,
-  submission,
-  textEffects,
-  voice,
-  promptBoxRef,
-  onComposerLayoutChange,
-  focusEndKey,
-  onFocusCommand,
-  suppressPluginComposerCustomizations: suppress = false,
-  typeahead,
-  attachments,
-  history,
-  ...input
-}: ComposerBoxProps): {
+function useComposerRendererHostApi(
+  {
+    value,
+    mentionRanges,
+    onChange,
+    onSubmit,
+    submission,
+    textEffects,
+    voice,
+    promptBoxRef,
+    onComposerLayoutChange,
+    focusEndKey,
+    onFocusCommand,
+    suppressPluginComposerCustomizations: suppress = false,
+    typeahead,
+    attachments,
+    history,
+    ...input
+  }: ComposerBoxProps,
+  threadLinks?: ExperimentalComposerRendererApi["threadLinks"],
+  identity?: { scope: PluginComposerScope; key: string },
+): {
   api: ExperimentalComposerRendererApi;
   boxHost: PluginComposerHost;
   rootHost: ComposerRootHost;
@@ -406,7 +413,7 @@ function useComposerRendererHostApi({
     onComposerLayoutChange?.(next);
   };
   const localView = usePluginComposerViewModel({
-    scope: host?.scope ?? DEFAULT_COMPOSER_SCOPE,
+    scope: host?.scope ?? identity?.scope ?? DEFAULT_COMPOSER_SCOPE,
     layout,
     text: value,
     attachmentCount: attachments?.items?.length ?? 0,
@@ -417,7 +424,7 @@ function useComposerRendererHostApi({
   const pluginScopeKind = suppress ? null : view.scope.kind;
   const resolvedEditor = useResolvedComposerEditor(pluginScopeKind);
   const popups = useResolvedComposerPopups(pluginScopeKind);
-  const plusMenuItems = useResolvedComposerPlusMenuItems(view.scope.kind);
+  const plusMenuItems = useResolvedComposerPlusMenuItems(pluginScopeKind);
   const sendMenuItems = useResolvedComposerSendMenuItems(pluginScopeKind);
   const draftAttachments = attachments?.items ?? EMPTY_ATTACHMENTS;
   const onUpdateAttachments = attachments?.onUpdate;
@@ -475,8 +482,8 @@ function useComposerRendererHostApi({
     };
   const boxHost: PluginComposerHost = {
     ...(host ?? {
-      scope: DEFAULT_COMPOSER_SCOPE,
-      textEffectKey: `composer-box:${syntheticKey}`,
+      scope: identity?.scope ?? DEFAULT_COMPOSER_SCOPE,
+      textEffectKey: identity?.key ?? `composer-box:${syntheticKey}`,
       focus: () => {},
     }),
     getCurrent: () => draft,
@@ -564,7 +571,7 @@ function useComposerRendererHostApi({
     inputLocked,
     focusComposerShortcut,
     decorationSources,
-    threadLinks: {
+    threadLinks: threadLinks ?? {
       parse: (url) => parseThreadLink(url, window.location.origin),
       cached: getCachedThreadLink,
       resolve: (threadIds, signal, onBatch) =>
@@ -632,17 +639,25 @@ function useComposerRendererHostApi({
 
 export function ComposerRendererHostProvider({
   children,
+  searches,
+  threadLinks,
+  identity,
   ...props
-}: ComposerBoxProps & { children: ReactNode }) {
+}: ComposerBoxProps & {
+  children: ReactNode;
+  searches?: ComposerSearches;
+  threadLinks?: ExperimentalComposerRendererApi["threadLinks"];
+  identity?: { scope: PluginComposerScope; key: string };
+}) {
   const { api, boxHost, rootHost, contributions, typeahead } =
-    useComposerRendererHostApi(props);
+    useComposerRendererHostApi(props, threadLinks, identity);
   return (
     <ComposerRendererContext.Provider value={api}>
       <ComposerRootHostContext.Provider value={rootHost}>
         <ComposerContributionsContext.Provider value={contributions}>
           <PluginComposerViewProvider value={api.view}>
             <PluginComposerHostProvider value={boxHost}>
-              <ComposerSearchProvider typeahead={typeahead}>
+              <ComposerSearchProvider typeahead={typeahead} searches={searches}>
                 {children}
               </ComposerSearchProvider>
             </PluginComposerHostProvider>

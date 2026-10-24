@@ -39,6 +39,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Clear account-scoped browser caches and drafts when switching identities or signing out.
 - [x] Open a separate personal browser entry with native sidebar navigation, paginated own project/thread metadata and access-loss handling; leave administrative bootstrap and plugin frontends closed.
 - [x] Render owned conversations through the native timeline and scroll surface, personal SSE, older history and deferred tool details; retain the limited API boundary.
+- [x] Connect the native composer and approval/question forms to personal start/send/queue/stop/resolve operations, select approved profiles for new threads and read pinned profiles through SDK/CLI.
 - [ ] Use this fork's native UI for both roles. Keep projects/threads/composer/timeline/model controls for users; remove the right workspace panel and administrative controls in user mode.
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
@@ -824,3 +825,58 @@ UID/HOME and restart checks. Migrated-SQLite tests cover older-page pagination,
 transplanted cursors and grant revocation; DOM tests cover native messages and
 command expansion. Production-browser rendering is not claimed. See
 `control-plane-phase-21-verification.json`.
+
+## Twenty-second increment: native personal composer and approved agent selection
+
+The personal workspace can start a conversation in the selected project with a
+currently permitted profile. It statically composes the actual built-in Composer
+renderer through the existing host API and runtime. It does not start the
+installed-plugin frontend loader. Native rich text, Enter submission, queueing,
+stop controls, approval banners and user-question forms use the limited client.
+The editor has its actual thread/new-project draft scope and a stable draft key.
+Shared query transports use their existing native readers in administrative mode
+and the explicitly bound personal readers in this view. Native host/daemon/thread
+bootstrap queries stay disabled for personal interaction forms.
+
+Mention/command searches and pasted-thread resolution have explicit host inputs;
+user mode does not query global catalogs or fall back to the unrestricted SDK.
+Plugin composer customizations, including the plus menu, are suppressed here.
+Scoped autocomplete, personal deep links, attachment previews/uploads, first-login
+workspace/project creation UI and broader approved plugin frontend integration
+remain open work. These limitations do not mark the full native user UI complete.
+
+The project/profile catalog uses personal SDK readers with pagination and grant
+refresh. A new thread sends only projectId, profileVersionId and message; existing
+threads send only the message with queue-if-active. There is no client-supplied
+UID/HOME/cwd/tool/MCP override. The new thread profile reader resolves the
+persisted profile version and rechecks current grants, even after newer versions
+are published. Its SDK and CLI surfaces use the same route as the UI. A revoked
+profile disables sending and interaction controls while authorized history and
+stopping remain available.
+
+Drafts reuse the account/session-scoped native storage. Confirmed sends clear
+only the submitted snapshot, preserving a subsequently changed draft. Failure
+or uncertain delivery retains input; the UI does not claim exactly-once delivery.
+A local latch prevents simultaneous duplicate submissions. Leaving a composer
+aborts its requests; delayed results cannot select a thread in another view.
+Lifecycle effects tolerate StrictMode teardown/recreation. Native status frames
+update the personal thread cache so controls follow the live conversation.
+
+The app TypeScript resolver now includes shared UI fallbacks for directly reused
+first-party composer source, matching the existing forkable-plugin Vite resolver.
+The plugin remains independently typechecked and packaged. Its stable composition
+key-event set uses a state initializer, preserving identity without reading a ref
+during render. No new public Plugin SDK member is introduced.
+
+Verification: 146 selected app/native composer/interaction tests, 3 server
+profile/thread security scenarios, 132 SDK tests, 24 CLI checks and 87 Composer
+plugin tests pass; 3 opt-in plugin performance tests are skipped. Strict
+app/server/SDK/CLI/plugin typechecks and changed-file lint/format checks pass
+without lint warnings. The production bundle and full Docker deployment rebuild
+successfully. Actual certificate-authenticated CLI reads prove an existing
+thread retains its pinned version after a newer profile publication; prior
+Qwen/UID/HOME, approvals, personal SSE, revocation and restart checks pass.
+DOM tests exercise the real editor, Enter, native approval/question forms,
+queue/stop, StrictMode cancellation and failed-delivery draft retention. These
+are not production-browser rendering tests. See
+`control-plane-phase-22-verification.json`.

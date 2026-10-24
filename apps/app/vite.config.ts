@@ -9,11 +9,13 @@ import { routeModulePreload } from "./vite-route-modulepreload.js";
 import { fontPreload } from "./vite-font-preload.js";
 import { sharedUiEnvSeam } from "./vite-shared-ui-seam.js";
 import { cachedReactCompiler } from "./vite-react-compiler.js";
+import { forkablePluginPaths } from "./vite-forkable-plugin-paths.js";
 
 const appDir = dirname(fileURLToPath(import.meta.url));
 
 export const sharedViteConfig = {
   plugins: [
+    forkablePluginPaths(resolve(appDir, "./src")),
     sharedUiEnvSeam(),
     react(),
     cachedReactCompiler(),

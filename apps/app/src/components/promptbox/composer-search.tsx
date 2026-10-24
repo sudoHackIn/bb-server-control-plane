@@ -21,7 +21,7 @@ import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
 import { usePromptMentions } from "@/hooks/usePromptMentions";
 import type { TypeaheadConfig } from "./ComposerBox";
 
-interface ComposerSearches {
+export interface ComposerSearches {
   mention: ExperimentalComposerMentionSearch;
   command: ExperimentalComposerCommandSearch;
   prefetchCommands(): void;
@@ -42,78 +42,100 @@ function sameQuery<Trigger extends string>(
   );
 }
 
-export const ComposerSearchProvider = memo(function ComposerSearchProvider({
+const NativeComposerSearchProvider = memo(
+  function NativeComposerSearchProvider({
+    typeahead,
+    children,
+  }: {
+    typeahead: TypeaheadConfig;
+    children: ReactNode;
+  }) {
+    const [mentionQuery, setMentionQuery] =
+      useState<ExperimentalComposerSearchQuery<PluginMentionTrigger> | null>(
+        null,
+      );
+    const [commandQuery, setCommandQuery] =
+      useState<ExperimentalComposerSearchQuery<ExperimentalComposerCommandTrigger> | null>(
+        null,
+      );
+    const [prefetchRequested, setPrefetchRequested] = useState(false);
+    const mention = usePromptMentions(typeahead.mention.source, mentionQuery);
+    const command = useCommandSuggestions({
+      ...typeahead.command.source,
+      activeTrigger: commandQuery?.trigger ?? null,
+      query: commandQuery?.text ?? null,
+      composerFocused: prefetchRequested,
+    });
+    const searches: ComposerSearches = {
+      mention: {
+        status:
+          mentionQuery === null
+            ? "idle"
+            : mention.isLoading
+              ? "loading"
+              : mention.isError
+                ? "error"
+                : "ready",
+        refreshing: mentionQuery !== null && mention.isRefreshing,
+        groups:
+          mentionQuery === null
+            ? []
+            : composerMentionGroupsFromOrdered(mention.results),
+        search: (query) =>
+          setMentionQuery((current) =>
+            sameQuery(current, query) ? current : query,
+          ),
+      },
+      command: {
+        status:
+          commandQuery === null
+            ? "idle"
+            : command.isLoading
+              ? "loading"
+              : command.isError
+                ? "error"
+                : "ready",
+        refreshing: commandQuery !== null && command.isRefreshing,
+        groups:
+          commandQuery === null
+            ? []
+            : groupCommandSuggestions(
+                orderCommandSuggestions(command.suggestions, commandQuery.text),
+              ),
+        search: (query) =>
+          setCommandQuery((current) =>
+            sameQuery(current, query) ? current : query,
+          ),
+      },
+      prefetchCommands: () => setPrefetchRequested(true),
+    };
+    return (
+      <ComposerSearchContext.Provider value={searches}>
+        {children}
+      </ComposerSearchContext.Provider>
+    );
+  },
+);
+
+export function ComposerSearchProvider({
   typeahead,
+  searches,
   children,
 }: {
   typeahead: TypeaheadConfig;
+  searches?: ComposerSearches;
   children: ReactNode;
 }) {
-  const [mentionQuery, setMentionQuery] =
-    useState<ExperimentalComposerSearchQuery<PluginMentionTrigger> | null>(
-      null,
-    );
-  const [commandQuery, setCommandQuery] =
-    useState<ExperimentalComposerSearchQuery<ExperimentalComposerCommandTrigger> | null>(
-      null,
-    );
-  const [prefetchRequested, setPrefetchRequested] = useState(false);
-  const mention = usePromptMentions(typeahead.mention.source, mentionQuery);
-  const command = useCommandSuggestions({
-    ...typeahead.command.source,
-    activeTrigger: commandQuery?.trigger ?? null,
-    query: commandQuery?.text ?? null,
-    composerFocused: prefetchRequested,
-  });
-  const searches: ComposerSearches = {
-    mention: {
-      status:
-        mentionQuery === null
-          ? "idle"
-          : mention.isLoading
-            ? "loading"
-            : mention.isError
-              ? "error"
-              : "ready",
-      refreshing: mentionQuery !== null && mention.isRefreshing,
-      groups:
-        mentionQuery === null
-          ? []
-          : composerMentionGroupsFromOrdered(mention.results),
-      search: (query) =>
-        setMentionQuery((current) =>
-          sameQuery(current, query) ? current : query,
-        ),
-    },
-    command: {
-      status:
-        commandQuery === null
-          ? "idle"
-          : command.isLoading
-            ? "loading"
-            : command.isError
-              ? "error"
-              : "ready",
-      refreshing: commandQuery !== null && command.isRefreshing,
-      groups:
-        commandQuery === null
-          ? []
-          : groupCommandSuggestions(
-              orderCommandSuggestions(command.suggestions, commandQuery.text),
-            ),
-      search: (query) =>
-        setCommandQuery((current) =>
-          sameQuery(current, query) ? current : query,
-        ),
-    },
-    prefetchCommands: () => setPrefetchRequested(true),
-  };
-  return (
+  return searches === undefined ? (
+    <NativeComposerSearchProvider typeahead={typeahead}>
+      {children}
+    </NativeComposerSearchProvider>
+  ) : (
     <ComposerSearchContext.Provider value={searches}>
       {children}
     </ComposerSearchContext.Provider>
   );
-});
+}
 
 function useComposerSearches(hookName: string): ComposerSearches {
   const searches = useContext(ComposerSearchContext);

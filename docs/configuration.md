@@ -1353,11 +1353,15 @@ read source-filtered identity, project/thread/profile pages and capabilities.
 Each navigation page is bounded to 50 with a separate list cursor. The personal
 web entry reuses native sidebar components to browse accessible projects and
 owned thread summaries, with additional pages fetched through this same SDK.
-It loads a separate personal module without administrative bootstrap, plugin
-frontends, settings, terminals or a right workspace panel. The selected thread
+It loads a separate personal module without administrative bootstrap, arbitrary
+plugin frontends, settings, terminals or a right workspace panel. The built-in
+Composer renderer is included statically and uses personal transports. The selected thread
 uses the native message/activity timeline, bottom-anchored scrolling, SSE updates,
-older history and deferred tool details through owner-scoped routes. Composer
-and model controls remain a subsequent integration step. Authenticated
+older history and deferred tool details through owner-scoped routes. The native
+composer starts conversations with an approved profile, sends or queues messages,
+stops owned jobs and answers native approval/question forms. Existing threads
+keep their pinned profile version; these controls do not accept execution
+overrides or arbitrary model/tool changes. Authenticated
 users can read compiled static assets; this does not enable the full BB API,
 raw WebSocket or plugin installation. Browser cookies and PKCE CLI/plugin tokens
 share the existing hashed-session table and server-side revocation checks.
@@ -1392,3 +1396,19 @@ item. Requests are bounded, reject unknown execution fields and recheck current
 ownership/project access before native history reads. The UI resnapshots after
 a lost delta baseline or connection, discards disconnected private rows, and
 uses fresh authorization before displaying history again.
+
+`threads.profile(id, signal)` / `bb server access threads profile <id>` reads the
+thread's pinned execution profile while current profile grants permit it. It
+resolves the persisted version, including when a newer version has been
+published. Missing/revoked profiles disable sending in the personal composer;
+authorized history and stopping remain available. Drafts use the existing
+identity/session-scoped BB storage and clear only after confirmed delivery when
+the current draft still matches the submitted snapshot. Duplicate local submits
+are latched; leaving the view aborts requests and prevents late responses from
+selecting an old conversation. An uncertain transport result retains the draft
+and does not promise that the server rejected delivery.
+
+The personal composer does not use the global mention/command catalogs or
+resolve pasted thread links through the unrestricted API. Rich text entry and
+native submit/stop behavior are reused; scoped autocomplete, personal links,
+attachments and broader approved plugin frontend support remain open work.

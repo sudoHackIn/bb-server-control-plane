@@ -84,7 +84,7 @@ export function registerServerThreadCommands(
           ),
       ),
     );
-  for (const method of ["get", "result", "stop"] as const)
+  for (const method of ["get", "result", "stop", "profile"] as const)
     threads
       .command(`${method} <thread-id>`)
       .option("--json", "Print machine-readable JSON output")

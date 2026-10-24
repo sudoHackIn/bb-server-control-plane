@@ -6,8 +6,10 @@ import { PersonalWorkspace } from "./components/control-plane/PersonalWorkspace"
 import { fetchWithAppSurface } from "./lib/app-surface";
 import { initializePreferredTheme } from "./hooks/useTheme";
 import { applyAppFrameGeometry, getBbDesktopInfo } from "./lib/bb-desktop";
+import { installPluginRuntime } from "./lib/plugin-frontend";
 
 export function mountPersonalApplication(): () => void {
+  installPluginRuntime();
   initializePreferredTheme();
   applyAppFrameGeometry(document.documentElement, getBbDesktopInfo());
   const queries = new QueryClient({

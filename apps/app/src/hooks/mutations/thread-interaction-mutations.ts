@@ -7,6 +7,10 @@ import {
 import type { Host, PendingInteraction } from "@bb/domain";
 import type { ResolvePendingInteractionRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import {
+  useThreadInteractionSource,
+  type ThreadInteractionSource,
+} from "./thread-interaction-source";
 import { isHostDisconnectedError } from "@/lib/lifecycle-errors";
 import { useEnvironment } from "../queries/environment-queries";
 import { useHosts } from "../queries/host-queries";
@@ -41,6 +45,7 @@ export function visibleResolveInteractionError({
 
 export function resolveThreadPendingInteractionMutationOptions(
   queryClient: QueryClient,
+  source: ThreadInteractionSource | null = null,
 ) {
   return mutationOptions({
     meta: {
@@ -51,12 +56,16 @@ export function resolveThreadPendingInteractionMutationOptions(
       threadId,
       interactionId,
       resolution,
-    }: ResolveThreadPendingInteractionMutationRequest): Promise<PendingInteraction> =>
-      sdk.threads.interactions.resolve({
+    }: ResolveThreadPendingInteractionMutationRequest): Promise<PendingInteraction> => {
+      const input = {
         interactionId,
         resolution,
         threadId,
-      }),
+      };
+      return source
+        ? source.resolve(input)
+        : sdk.threads.interactions.resolve(input);
+    },
     onSuccess: (interaction, variables) => {
       applyResolvedThreadPendingInteraction({ interaction, queryClient });
       invalidateThreadPendingInteractionResolutionQueries({
@@ -70,11 +79,16 @@ export function resolveThreadPendingInteractionMutationOptions(
 
 export function useResolveThreadPendingInteraction(threadId: string) {
   const queryClient = useQueryClient();
-  const environmentId = useThread(threadId).data?.environmentId;
-  const hostId = useEnvironment(environmentId).data?.hostId;
-  const hosts = useHosts({ enabled: hostId !== undefined }).data;
+  const source = useThreadInteractionSource();
+  const environmentId = useThread(threadId, { enabled: source === null }).data
+    ?.environmentId;
+  const hostId = useEnvironment(environmentId, { enabled: source === null })
+    .data?.hostId;
+  const hosts = useHosts({
+    enabled: source === null && hostId !== undefined,
+  }).data;
   const mutation = useMutation(
-    resolveThreadPendingInteractionMutationOptions(queryClient),
+    resolveThreadPendingInteractionMutationOptions(queryClient, source),
   );
 
   return {

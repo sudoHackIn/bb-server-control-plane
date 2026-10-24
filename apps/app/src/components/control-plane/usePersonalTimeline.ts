@@ -37,6 +37,7 @@ function pause(signal: AbortSignal) {
 export function usePersonalTimeline(
   client: PersonalWorkspaceClient,
   threadId: string,
+  onStatus?: (status: ThreadStatus) => void,
 ) {
   const [liveStatus, setLiveStatus] = useState<{
     threadId: string;
@@ -100,11 +101,13 @@ export function usePersonalTimeline(
               frame.kind === "realtime" &&
               frame.message.type === "changed" &&
               frame.message.metadata?.statusChange
-            )
+            ) {
               setLiveStatus({
                 threadId,
                 status: frame.message.metadata.statusChange.status,
               });
+              onStatus?.(frame.message.metadata.statusChange.status);
+            }
             if (frame.kind === "event")
               cursor = Math.max(cursor, frame.event.seq);
             if (
@@ -142,7 +145,7 @@ export function usePersonalTimeline(
       controller.abort();
       if (lifetime.current === controller) lifetime.current = null;
     };
-  }, [client, threadId, attempt]);
+  }, [client, threadId, attempt, onStatus]);
   const loadOlder = useCallback(async () => {
     const controller = lifetime.current;
     const cursor = loaded.surfaceKey === threadId ? loaded.olderCursor : null;

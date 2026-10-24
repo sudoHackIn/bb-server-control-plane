@@ -32,7 +32,6 @@ import { useEditor, type Editor } from "@tiptap/react";
 import { nanoid } from "nanoid";
 import {
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -42,8 +41,6 @@ import {
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-  type Ref,
 } from "react";
 import {
   commandPillDismissedRangeEnd,
@@ -992,9 +989,8 @@ function isIPadOSWebKit(): boolean {
 }
 
 function usePostCompositionKeyDownEvents(): WeakSet<KeyboardEvent> {
-  const ref = useRef<WeakSet<KeyboardEvent> | null>(null);
-  ref.current ??= new WeakSet<KeyboardEvent>();
-  return ref.current;
+  const [events] = useState(() => new WeakSet<KeyboardEvent>());
+  return events;
 }
 
 function isIPadHardwareEnterCandidate(event: KeyboardEvent): boolean {

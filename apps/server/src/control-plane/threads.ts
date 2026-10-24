@@ -115,6 +115,22 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
   return {
     close: () => streams.close(),
     get,
+    profile(userId: string, id: string) {
+      const { row } = read(userId, id);
+      const version = row.profileVersionId
+        ? deps.db
+            .select()
+            .from(controlPlaneProfileVersions)
+            .where(eq(controlPlaneProfileVersions.id, row.profileVersionId))
+            .get()
+        : null;
+      const profile = version
+        ? getControlPlaneProfile(deps.db, userId, version.profileId, version.id)
+        : null;
+      if (!profile)
+        throw new ApiError(404, "profile_not_found", "Profile not found");
+      return profile;
+    },
     list(
       userId: string,
       options: { projectId?: string; cursor: string | null; limit: number },

@@ -271,6 +271,26 @@ export function createUserThreadFixture({ db, users }) {
           result.text,
           new RegExp(`Personal ${user.login} completed`, "u"),
         );
+        const newer = await sendAdmin(
+          `/control-plane/admin/profiles/${profile.body.profile.id}/versions`,
+          {
+            definition: {
+              ...profile.body.version.definition,
+              prompt: "Newer profile version for future conversations",
+            },
+          },
+          adminToken,
+        );
+        assert.equal(newer.status, 201);
+        const pinned = await command(user.login, [
+          "threads",
+          "profile",
+          thread.id,
+          "--json",
+        ]);
+        assert.equal(pinned.version.id, profile.body.version.id);
+        assert.notEqual(pinned.version.id, newer.body.version.id);
+        assert.equal(pinned.version.definition.model, "qwen-job-test");
         const timeline = await command(user.login, [
           "threads",
           "timeline",
@@ -496,6 +516,7 @@ export function createUserThreadFixture({ db, users }) {
         "/interactions",
         "/stream",
         "/timeline",
+        "/profile",
         "/timeline-details?turnId=foreign&sourceSeqStart=1&sourceSeqEnd=2",
       ])
         assert.equal(
@@ -730,6 +751,7 @@ export function createUserThreadFixture({ db, users }) {
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,
         personalNativeTimelineAndToolDetailsCli: true,
+        personalPinnedProfileCliAfterNewVersion: true,
         personalCanonicalReplayAndLiveNativeTimeline: true,
         personalStreamCursorReconnect: true,
         personalRealCliStreamCancellationReleasesSlots: true,

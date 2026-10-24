@@ -4,6 +4,7 @@ import { createControlPlaneClient } from "@bb/sdk/browser";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PersonalTimeline } from "./PersonalTimeline";
+import { PersonalConversationComposer } from "./PersonalConversationComposer";
 import {
   Sidebar,
   SidebarContent,
@@ -249,6 +250,18 @@ function WorkspaceNavigation({
               ? "Your workspace"
               : (selectedProject?.name ?? "Your workspace")}
           </span>
+          {selectedProject && project.data?.canRun && !project.isError && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setThreadId(null);
+                closeSidebar();
+              }}
+            >
+              New conversation
+            </Button>
+          )}
         </header>
         {project.isError || (selectedThread && detail.isError) ? (
           <Unavailable
@@ -289,6 +302,18 @@ function WorkspaceNavigation({
             )}
           </section>
         )}
+        {selectedProject &&
+          project.data &&
+          !project.isError &&
+          (!selectedThread || (detail.data && !detail.isError)) && (
+            <PersonalConversationComposer
+              key={`${selectedProject.projectId}:${selectedThread?.id ?? "new"}`}
+              client={client}
+              project={project.data}
+              thread={selectedThread ? (detail.data ?? null) : null}
+              onCreated={(created) => setThreadId(created.id)}
+            />
+          )}
       </SidebarInset>
     </>
   );

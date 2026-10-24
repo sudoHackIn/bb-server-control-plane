@@ -12,6 +12,7 @@ import {
   controlPlaneThreadStartSchema,
   controlPlaneThreadSendSchema,
   controlPlaneThreadSummarySchema,
+  controlPlaneProfileDetailSchema,
   threadEventRowSchema,
   pendingInteractionSchema,
   controlPlaneThreadResolutionSchema,
@@ -78,6 +79,11 @@ export function createControlPlaneThreadClient(
     async get(id: string, signal?: AbortSignal) {
       return controlPlaneThreadSummarySchema.parse(
         await request(path(id), "GET", undefined, signal),
+      );
+    },
+    async profile(id: string, signal?: AbortSignal) {
+      return controlPlaneProfileDetailSchema.parse(
+        await request(`${path(id)}/profile`, "GET", undefined, signal),
       );
     },
     async send(

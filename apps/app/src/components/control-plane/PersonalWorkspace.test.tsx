@@ -11,11 +11,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { afterEach, expect, it } from "vitest";
 import { PersonalWorkspace } from "./PersonalWorkspace";
+import { MemoryRouter } from "react-router-dom";
+import { installPluginRuntime } from "@/lib/plugin-frontend";
 
 const queries: QueryClient[] = [];
 afterEach(() => {
   cleanup();
   for (const query of queries.splice(0)) query.clear();
+  Reflect.deleteProperty(globalThis, "__bbPluginRuntime");
 });
 const project = (id: string) => ({
   projectId: id,
@@ -60,6 +63,7 @@ const bootstrap = {
   },
 };
 function mount(fetcher: typeof fetch) {
+  installPluginRuntime();
   const query = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
@@ -70,7 +74,9 @@ function mount(fetcher: typeof fetch) {
   });
   return render(
     <QueryClientProvider client={query}>
-      <PersonalWorkspace client={client} />
+      <MemoryRouter>
+        <PersonalWorkspace client={client} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

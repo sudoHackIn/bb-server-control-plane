@@ -337,6 +337,9 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
       expect(await api.get(alice.thread.id)).not.toHaveProperty(
         "environmentId",
       );
+      expect((await api.profile(alice.thread.id)).version.id).toBe(
+        alice.profile.versionId,
+      );
       expect((await api.result(alice.thread.id)).text).toBe(
         "alice-owned-answer-2",
       );
@@ -473,6 +476,7 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
         "/interactions",
         "/stream",
         "/timeline",
+        "/profile",
       ])
         expect(
           (await request(alice.token, `${base}/${bob.thread.id}${suffix}`))
@@ -581,6 +585,7 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
         },
       ]) {
         revoke.apply();
+        await expect(api.profile(alice.thread.id)).rejects.toThrow("404");
         expect(() =>
           dispatchScope(() =>
             dispatchControlPlaneDispatchRead(alice.user.id, runningRequest),

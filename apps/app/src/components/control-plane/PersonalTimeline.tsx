@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ThreadStatus } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { ThreadTimelineSurface } from "@/components/thread/timeline/ThreadTimelineSurface";
@@ -23,7 +24,18 @@ export function PersonalTimeline({
   status: ThreadStatus;
   cwd: string;
 }) {
-  const view = usePersonalTimeline(client, threadId);
+  const queries = useQueryClient();
+  const onStatus = useCallback(
+    (status: ThreadStatus) => {
+      queries.setQueryData<
+        Awaited<ReturnType<PersonalWorkspaceClient["threads"]["get"]>>
+      >(["personal", "thread", threadId], (current) =>
+        current ? { ...current, status } : undefined,
+      );
+    },
+    [queries, threadId],
+  );
+  const view = usePersonalTimeline(client, threadId, onStatus);
   const currentStatus = view.status ?? status;
   const source = useMemo<TimelineDetailSource>(
     () => (identity, beforeCursor, signal) => {
