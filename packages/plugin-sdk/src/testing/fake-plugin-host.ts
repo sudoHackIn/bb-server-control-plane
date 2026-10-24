@@ -1148,6 +1148,10 @@ function createFakePluginHostInternal(
   const loopbackBaseUrl = options.loopbackBaseUrl ?? "http://127.0.0.1:38886";
   const dataDir = options.dataDir ?? "/tmp/bb-fake-data-dir";
   const server: PluginServerApi = {
+    get internal_DO_NOT_USE_backgroundJobs() {
+      assertLive();
+      return null;
+    },
     get experimental_appUrl(): string | null {
       assertLive();
       return appUrl;

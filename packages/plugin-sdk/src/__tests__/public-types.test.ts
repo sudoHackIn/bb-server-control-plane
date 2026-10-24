@@ -143,6 +143,8 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginThreadEventHandler",
   "PluginThreadEventName",
   "PluginThreadEventPayloads",
+  "InternalDoNotUseBackgroundJobBinding",
+  "InternalDoNotUseBackgroundJobs",
   "InternalDoNotUsePluginTunnelIngress",
   "InternalDoNotUsePluginTunnelIngressOptions",
   "PluginTurnFailedEvent",

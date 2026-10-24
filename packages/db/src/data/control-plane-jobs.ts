@@ -155,7 +155,7 @@ export function createControlPlaneJobBinding(
 
 export function listControlPlaneJobBindings(
   db: DbQueryConnection,
-  userId: string,
+  userId: string | null,
   input: {
     kind?: Job["kind"];
     projectId?: string;
@@ -164,6 +164,34 @@ export function listControlPlaneJobBindings(
   },
 ) {
   const options = controlPlaneJobListSchema.parse(input);
+  if (userId === null) {
+    const rows = db
+      .select()
+      .from(controlPlaneJobBindings)
+      .where(
+        and(
+          isNull(controlPlaneJobBindings.deletedAt),
+          options.kind
+            ? eq(controlPlaneJobBindings.kind, options.kind)
+            : undefined,
+          options.projectId
+            ? eq(controlPlaneJobBindings.projectId, options.projectId)
+            : undefined,
+          options.cursor
+            ? gt(controlPlaneJobBindings.id, options.cursor)
+            : undefined,
+        ),
+      )
+      .orderBy(asc(controlPlaneJobBindings.id))
+      .limit(options.limit + 1)
+      .all();
+    const bindings = rows.slice(0, options.limit);
+    return {
+      bindings,
+      nextCursor:
+        rows.length > options.limit ? (bindings.at(-1)?.id ?? null) : null,
+    };
+  }
   const accessible = accessibleControlPlaneProjects(db)
     .where(eq(controlPlaneProjectAccess.userId, userId))
     .as("accessible_job_projects");
@@ -202,9 +230,10 @@ export function listControlPlaneJobBindings(
 
 export function getControlPlaneJobBinding(
   db: DbQueryConnection,
-  userId: string,
+  userId: string | null,
   id: string,
 ) {
+  if (userId === null) return row(db, id) ?? null;
   const accessible = accessibleControlPlaneProjects(db)
     .where(eq(controlPlaneProjectAccess.userId, userId))
     .as("accessible_job_projects");
@@ -238,7 +267,7 @@ export function requireControlPlaneJobDispatch(
 
 export function setControlPlaneJobEnabled(
   db: DbConnection,
-  userId: string,
+  userId: string | null,
   id: string,
   enabled: boolean,
 ) {
@@ -260,7 +289,7 @@ export function setControlPlaneJobEnabled(
 
 export function deleteControlPlaneJobBinding(
   db: DbConnection,
-  userId: string,
+  userId: string | null,
   id: string,
 ) {
   return db.transaction(

@@ -117,6 +117,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       const probe = decode(result);
       assert.ok(probe, "Missing structured delegated probe");
       assert.equal(probe.unscopedSdkDenied, true);
+      assert.equal(probe.backgroundApiDenied, true);
       const binding = db
         .prepare(
           "SELECT t.project_id, o.owner_user_id FROM threads t JOIN control_plane_threads o ON o.thread_id = t.id WHERE t.id = ?",
@@ -718,6 +719,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       realBbThreadDispatch: true,
       approvedBbToolInvokedThroughNativeQwenMcp: true,
       foreignBbToolNotOffered: true,
+      unapprovedPluginBackgroundAuthorityApiDenied: true,
       homeConfiguredBbMcpCannotOverrideBridge: true,
       nativeUidHomeTools: true,
       nativeTimeline: true,

@@ -58,12 +58,15 @@ bindings have no fallback to public/admin execution.
 runs a callback under the saved user's server principal. A user principal cannot
 invoke another user's binding. Async callbacks preserve that principal; the
 caller's previous scope is restored afterward. This is internal server plumbing,
-not a public capability token or a completed plugin SDK adapter.
+not a public capability token. The internal builtin-only Plugin SDK facade now
+wraps these same operations; actual native workflow/automation persistence and
+execution integration is still pending.
 
 ## Remaining integration
 
-- Derive owner/context in the trusted first-party plugin adapter; do not accept
-  userId, UID, HOME, environment or permission overrides from tenant payloads.
+- Connect native plugin persistence to the verified builtin-only adapter. It
+  derives user context at the boundary and rejects userId/UID/HOME/credential
+  overrides; a service callback must adopt saved user authority before binding.
 - Bind native definition/run revisions atomically with plugin persistence or use
   an explicit fail-closed reservation/reconciliation protocol across databases.
 - Apply owner/source checks to RPC, API, CLI, UI, events, logs, notifications,
@@ -79,3 +82,32 @@ not a public capability token or a completed plugin SDK adapter.
   revocation, replay and restart through Docker before completing the stage.
 
 The kernel's SQLite and Docker checks do not claim these integrations are done.
+
+## Internal plugin facade
+
+`bb.server.internal_DO_NOT_USE_backgroundJobs` is available only to the builtin
+Workflows and Automations plugin IDs on a configured shared server; standalone
+hosts return null. Non-builtin provenance and other IDs are rejected. Registration
+captures the authenticated user, or the registered project owner for an explicit
+administrative request. Inherited profile selection uses the origin thread's
+saved version; it does not follow later profile publications. Background service
+code must adopt a saved user scope before creating a child binding. Plugin service starts/restarts
+and schedule callbacks explicitly clear the activating request principal.
+Administrative registration/reenable is bounded to a live authenticated request;
+escaped async callbacks lose that privilege even if their old principal object
+remains in AsyncLocalStorage.
+
+The facade delegates reads, lists and mutations to the same registry helpers as
+core. The helpers have an explicit trusted administrative metadata mode; user
+scope still requires owner/current-project predicates before pagination.
+Administrative/service readers remain limited to that builtin's supported kinds.
+Execution always rechecks the actual saved user's permissions. Cached facade
+methods stop working when their owning plugin is unloaded. The audit entry and
+Plugin Guide inventory document its internal status.
+
+This facade does not evaluate source, create workers or authorize a native plugin
+object merely because a binding ID was supplied. Native plugin handlers must
+verify the object/binding association and current caller, and bind their own
+durable records before exposing personal operations. Actual user-facing job
+APIs, ownership-aware plugin persistence and tenant runtime isolation remain
+required work.

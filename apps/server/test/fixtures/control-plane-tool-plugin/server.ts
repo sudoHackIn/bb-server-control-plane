@@ -14,8 +14,16 @@ export default function plugin(bb: BbPluginApi) {
           error instanceof Error &&
           error.message.includes("scoped authorization");
       }
+      let backgroundApiDenied = false;
+      try {
+        void bb.server.internal_DO_NOT_USE_backgroundJobs;
+      } catch (error) {
+        backgroundApiDenied =
+          error instanceof Error && error.message.includes("not authorized");
+      }
       return JSON.stringify({
         delegatedProbe: true,
+        backgroundApiDenied,
         threadId: context.threadId,
         projectId: context.projectId,
         unscopedSdkDenied,

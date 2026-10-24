@@ -19,6 +19,7 @@ export type ControlPlanePrincipal =
   | { kind: "user"; userId: string }
   | { kind: "service" };
 const principals = new AsyncLocalStorage<ControlPlanePrincipal>();
+const administrativeRequests = new AsyncLocalStorage<{ active: boolean }>();
 const cookieName = "bb_admin_session";
 const lifetimeMs = 24 * 60 * 60 * 1000;
 const loginSchema = z
@@ -27,6 +28,19 @@ const loginSchema = z
 
 export function currentControlPlanePrincipal(): ControlPlanePrincipal | null {
   return principals.getStore() ?? null;
+}
+
+export function hasActiveControlPlaneAdministrativeRequest(): boolean {
+  return (
+    currentControlPlanePrincipal()?.kind === "admin" &&
+    administrativeRequests.getStore()?.active === true
+  );
+}
+
+export function withControlPlaneService<T>(run: () => T): T {
+  return administrativeRequests.run({ active: false }, () =>
+    principals.run({ kind: "service" }, run),
+  );
 }
 
 export function assertServiceRealtimePrincipal(): void {
@@ -267,7 +281,17 @@ export function createControlPlaneAccess(
         ) {
           return context.json({ error: "forbidden_origin" }, 403);
         }
-        return principals.run({ kind: "admin", login: value.login }, next);
+        const requestScope = { active: true };
+        return administrativeRequests.run(requestScope, async () => {
+          try {
+            return await principals.run(
+              { kind: "admin", login: value.login },
+              next,
+            );
+          } finally {
+            requestScope.active = false;
+          }
+        });
       });
 
       app.use("/control-plane/*", async (context, next) => {

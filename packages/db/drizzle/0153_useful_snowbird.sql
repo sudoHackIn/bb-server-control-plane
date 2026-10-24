@@ -1,0 +1,1 @@
+CREATE INDEX `control_plane_job_bindings_kind_idx` ON `control_plane_job_bindings` (`kind`,`id`);

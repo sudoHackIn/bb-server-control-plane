@@ -1,3 +1,4 @@
+import { createControlPlaneBackgroundJobs } from "./control-plane/background-jobs.js";
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import {
   createControlPlaneAccess,
@@ -843,6 +844,10 @@ export function createApp(
     dataDir: deps.config.dataDir,
     appVersion: deps.config.appVersion,
     getAppUrl: () => deps.config.appUrl ?? null,
+    getBackgroundJobs: (pluginId, builtin) =>
+      controlPlane
+        ? createControlPlaneBackgroundJobs(deps.db, pluginId, builtin)
+        : null,
     sharedPorts: deps.sharedPorts,
     providerRegistry: deps.providerRegistry,
     pluginHostArtifacts: deps.pluginHostArtifacts,

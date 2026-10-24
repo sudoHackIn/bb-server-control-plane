@@ -1,3 +1,4 @@
+import { withControlPlaneService } from "../../control-plane/access.js";
 import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
   PluginRpcDiscoveryQuery,
@@ -2708,7 +2709,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         const outcome = await invokeWrapped(
           row.pluginId,
           `schedule ${row.name}`,
-          () => schedule.fn(),
+          () => withControlPlaneService(() => schedule.fn()),
         );
         recordPluginScheduleResult(deps.db, {
           pluginId: row.pluginId,

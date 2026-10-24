@@ -102,6 +102,7 @@ describe("server", () => {
       "https://bb.example.test",
     );
     expect(unset.bb.server.experimental_appUrl).toBeNull();
+    expect(unset.bb.server.internal_DO_NOT_USE_backgroundJobs).toBeNull();
   });
 
   it("records tunnel ingress handles, shares an audience, and closes them on dispose", async () => {

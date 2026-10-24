@@ -3664,3 +3664,46 @@ never dispatch the requested operation with service authority. Public user HTTP
 and private realtime remain denied. These exceptions do not constitute the
 pending general scoped Plugin SDK adapter; child/plugin actions still need
 separate ownership and authority checks.
+
+## Internal shared-server background authority
+
+`bb.server.internal_DO_NOT_USE_backgroundJobs` is nullable internal plumbing for
+builtin `bb--workflows` and `bb--automations` only. It is null on standalone
+servers, including the standalone fake plugin host. A configured shared server
+rejects access from other plugin IDs or non-builtin provenance. The host derives
+both values from its installed plugin record, not mutable plugin API fields.
+
+The facade binds native object/revision identity through the central authority
+registry. It rejects owner/UID/HOME/credential fields. A user request captures
+its current principal; an explicit administrative request uses the registered
+project owner. Administrative registration requires a live authenticated request;
+async work that escaped its completed response cannot retain that privilege. A service callback cannot register a job without first adopting
+saved user authority. Plugin service starts/restarts and cron callbacks enter explicit
+service scope even if activation or the sweep was initiated by an active
+administrative request. Re-enable likewise requires user scope or a live
+administrative request in addition to current execution grants. A null profile version resolves the managed origin
+thread's persisted version, never the newest version by default.
+
+`get` and `list` recheck owner/current project access in user scope; trusted
+administrative/service inspection can read all metadata within that plugin's
+allowed object kinds, including disabled-user history. `withAuthority` rechecks
+current execution grants/ancestry and adopts the saved user principal across
+async callbacks. Safe disable/delete remain available after profile loss;
+re-enable always requires execution authority. All operations delegate to the
+same core registry helpers; internal explicit-null user scope is a trusted
+administrative metadata mode, not an unauthenticated public fallback.
+
+The host wraps cached facade methods with its lifecycle guard. An unloaded
+plugin cannot keep using a captured facade. No new HTTP, daemon RPC or public
+CLI authority endpoint is exposed. No tenant evaluator or worker dispatch is
+implemented by this member.
+
+Current callers are the core plugin host, host lifecycle/security tests and the
+Docker authority fixture; actual Workflows/Automations persistence and execution
+integration remains pending. Only those two builtin plugin IDs are intended
+production consumers. The Plugin Guide's SDK inventory includes this member.
+
+Before any public stabilization, complete native plugin persistence, source
+filtering, controlled child creation, registered-UID script evaluation, retries,
+replay, notifications, scheduling, revocation and restart acceptance tests.
+Keep it internal while that integration is incomplete.

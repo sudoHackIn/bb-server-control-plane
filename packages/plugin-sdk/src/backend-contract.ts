@@ -1900,7 +1900,72 @@ export interface PluginEvents {
 // Server info.
 // ---------------------------------------------------------------------------
 
+export interface InternalDoNotUseBackgroundJobBinding {
+  id: string;
+  kind:
+    | "workflow-definition"
+    | "workflow-run"
+    | "automation"
+    | "automation-run"
+    | "schedule";
+  objectId: string;
+  revision: number;
+  ownerUserId: string;
+  projectId: string;
+  profileVersionId: string;
+  originThreadId: string | null;
+  sourceBindingId: string | null;
+  enabled: boolean;
+  deletedAt: number | null;
+  createdAt: number;
+}
+
+export interface InternalDoNotUseBackgroundJobs {
+  bind(
+    input: Pick<
+      InternalDoNotUseBackgroundJobBinding,
+      | "kind"
+      | "objectId"
+      | "revision"
+      | "projectId"
+      | "originThreadId"
+      | "sourceBindingId"
+    > & { profileVersionId: string | null },
+  ): Promise<InternalDoNotUseBackgroundJobBinding>;
+  get(id: string): Promise<InternalDoNotUseBackgroundJobBinding | null>;
+  list(input: {
+    kind: InternalDoNotUseBackgroundJobBinding["kind"];
+    projectId?: string;
+    cursor: string | null;
+    limit: number;
+  }): Promise<{
+    bindings: InternalDoNotUseBackgroundJobBinding[];
+    nextCursor: string | null;
+  }>;
+  setEnabled(
+    id: string,
+    enabled: boolean,
+  ): Promise<InternalDoNotUseBackgroundJobBinding>;
+  remove(id: string): Promise<void>;
+  withAuthority<T>(
+    id: string,
+    run: (binding: InternalDoNotUseBackgroundJobBinding) => T,
+  ): T;
+}
+
 export interface PluginServerApi {
+  /**
+   * Internal to the bundled Workflows and Automations plugins on shared
+   * control-plane servers. Null on standalone servers. Native object identity
+   * and ownership must be checked before using a binding; its ID is not a token.
+   * Captures the authenticated user, or the registered project owner for an
+   * explicit administrative request. Background registration requires an adopted
+   * saved user scope. No UID, HOME, credentials or userId override is accepted.
+   * A null profileVersionId inherits the managed origin thread's pinned version.
+   * This adapter does not provide tenant script evaluation or worker dispatch.
+   */
+  readonly internal_DO_NOT_USE_backgroundJobs: InternalDoNotUseBackgroundJobs | null;
+
   /**
    * The operator-configured public app URL from `BB_APP_URL`, or `null` when
    * the operator has not configured one. This value is not bind-gated.

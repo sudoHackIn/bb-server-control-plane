@@ -310,6 +310,9 @@ Read the installed declarations for exact current signatures.
 - `PluginRpcValidationIssue`
 - `PluginSdkApp`
 - `PluginServerApi`
+- `PluginServerApi.internal_DO_NOT_USE_backgroundJobs` (bundled Workflows/Automations only)
+- `InternalDoNotUseBackgroundJobs`
+- `InternalDoNotUseBackgroundJobBinding`
 - `PluginSettingDescriptor`
 - `PluginSettingDescriptors`
 - `PluginSettingValue`

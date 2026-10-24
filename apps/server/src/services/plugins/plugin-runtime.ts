@@ -1,3 +1,4 @@
+import { withControlPlaneService } from "../../control-plane/access.js";
 import {
   realtimeSubscriptionTargetKey,
   type PluginReadSubscriptionTarget,
@@ -546,7 +547,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       uncaughtError: undefined,
     };
     const current = serviceContext.run(instance, async () => {
-      await service.record.start(controller.signal);
+      await withControlPlaneService(() =>
+        service.record.start(controller.signal),
+      );
     });
     service.current = current;
     current.then(
@@ -1613,6 +1616,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         return context.machineEnrollments.forOwner(row.id);
       },
       getAppUrl: deps.getAppUrl ?? (() => null),
+      getBackgroundJobs: () =>
+        deps.getBackgroundJobs?.(row.id, row.provenance === "builtin") ?? null,
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       rpcCaller: rpcCallers.issue(row.id),
       invalidateRpc: (tags) => deps.hub.notifyPluginChanged(row.id, tags),

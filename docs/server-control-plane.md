@@ -33,6 +33,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Gate managed daemon plugin-tool invocations by current project/profile permissions, filter their contributed tool catalog and propagate the persisted user principal; deny unscoped private user SDK calls. The Qwen MCP bridge and scoped SDK adapter remain pending.
 - [ ] Carry verified user/run context through plugin calls and child creation. Plugin identity, parentThreadId and origin metadata are not authentication.
 - [x] Add the internal durable background authority-binding registry, immutable object revisions, current-grant/source checks and user-principal callback scope. Actual workflow/automation/scheduler integration remains pending.
+- [x] Expose lifecycle-scoped internal background authority only to builtin Workflows/Automations, derive owner/profile context server-side and verify registration/read/restart plus unapproved-plugin denial in Docker. Native plugin persistence/execution integration remains pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -1010,3 +1011,61 @@ registry/profile context, after Bob's browser/CLI credential was revoked. All
 61 Docker build/deployment tasks pass. This proves the binding kernel and its
 callback scope, not actual personal scheduler/workflow execution. See
 `control-plane-phase-25-verification.json`.
+
+## Twenty-sixth increment: builtin-only background authority facade
+
+The Plugin SDK's internal server namespace exposes bind/get/list/enable/remove
+and saved-authority callback operations to builtin Workflows/Automations only.
+The host derives plugin identity and provenance from its installed record. It
+returns null in standalone mode and rejects other plugin access in shared mode.
+The fake host remains explicitly standalone. Captured facade methods recheck
+plugin liveness, so disposal cannot leave an operational cached handle.
+
+Binding rejects unknown owner, UID, HOME and credential fields. It derives owner
+from the current user or registered project owner in an explicit administrative
+request. Unscoped background service registration is denied; adopting a saved
+user scope permits controlled nested registration. A null profile version
+resolves the managed origin thread's persisted version. Per-plugin kinds and
+current ownership/project access constrain user metadata reads and mutations.
+
+Administrative/service inspection can read that plugin's metadata across owners,
+including disabled-user history. The core registry now has an explicit trusted
+administrative metadata mode; adapter actions reuse its existing canonical
+mutators. This does not relax execution: current saved-user grants and source
+ancestry still govern callbacks and re-enable. Migration 0153 indexes the new
+kind/ID metadata reader. No HTTP route, daemon RPC, public job CLI or tenant
+execution path is opened by this internal contract. Its audit entry, portable
+SDK type exports and Plugin Guide inventory are updated.
+
+Plugin services/restarts and schedule callbacks explicitly enter service scope,
+even while an activating administrative request is still active. Administrative
+registration and re-enable require live request authority. A separate bounded
+request marker prevents an escaped async callback from using an inherited admin
+principal after its response completes. Real host tests cover both in-request
+service/schedule activation and the escaped-promise case, while ordinary
+foreground administrative operations remain available.
+
+The deployed authority fixture now exercises the facade rather than bypassing
+it with direct registry calls. It registers two users' definitions/runs, inherits
+pinned origin profiles, checks source disable/re-enable, denies foreign sources
+and unscoped registration, and adopts parallel saved-user contexts after restart
+without browser tokens. A genuine native Qwen MCP call to the ordinary test
+plugin verifies it cannot obtain this privileged namespace from the real host.
+
+Workflows/Automations have not yet attached these references to their own durable
+objects or changed tenant runtime dispatch. Their actual persistence, scoped
+operations, UID execution, notifications and schedule integration remain open;
+this increment does not mark the required background stage complete.
+
+Verification: 47 selected server authorization/SDK lifecycle/background tests,
+the full 402-test Plugin SDK package, 8 registry tests and 11 Plugin Guide surface
+tests pass. Portable SDK declarations and strict DB/server/SDK/guide typechecks
+pass, as do changed-file lint/format/diff checks. Real HTTP tests verify that
+active administrative activation cannot leak binding authority to services or
+cron callbacks, and that an escaped promise keeps its old principal but loses
+registration rights after the response. The foreground administrative operation
+still succeeds. The final actual Docker build/deployment passes all 61 tasks,
+including facade creation/read, current-source authority, restart without browser
+tokens and denial of the privileged namespace from a real native Qwen MCP plugin
+call. These are not completed personal workflow execution tests. See
+`control-plane-phase-26-verification.json`.

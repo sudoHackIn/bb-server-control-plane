@@ -1,0 +1,231 @@
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
+import { eq } from "drizzle-orm";
+import { expect, it } from "vitest";
+import { z } from "zod";
+import { createMigratedConnection } from "@bb/db/testing";
+import { controlPlaneUsers, setControlPlaneProfileAccess } from "@bb/db";
+import { createControlPlaneBackgroundJobs } from "../../src/control-plane/background-jobs.js";
+import {
+  createControlPlaneAccess,
+  currentControlPlanePrincipal,
+  withControlPlaneUser,
+} from "../../src/control-plane/access.js";
+import { hashAdminPassword } from "../../src/control-plane/credentials.js";
+import { seedControlPlaneJobSubjects } from "../helpers/control-plane-authority.js";
+
+it("admits only approved builtin hosts and captures the current user without accepting overrides", async () => {
+  const db = createMigratedConnection();
+  try {
+    const { alice, bob } = seedControlPlaneJobSubjects(db);
+    for (const [id, builtin] of [
+      ["bb--workflows", false],
+      ["bb--automations", false],
+      ["other", true],
+    ] as const)
+      expect(() => createControlPlaneBackgroundJobs(db, id, builtin)).toThrow(
+        "not authorized",
+      );
+    const jobs = createControlPlaneBackgroundJobs(db, "bb--workflows", true);
+    await expect(jobs.bind(alice.input)).rejects.toThrow("not authorized");
+    const a = await withControlPlaneUser(alice.user.id, () =>
+      jobs.bind(alice.input),
+    );
+    const b = await withControlPlaneUser(bob.user.id, () =>
+      jobs.bind(bob.input),
+    );
+    expect(a.ownerUserId).toBe(alice.user.id);
+    expect(a.profileVersionId).toBe(alice.profile.versionId);
+    expect(b.ownerUserId).toBe(bob.user.id);
+    await jobs.setEnabled(a.id, false);
+    await expect(jobs.setEnabled(a.id, true)).rejects.toThrow("not authorized");
+    await withControlPlaneUser(alice.user.id, () =>
+      jobs.setEnabled(a.id, true),
+    );
+    for (const extra of [
+      { userId: bob.user.id },
+      { uid: bob.user.uid },
+      { home: bob.user.home },
+    ])
+      await expect(
+        withControlPlaneUser(alice.user.id, () =>
+          jobs.bind({ ...alice.input, ...extra }),
+        ),
+      ).rejects.toThrow();
+    await expect(
+      withControlPlaneUser(alice.user.id, () =>
+        jobs.bind({ ...alice.input, kind: "automation" }),
+      ),
+    ).rejects.toThrow("not authorized");
+    expect(
+      await withControlPlaneUser(bob.user.id, () => jobs.get(a.id)),
+    ).toBeNull();
+    expect(
+      (
+        await withControlPlaneUser(bob.user.id, () =>
+          jobs.list({ kind: "workflow-run", cursor: null, limit: 1 }),
+        )
+      ).bindings.map((job) => job.id),
+    ).toEqual([b.id]);
+    const automations = createControlPlaneBackgroundJobs(
+      db,
+      "bb--automations",
+      true,
+    );
+    expect(await automations.get(a.id)).toBeNull();
+    await expect(
+      automations.list({ kind: "workflow-run", cursor: null, limit: 1 }),
+    ).rejects.toThrow("not authorized");
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("adopts current saved authority for nested registration and async callbacks and rechecks revocation", async () => {
+  const db = createMigratedConnection();
+  try {
+    const { alice, bob } = seedControlPlaneJobSubjects(db);
+    const jobs = createControlPlaneBackgroundJobs(db, "bb--workflows", true);
+    const a = await withControlPlaneUser(alice.user.id, () =>
+      jobs.bind(alice.input),
+    );
+    const b = await withControlPlaneUser(bob.user.id, () =>
+      jobs.bind(bob.input),
+    );
+    await Promise.all(
+      [a, b].map((job) =>
+        jobs.withAuthority(job.id, async () => {
+          await Promise.resolve();
+          expect(currentControlPlanePrincipal()).toEqual({
+            kind: "user",
+            userId: job.ownerUserId,
+          });
+          const nested = await jobs.bind({
+            ...alice.input,
+            objectId: randomUUID(),
+            projectId: job.projectId,
+            originThreadId: job.originThreadId,
+            sourceBindingId: job.id,
+          });
+          expect(nested.ownerUserId).toBe(job.ownerUserId);
+        }),
+      ),
+    );
+    expect(currentControlPlanePrincipal()).toBeNull();
+    expect(() =>
+      withControlPlaneUser(bob.user.id, () =>
+        jobs.withAuthority(a.id, () => {
+          throw new Error("Foreign callback executed");
+        }),
+      ),
+    ).toThrow("not authorized");
+    await expect(
+      withControlPlaneUser(bob.user.id, () => jobs.setEnabled(a.id, false)),
+    ).rejects.toThrow("not authorized");
+    setControlPlaneProfileAccess(
+      db,
+      alice.profile.profileId,
+      alice.user.id,
+      false,
+    );
+    expect(() =>
+      jobs.withAuthority(a.id, () => {
+        throw new Error("Revoked callback executed");
+      }),
+    ).toThrow("not authorized");
+    await withControlPlaneUser(alice.user.id, () =>
+      jobs.setEnabled(a.id, false),
+    );
+    await expect(
+      withControlPlaneUser(alice.user.id, () => jobs.setEnabled(a.id, true)),
+    ).rejects.toThrow("not authorized");
+    db.update(controlPlaneUsers)
+      .set({ enabled: false })
+      .where(eq(controlPlaneUsers.id, alice.user.id))
+      .run();
+    expect(
+      await withControlPlaneUser(alice.user.id, () => jobs.get(a.id)),
+    ).toBeNull();
+    expect((await jobs.get(a.id))?.ownerUserId).toBe(alice.user.id);
+    await jobs.setEnabled(a.id, false);
+    await expect(jobs.setEnabled(a.id, true)).rejects.toThrow("not authorized");
+    await jobs.remove(a.id);
+    expect((await jobs.get(a.id))?.deletedAt).not.toBeNull();
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("an explicit administrative request can bind a registered project owner while callbacks remain user scoped", async () => {
+  const db = createMigratedConnection();
+  const access = createControlPlaneAccess({
+    version: 1,
+    publicOrigin: "https://bb.example",
+    admin: {
+      login: "operator",
+      passwordHash: await hashAdminPassword("test-only-background-password"),
+    },
+  });
+  try {
+    const { alice } = seedControlPlaneJobSubjects(db);
+    const jobs = createControlPlaneBackgroundJobs(db, "bb--workflows", true);
+    const app = new Hono();
+    access.install(app);
+    const handoff: {
+      release: (() => void) | null;
+      escaped: Promise<unknown> | null;
+    } = { release: null, escaped: null };
+    const gate = new Promise<void>((resolve) => {
+      handoff.release = resolve;
+    });
+    app.post("/fixture", async (context) => {
+      expect(currentControlPlanePrincipal()).toEqual({
+        kind: "admin",
+        login: "operator",
+      });
+      handoff.escaped = gate.then(() => {
+        expect(currentControlPlanePrincipal()).toEqual({
+          kind: "admin",
+          login: "operator",
+        });
+        return jobs.bind({ ...alice.input, objectId: randomUUID() });
+      });
+      const job = await jobs.bind(alice.input);
+      await jobs.withAuthority(job.id, async () => {
+        await Promise.resolve();
+        expect(currentControlPlanePrincipal()).toEqual({
+          kind: "user",
+          userId: alice.user.id,
+        });
+      });
+      expect(currentControlPlanePrincipal()).toEqual({
+        kind: "admin",
+        login: "operator",
+      });
+      return context.json({ ownerUserId: job.ownerUserId });
+    });
+    const login = await app.request("/control-plane/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        login: "operator",
+        password: "test-only-background-password",
+      }),
+    });
+    const { token } = z.object({ token: z.string() }).parse(await login.json());
+    const response = await app.request("/fixture", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ownerUserId: alice.user.id });
+    if (!handoff.escaped || !handoff.release)
+      throw new Error("Missing escaped administrative callback");
+    const check = expect(handoff.escaped).rejects.toThrow("not authorized");
+    handoff.release();
+    await check;
+  } finally {
+    access.close();
+    db.$client.close();
+  }
+});

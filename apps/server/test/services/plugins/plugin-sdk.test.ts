@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
+import { Hono } from "hono";
+import { eq } from "drizzle-orm";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   archiveThread,
+  pluginSchedules,
   createThread,
   getThread,
   insertThreadPluginMetadata,
@@ -33,7 +36,15 @@ import {
 } from "../../helpers/commands.js";
 import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
-import { defineRpcContract } from "@get-bb/plugin-sdk";
+import { defineRpcContract, type PluginServerApi } from "@get-bb/plugin-sdk";
+import { createControlPlaneBackgroundJobs } from "../../../src/control-plane/background-jobs.js";
+import {
+  withControlPlaneUser,
+  currentControlPlanePrincipal,
+  createControlPlaneAccess,
+} from "../../../src/control-plane/access.js";
+import { hashAdminPassword } from "../../../src/control-plane/credentials.js";
+import { seedControlPlaneJobSubjects } from "../../helpers/control-plane-authority.js";
 import { z } from "zod";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
@@ -111,6 +122,7 @@ describe("plugin bb.sdk bind gate", () => {
   let service: PluginService;
   let pluginHostArtifacts: PluginHostArtifactRegistry;
   let appUrl: string | null;
+  let backgroundJobs: PluginServerApi["internal_DO_NOT_USE_backgroundJobs"];
   const sharedPorts = {
     declareSharedPorts: vi.fn(),
     validateSharedPortDeclaration: vi.fn(
@@ -199,8 +211,10 @@ describe("plugin bb.sdk bind gate", () => {
     callPluginHost.mockClear();
     disposePluginHost.mockClear();
     appUrl = "https://bb.example.test";
+    backgroundJobs = null;
     pluginHostArtifacts = new PluginHostArtifactRegistry();
     service = createPluginService({
+      getBackgroundJobs: () => backgroundJobs,
       aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
@@ -364,8 +378,118 @@ describe("plugin bb.sdk bind gate", () => {
     const api = requireApi(service, "app-url");
 
     expect(api.server.experimental_appUrl).toBe("https://bb.example.test");
+    expect(api.server.internal_DO_NOT_USE_backgroundJobs).toBeNull();
     appUrl = null;
     expect(api.server.experimental_appUrl).toBeNull();
+  });
+
+  it("lifecycle-scopes supplied background authority handles and keeps their current user dynamic", async () => {
+    const { alice, bob } = seedControlPlaneJobSubjects(db);
+    backgroundJobs = createControlPlaneBackgroundJobs(
+      db,
+      "bb--workflows",
+      true,
+    );
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-jobs-lifecycle",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    const api = requireApi(service, "jobs-lifecycle");
+    const jobs = api.server.internal_DO_NOT_USE_backgroundJobs;
+    if (!jobs) throw new Error("Missing supplied authority adapter");
+    const a = await withControlPlaneUser(alice.user.id, () =>
+      jobs.bind(alice.input),
+    );
+    expect(
+      await withControlPlaneUser(bob.user.id, () => jobs.get(a.id)),
+    ).toBeNull();
+    await service.setEnabled("jobs-lifecycle", false);
+    expect(() => jobs.get(a.id)).toThrow();
+    expect(() => jobs.withAuthority(a.id, () => a)).toThrow();
+    expect(() => api.server.internal_DO_NOT_USE_backgroundJobs).toThrow();
+  });
+
+  it("starts plugin services and schedules as service even while their administrative request remains active", async () => {
+    const { alice } = seedControlPlaneJobSubjects(db);
+    const authority = createControlPlaneBackgroundJobs(
+      db,
+      "bb--workflows",
+      true,
+    );
+    const attempts: (string | undefined)[] = [];
+    backgroundJobs = {
+      ...authority,
+      bind(input) {
+        attempts.push(currentControlPlanePrincipal()?.kind);
+        return authority.bind(input);
+      },
+    };
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-jobs-background",
+      serverSource: `export default function plugin(bb) {
+        async function probe(key) {
+          let outcome = "created";
+          try { await bb.server.internal_DO_NOT_USE_backgroundJobs.bind(${JSON.stringify(alice.input)}); }
+          catch (error) { outcome = error instanceof Error && error.message.includes("not authorized") ? "denied" : "unexpected"; }
+          await bb.storage.kv.set(key, outcome);
+        }
+        bb.background.service("scope-service", { async start(signal) {
+          await probe("service");
+          if (!signal.aborted) await new Promise((resolve) => signal.addEventListener("abort", resolve, { once: true }));
+        } });
+        bb.background.schedule("scope-schedule", "* * * * *", () => probe("schedule"));
+      }`,
+    });
+    const access = createControlPlaneAccess({
+      version: 1,
+      publicOrigin: "https://bb.example",
+      admin: {
+        login: "operator",
+        passwordHash: await hashAdminPassword(
+          "test-only-service-scope-password",
+        ),
+      },
+    });
+    try {
+      const app = new Hono();
+      access.install(app);
+      app.post("/fixture", async (context) => {
+        await service.installPath(rootDir);
+        const api = requireApi(service, "jobs-background");
+        await expect.poll(() => api.storage.kv.get("service")).toBe("denied");
+        db.update(pluginSchedules)
+          .set({ nextRunAt: Date.now() - 60000 })
+          .where(eq(pluginSchedules.pluginId, "jobs-background"))
+          .run();
+        await service.sweepDueSchedules(Date.now());
+        expect(await api.storage.kv.get("schedule")).toBe("denied");
+        const jobs = api.server.internal_DO_NOT_USE_backgroundJobs;
+        if (!jobs) throw new Error("Missing supplied authority adapter");
+        expect((await jobs.bind(alice.input)).ownerUserId).toBe(alice.user.id);
+        expect(attempts).toEqual(["service", "service", "admin"]);
+        return context.json({ ok: true });
+      });
+      const login = await app.request("/control-plane/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          login: "operator",
+          password: "test-only-service-scope-password",
+        }),
+      });
+      const { token } = z
+        .object({ token: z.string() })
+        .parse(await login.json());
+      const response = await app.request("/fixture", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+    } finally {
+      access.close();
+    }
   });
 
   it("delivers shared-port declarations through the server control plane", async () => {
@@ -542,7 +666,11 @@ describe("plugin bb.sdk bind gate", () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-eager-host-client",
       serverSource: `
-        import { defineRpcContract } from "@get-bb/plugin-sdk";
+        import { defineRpcContract, type PluginServerApi } from "@get-bb/plugin-sdk";
+import { createControlPlaneBackgroundJobs } from "../../../src/control-plane/background-jobs.js";
+import { withControlPlaneUser, createControlPlaneAccess } from "../../../src/control-plane/access.js";
+import { hashAdminPassword } from "../../../src/control-plane/credentials.js";
+import { seedControlPlaneJobSubjects } from "../../helpers/control-plane-authority.js";
         const schema = { "~standard": { validate(value: unknown) { return { value }; } } };
         const contract = defineRpcContract({ ping: { input: schema, output: schema } });
         export default async function plugin(bb: any) {

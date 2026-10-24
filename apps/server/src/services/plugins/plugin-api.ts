@@ -506,6 +506,7 @@ export function createPluginApi(options: {
   getSdkFetch?: () => typeof fetch | undefined;
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
+  getBackgroundJobs: () => PluginServerApi["internal_DO_NOT_USE_backgroundJobs"];
   getLoopbackBaseUrl: () => string | undefined;
   openTunnelIngress: (audience: string) => Promise<TunnelIngressLease>;
 
@@ -572,6 +573,7 @@ export function createPluginApi(options: {
     dataDir,
     getSdk,
     getAppUrl,
+    getBackgroundJobs,
     getLoopbackBaseUrl,
     openTunnelIngress,
     rpcCaller,
@@ -1045,7 +1047,46 @@ export function createPluginApi(options: {
     },
   };
 
+  let backgroundJobs:
+    | PluginServerApi["internal_DO_NOT_USE_backgroundJobs"]
+    | undefined;
+  function backgroundJobApi(): PluginServerApi["internal_DO_NOT_USE_backgroundJobs"] {
+    if (backgroundJobs !== undefined) return backgroundJobs;
+    const source = getBackgroundJobs();
+    if (source === null) return (backgroundJobs = null);
+    backgroundJobs = {
+      bind(input) {
+        assertLive();
+        return source.bind(input);
+      },
+      get(id) {
+        assertLive();
+        return source.get(id);
+      },
+      list(input) {
+        assertLive();
+        return source.list(input);
+      },
+      setEnabled(id, enabled) {
+        assertLive();
+        return source.setEnabled(id, enabled);
+      },
+      remove(id) {
+        assertLive();
+        return source.remove(id);
+      },
+      withAuthority(id, run) {
+        assertLive();
+        return source.withAuthority(id, run);
+      },
+    };
+    return backgroundJobs;
+  }
   const server: PluginServerApi = {
+    get internal_DO_NOT_USE_backgroundJobs() {
+      assertLive();
+      return backgroundJobApi();
+    },
     get experimental_appUrl(): string | null {
       assertLive();
       return getAppUrl();

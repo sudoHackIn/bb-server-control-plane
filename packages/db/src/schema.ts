@@ -373,6 +373,7 @@ export const controlPlaneJobBindings = sqliteTable(
       table.id,
     ),
     index("control_plane_job_bindings_source_idx").on(table.sourceBindingId),
+    index("control_plane_job_bindings_kind_idx").on(table.kind, table.id),
   ],
 );
 
