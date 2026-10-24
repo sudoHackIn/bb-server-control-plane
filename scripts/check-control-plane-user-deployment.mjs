@@ -356,6 +356,156 @@ export async function verifyUserDeployment({
       }
       const alice = users[0];
       const bob = users[1];
+      const adminEnv = { ...env, HOME: "/tmp/bb-profile-admin" };
+      await command(
+        [...cli, "login", "--login", "operator", "--password-stdin"],
+        password,
+        { env: adminEnv },
+      );
+      const adminProfiles = (args, input = "") =>
+        command([...cli, "profiles", ...args], input, { env: adminEnv });
+      const definition = {
+        prompt: "Approved review instructions",
+        providerId: "qwen-server",
+        model: "catalog-test-model",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: ["read_file"],
+        mcpServers: ["approved-mcp"],
+      };
+      const profile = JSON.parse(
+        await adminProfiles(
+          ["create", "review", "--name", "Review", "--definition-stdin"],
+          JSON.stringify(definition),
+        ),
+      );
+      assert.equal(profile.version.version, 1);
+      assert.deepEqual(
+        JSON.parse(await command([...cli, "profiles", "list"], "", { env }))
+          .profiles,
+        [],
+      );
+      await adminProfiles(["grant", profile.profile.id, alice.id]);
+      assert.equal(
+        JSON.parse(
+          await command([...cli, "profiles", "get", profile.profile.id], "", {
+            env,
+          }),
+        ).version.id,
+        profile.version.id,
+      );
+      await assert.rejects(
+        command([...cli, "profiles", "grant", profile.profile.id, bob.id], "", {
+          env,
+        }),
+        /401/u,
+      );
+      assert.equal(
+        (
+          await send(`/control-plane/user/profiles/${profile.profile.id}`, {
+            headers: { authorization: `Bearer ${bobToken}` },
+          })
+        ).status,
+        404,
+      );
+      const revised = JSON.parse(
+        await adminProfiles(
+          ["publish", profile.profile.id, "--definition-stdin"],
+          JSON.stringify({
+            ...definition,
+            model: "catalog-next-model",
+            tools: [],
+          }),
+        ),
+      );
+      assert.equal(revised.version.version, 2);
+      assert.equal(
+        JSON.parse(
+          await command(
+            [
+              ...cli,
+              "profiles",
+              "get",
+              profile.profile.id,
+              "--version",
+              profile.version.id,
+            ],
+            "",
+            { env },
+          ),
+        ).version.definition.model,
+        definition.model,
+      );
+      const profilePage = JSON.parse(
+        await command(
+          [...cli, "profiles", "versions", profile.profile.id, "--limit", "1"],
+          "",
+          { env },
+        ),
+      );
+      assert.equal(profilePage.nextCursor, 2);
+      assert.equal(
+        JSON.parse(
+          await command(
+            [
+              ...cli,
+              "profiles",
+              "versions",
+              profile.profile.id,
+              "--cursor",
+              "2",
+            ],
+            "",
+            { env },
+          ),
+        ).versions[0].version,
+        1,
+      );
+      await adminProfiles([
+        "disable",
+        profile.profile.id,
+        "--version",
+        revised.version.id,
+      ]);
+      assert.equal(
+        JSON.parse(
+          await command([...cli, "profiles", "get", profile.profile.id], "", {
+            env,
+          }),
+        ).version.version,
+        1,
+      );
+      assert.equal(
+        (
+          await send(
+            `/control-plane/user/profiles/${profile.profile.id}/versions/${revised.version.id}`,
+            { headers: aliceHeaders },
+          )
+        ).status,
+        404,
+      );
+      await adminProfiles([
+        "enable",
+        profile.profile.id,
+        "--version",
+        revised.version.id,
+      ]);
+      await adminProfiles(["disable", profile.profile.id]);
+      assert.equal(
+        (
+          await send(`/control-plane/user/profiles/${profile.profile.id}`, {
+            headers: aliceHeaders,
+          })
+        ).status,
+        404,
+      );
+      await adminProfiles(["enable", profile.profile.id]);
+      assert.deepEqual(
+        JSON.parse(
+          await adminProfiles(["access", profile.profile.id]),
+        ).users.map((user) => user.userId),
+        [alice.id],
+      );
       const projectHostId = "host_control_plane_deployment";
       db.prepare(
         "INSERT INTO hosts(id,name,type,created_at,updated_at) VALUES(?,?,?,?,?)",
@@ -574,6 +724,51 @@ export async function verifyUserDeployment({
         200,
       );
       assert.equal(
+        JSON.parse(
+          await command([...cli, "profiles", "get", profile.profile.id], "", {
+            env,
+          }),
+        ).version.version,
+        2,
+      );
+      assert.equal(
+        JSON.parse(
+          await command(
+            [
+              ...cli,
+              "profiles",
+              "get",
+              profile.profile.id,
+              "--version",
+              profile.version.id,
+            ],
+            "",
+            { env },
+          ),
+        ).version.definition.prompt,
+        definition.prompt,
+      );
+      await command(
+        [...cli, "login", "--login", "operator", "--password-stdin"],
+        password,
+        { env: adminEnv },
+      );
+      await adminProfiles(["revoke", profile.profile.id, alice.id]);
+      assert.deepEqual(
+        JSON.parse(await command([...cli, "profiles", "list"], "", { env }))
+          .profiles,
+        [],
+      );
+      assert.equal(
+        (
+          await send(
+            `/control-plane/user/profiles/${profile.profile.id}/versions/${profile.version.id}`,
+            { headers: aliceHeaders },
+          )
+        ).status,
+        404,
+      );
+      assert.equal(
         (
           await send(`/control-plane/user/projects/${aliceProject.projectId}`, {
             headers: aliceHeaders,
@@ -625,6 +820,10 @@ export async function verifyUserDeployment({
       revokedUserDenied: true,
       userCannotUseRawBbApi: true,
       personalNativeProjects: true,
+      immutableAgentProfileVersions: true,
+      realAdminAndUserProfileCli: true,
+      profileGrantAndVersionRevocation: true,
+      profileCatalogSurvivesRestart: true,
       foreignProjectIdsDenied: true,
       sharedReadGrantRevocation: true,
       projectHostFixtureOffline: true,

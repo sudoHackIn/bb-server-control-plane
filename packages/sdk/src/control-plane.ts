@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+  controlPlaneProfileCreateSchema,
+  controlPlaneProfileDefinitionSchema,
+  controlPlaneProfileDetailSchema,
+  controlPlaneProfileSummarySchema,
+  controlPlaneProfileVersionSchema,
+  type ControlPlaneProfileDefinition,
+} from "@bb/domain";
 
 const flowSchema = z.object({
   flowId: z.string().uuid(),
@@ -84,7 +92,169 @@ export function createControlPlaneClient(args: {
       throw new Error(`Control-plane request failed (${response.status})`);
     return response.json();
   };
+  const profilePath = (base: string, id: string) =>
+    `${base}/${encodeURIComponent(id)}`;
+  const profileReader = (base: string) => ({
+    async versions(
+      id: string,
+      options: { cursor?: number; limit?: number; signal?: AbortSignal } = {},
+    ) {
+      const query = new URLSearchParams();
+      if (options.cursor !== undefined)
+        query.set("cursor", String(options.cursor));
+      if (options.limit !== undefined)
+        query.set("limit", String(options.limit));
+      return z
+        .object({
+          versions: z.array(
+            controlPlaneProfileVersionSchema.omit({ definition: true }),
+          ),
+          nextCursor: z.number().int().positive().nullable(),
+        })
+        .parse(
+          await request(
+            `${profilePath(base, id)}/versions${query.size ? `?${query}` : ""}`,
+            "GET",
+            undefined,
+            options.signal,
+          ),
+        );
+    },
+    async list(
+      options: { cursor?: string; limit?: number; signal?: AbortSignal } = {},
+    ) {
+      const query = new URLSearchParams();
+      if (options.cursor !== undefined) query.set("cursor", options.cursor);
+      if (options.limit !== undefined)
+        query.set("limit", String(options.limit));
+      return z
+        .object({
+          profiles: z.array(controlPlaneProfileSummarySchema),
+          nextCursor: z.string().nullable(),
+        })
+        .parse(
+          await request(
+            `${base}${query.size ? `?${query}` : ""}`,
+            "GET",
+            undefined,
+            options.signal,
+          ),
+        );
+    },
+    async get(
+      id: string,
+      options: { versionId?: string; signal?: AbortSignal } = {},
+    ) {
+      return controlPlaneProfileDetailSchema.parse(
+        await request(
+          `${profilePath(base, id)}${options.versionId ? `/versions/${encodeURIComponent(options.versionId)}` : ""}`,
+          "GET",
+          undefined,
+          options.signal,
+        ),
+      );
+    },
+  });
+  const adminProfiles = "/control-plane/admin/profiles";
+  const ok = z.object({ ok: z.literal(true) });
   return {
+    profiles: profileReader("/control-plane/user/profiles"),
+    admin: {
+      profiles: {
+        ...profileReader(adminProfiles),
+        async create(
+          input: z.infer<typeof controlPlaneProfileCreateSchema>,
+          signal?: AbortSignal,
+        ) {
+          return controlPlaneProfileDetailSchema.parse(
+            await request(
+              adminProfiles,
+              "POST",
+              controlPlaneProfileCreateSchema.parse(input),
+              signal,
+            ),
+          );
+        },
+        async publish(
+          id: string,
+          definition: ControlPlaneProfileDefinition,
+          signal?: AbortSignal,
+        ) {
+          return controlPlaneProfileDetailSchema.parse(
+            await request(
+              `${profilePath(adminProfiles, id)}/versions`,
+              "POST",
+              {
+                definition:
+                  controlPlaneProfileDefinitionSchema.parse(definition),
+              },
+              signal,
+            ),
+          );
+        },
+        async setEnabled(
+          id: string,
+          enabled: boolean,
+          options: { versionId?: string; signal?: AbortSignal } = {},
+        ) {
+          return ok.parse(
+            await request(
+              `${profilePath(adminProfiles, id)}${options.versionId ? `/versions/${encodeURIComponent(options.versionId)}` : ""}/enabled`,
+              "PUT",
+              { enabled },
+              options.signal,
+            ),
+          );
+        },
+        async setAccess(
+          id: string,
+          userId: string,
+          allowed: boolean,
+          signal?: AbortSignal,
+        ) {
+          return ok.parse(
+            await request(
+              `${profilePath(adminProfiles, id)}/access/${encodeURIComponent(userId)}`,
+              "PUT",
+              { allowed },
+              signal,
+            ),
+          );
+        },
+        async access(
+          id: string,
+          options: {
+            cursor?: string;
+            limit?: number;
+            signal?: AbortSignal;
+          } = {},
+        ) {
+          const query = new URLSearchParams();
+          if (options.cursor !== undefined) query.set("cursor", options.cursor);
+          if (options.limit !== undefined)
+            query.set("limit", String(options.limit));
+          return z
+            .object({
+              users: z.array(
+                z.object({
+                  userId: z.string().uuid(),
+                  login: z.string(),
+                  enabled: z.boolean(),
+                }),
+              ),
+              nextCursor: z.string().nullable(),
+            })
+            .parse(
+              await request(
+                `${profilePath(adminProfiles, id)}/access${query.size ? `?${query}` : ""}`,
+                "GET",
+                undefined,
+                options.signal,
+              ),
+            );
+        },
+      },
+    },
     projects: {
       async list(
         options: { cursor?: string; limit?: number; signal?: AbortSignal } = {},

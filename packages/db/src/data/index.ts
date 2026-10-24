@@ -543,3 +543,4 @@ export type {
 export * from "./control-plane.js";
 export * from "./control-plane-projects.js";
 export * from "./control-plane-threads.js";
+export * from "./control-plane-profiles.js";

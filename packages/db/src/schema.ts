@@ -19,6 +19,7 @@ import { threadParentNotificationsValues } from "@bb/domain/thread-parent-notifi
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
   EnvironmentProviderSelection,
+  ControlPlaneProfileDefinition,
   JsonValue,
   EnvironmentStatus,
   FaviconColorPreference,
@@ -257,6 +258,56 @@ export const controlPlaneProjectAccess = sqliteTable(
     index("control_plane_project_access_user_idx").on(
       table.userId,
       table.projectId,
+    ),
+  ],
+);
+
+export const controlPlaneProfiles = sqliteTable("control_plane_profiles", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export const controlPlaneProfileVersions = sqliteTable(
+  "control_plane_profile_versions",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => controlPlaneProfiles.id),
+    version: integer("version").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    definition: text("definition", { mode: "json" })
+      .$type<ControlPlaneProfileDefinition>()
+      .notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_profile_versions_revision_idx").on(
+      table.profileId,
+      table.version,
+    ),
+    check("control_plane_profile_versions_positive", sql`${table.version} > 0`),
+  ],
+);
+
+export const controlPlaneProfileAccess = sqliteTable(
+  "control_plane_profile_access",
+  {
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => controlPlaneProfiles.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.profileId, table.userId] }),
+    index("control_plane_profile_access_user_idx").on(
+      table.userId,
+      table.profileId,
     ),
   ],
 );

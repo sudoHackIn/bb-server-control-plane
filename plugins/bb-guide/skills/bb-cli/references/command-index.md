@@ -108,6 +108,16 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access projects list`
 - `bb server access projects get`
 - `bb server access projects create`
+- `bb server access profiles list`
+- `bb server access profiles get`
+- `bb server access profiles versions`
+- `bb server access profiles create`
+- `bb server access profiles publish`
+- `bb server access profiles enable`
+- `bb server access profiles disable`
+- `bb server access profiles grant`
+- `bb server access profiles revoke`
+- `bb server access profiles access`
 - `bb server access status`
 - `bb server access logout`
 

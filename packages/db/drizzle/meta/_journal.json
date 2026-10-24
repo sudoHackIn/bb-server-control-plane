@@ -1051,6 +1051,13 @@
       "when": 1792846316986,
       "tag": "0149_heavy_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "6",
+      "when": 1792854683356,
+      "tag": "0150_goofy_blizzard",
+      "breakpoints": true
     }
   ]
 }

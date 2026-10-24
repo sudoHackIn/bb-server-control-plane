@@ -6,6 +6,7 @@ import { createServerAccessStore } from "../server-access-session.js";
 import { createHash, randomBytes } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { createControlPlaneClient } from "@bb/sdk/node";
+import { registerServerProfileCommands } from "./server-profiles.js";
 
 function endpoint(base: string, path: string): URL {
   const url = new URL(base);
@@ -29,6 +30,12 @@ export function registerServerAccessCommands(
   const access = server
     .command("access")
     .description("Sign in to a protected shared BB server");
+  registerServerProfileCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
   const projects = access
     .command("projects")
     .description("Manage your authorized server projects");

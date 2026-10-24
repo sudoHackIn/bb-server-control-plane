@@ -16,6 +16,8 @@ Optional `users` configuration enables direct HTTPS certificate authorization: `
 
 After environment provisioning and local host registration, `bb server access projects create <slug> --name <name>` creates a native BB project below the user's project directory. `projects list [--limit 1..100] [--cursor <nextCursor>]` and `projects get <project-id>` expose only current grants with valid native source bindings. User-supplied identity/path/host overrides are rejected. Project ownership and grants live in the shared BB database; thread APIs and harness execution remain pending.
 
+Approved profile definitions, immutable versions, availability and user grants are stored in the same BB database. `bb server access profiles list|get|versions` reads the user's permitted enabled records; administrators add `--admin` for all records and use `create|publish|grant|revoke|enable|disable|access` to manage them. Create/publish take definition JSON on `--definition-stdin`, never executable command/environment overrides or credentials. See `bb guide machines` and [profile integration status](server-control-plane.md#tenth-increment-approved-profile-catalog). The catalog is not execution authority until native threads are bound to approved versions and the provider enforces their model/tool/MCP policies.
+
 The packaged `npx bb-app` flow stores persistent package settings under
 `~/.bb/config.json`, provider environment values under `~/.bb/env.json`, and
 client SSH target mappings under `~/.bb/client.json`.

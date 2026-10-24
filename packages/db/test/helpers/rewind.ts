@@ -3,6 +3,9 @@ import type { DbConnection } from "../../src/index.js";
 function dropControlPlaneSchemaForRewind(db: DbConnection): void {
   db.$client.exec(`
     DROP TABLE IF EXISTS control_plane_threads;
+    DROP TABLE IF EXISTS control_plane_profile_access;
+    DROP TABLE IF EXISTS control_plane_profile_versions;
+    DROP TABLE IF EXISTS control_plane_profiles;
     DROP TABLE IF EXISTS control_plane_project_access;
     DROP TABLE IF EXISTS control_plane_projects;
     DROP TABLE IF EXISTS control_plane_auth_flows;

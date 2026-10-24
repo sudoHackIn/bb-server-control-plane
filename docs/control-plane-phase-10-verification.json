@@ -1,0 +1,47 @@
+{
+  "scope": "Approved profile catalog, immutable definition versions and current per-user grants through API/SDK/CLI",
+  "previousStageCommit": "c698db070",
+  "migration": "0150_goofy_blizzard.sql",
+  "tests": {
+    "database": 638,
+    "selectedServerControlPlane": 25,
+    "profileDatabaseContracts": 2,
+    "profileHttpAndSdkContract": 1,
+    "finalAdditionalProfileAssertionsPass": true,
+    "strictDatabaseServerSdkCliTypechecks": true,
+    "changedFileLintAndFormatting": true
+  },
+  "catalog": {
+    "atomicCreationAndVersionPublication": true,
+    "noInPlaceDefinitionMutation": true,
+    "wholeProfileAndVersionAvailability": true,
+    "grantsCoverEnabledVersionsIncludingLaterPublications": true,
+    "latestEnabledVersionSelection": true,
+    "allVersionsRetiredHidesPersonalProfile": true,
+    "sqlScopedPersonalListsAndKnownIdChecks": true,
+    "userAndGrantRevocation": true,
+    "foreignVersionMutationDenied": true,
+    "unknownAndSecretConfigurationFieldsRejected": true,
+    "profileAndGrantUuidPagination": true,
+    "versionNumberPagination": true,
+    "privatePluginSdkManagementPathsRemainUnavailable": true
+  },
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "realAdministrativeAndCertificateUserCli": true,
+    "createPublishGrantAvailabilityAndRevoke": true,
+    "knownForeignIdReadDenied": true,
+    "personalCredentialAdministrativeWriteDenied": true,
+    "immutableHistoryAndGrantsPersistAfterServerRestart": true,
+    "nativeQwenNamespacesHistoryDaemonAndCrashRecovery": true,
+    "backend": "Deterministic local OpenAI-compatible fixture"
+  },
+  "threadProfileVersionBindingComplete": false,
+  "profileModelToolsMcpExecutionEnforcementComplete": false,
+  "limitedUserThreadApiComplete": false,
+  "tenantScopedPluginSdkOperationsComplete": false,
+  "personalWorkflowsAutomationsSchedulesComplete": false,
+  "corporateQwenAuthorizationVerified": false,
+  "liveExternalModelBackendVerified": false,
+  "fullRepositorySuiteRun": false
+}

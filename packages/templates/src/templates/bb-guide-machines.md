@@ -223,6 +223,31 @@ and `projects get <project-id>` expose your current project grants. List limits
 are 1–100, default 50; continue using the returned `nextCursor`.
 Project creation cannot override your UID, HOME, host or base directory.
 
+`bb server access profiles list [--limit <count>] [--cursor <id>]` lists your
+permitted agent profiles. `profiles get <profile-id> [--version <version-id>]`
+reads the latest enabled or specified enabled version. `profiles versions
+<profile-id> [--limit <count>] [--cursor <version-number>]` lists enabled version
+metadata newest first. Lists default to 50 and accept 1–100; use `nextCursor`.
+No profile grant exposes the full BB API or starts an agent by itself.
+
+Administrators add `--admin` to profile list/get/versions to include disabled
+records. `profiles create <slug> --name <name> --definition-stdin` creates a
+profile with version 1; `profiles publish <profile-id> --definition-stdin`
+publishes another immutable version. Supply JSON with `prompt`,
+`providerId: "qwen-server"`, `model`, `reasoningLevel`, `permissionMode`, unique
+`tools` and `mcpServers` identifier arrays. These contain policy data, not secret
+values, environment overrides or executable MCP commands. Publishing does not
+modify earlier versions. Execution binding and enforcement remain a separate
+server integration stage.
+
+`profiles grant <profile-id> <user-id>` and `profiles revoke <profile-id>
+<user-id>` change a registered user's access to that profile's enabled versions.
+`profiles access <profile-id> [--limit <count>] [--cursor <id>]` lists its grants.
+`profiles enable <profile-id>` and `profiles disable <profile-id>` change the
+whole profile's availability; add `--version <version-id>` to affect only one
+version. Users cannot read disabled or ungranted records, including known IDs;
+administrative management requires an administrative session.
+
 On a protected deployment of the server-control-plane fork, administrators sign
 in with `bb server access login --login <name> --password-stdin`, supplying the
 password from private stdin. `bb server access status` shows the current login;
