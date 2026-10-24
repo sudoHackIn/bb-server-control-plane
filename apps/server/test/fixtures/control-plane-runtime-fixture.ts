@@ -8,6 +8,7 @@ import {
   noopNotifier,
 } from "@bb/db";
 import { startControlPlaneQwenContextService } from "../../src/control-plane/qwen-context.js";
+export { verifyToolFixture } from "./control-plane-tool-fixture.js";
 import { seedControlPlaneProfile } from "../helpers/control-plane-profile.js";
 
 export async function createRuntimeFixture(config: {

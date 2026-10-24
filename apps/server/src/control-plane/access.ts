@@ -311,6 +311,8 @@ export function createControlPlaneAccess(
       const path = new URL(request.url).pathname;
       if (!path.startsWith("/api/v1/"))
         throw new Error("Internal SDK must use the BB API");
+      if (currentControlPlanePrincipal()?.kind === "user")
+        throw new Error("User SDK operations require scoped authorization");
       trustedRequests.set(
         request,
         currentControlPlanePrincipal() ?? { kind: "service" },

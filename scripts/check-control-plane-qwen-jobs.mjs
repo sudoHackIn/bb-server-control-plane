@@ -217,13 +217,17 @@ export async function verifyQwenJobs({ command, launch, signal }) {
         env: { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: alice.home },
       },
     );
-    await command(
-      ["qwen-job-client.mjs"],
-      JSON.stringify(
-        config(alice, "alice-denied", { mode: "deny", tools: ["read_file"] }),
+    const delegatedPolicy = JSON.parse(
+      await command(
+        ["qwen-job-client.mjs"],
+        JSON.stringify(
+          config(alice, "alice-denied", { mode: "deny", tools: ["read_file"] }),
+        ),
+        { env },
       ),
-      { env },
     );
+    assert.equal(delegatedPolicy.delegatedToolPolicyAndPrincipalInDocker, true);
+    assert.equal(delegatedPolicy.userPluginUnscopedSdkDeniedInDocker, true);
     await assert.rejects(
       readFile(`${alice.home}/forbidden-policy-write`),
       (error) => error.code === "ENOENT",
@@ -458,6 +462,8 @@ export async function verifyQwenJobs({ command, launch, signal }) {
       );
     return {
       actualStockQwenCli: true,
+      delegatedToolPolicyAndPrincipalInDocker: true,
+      userPluginUnscopedSdkDeniedInDocker: true,
       nativeShellUidHomeCwd: true,
       nativeSessionResume: true,
       stopKillsDetachedDescendants: true,

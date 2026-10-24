@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { serverQuery } from "./qwen-server-query.mjs";
-import { createRuntimeFixture } from "./qwen-runtime-fixture.mjs";
+import {
+  createRuntimeFixture,
+  verifyToolFixture,
+} from "./qwen-runtime-fixture.mjs";
 
 let input = "";
 for await (const chunk of process.stdin) input += chunk;
 const config = JSON.parse(input);
 const runtime = await createRuntimeFixture(config);
+const policyVerification =
+  config.marker === "alice-denied"
+    ? await verifyToolFixture(runtime.threadId)
+    : {};
 const sessionId = config.sessionId ?? randomUUID();
 process.env.QWEN_SERVER_CONTEXT_SOCKET = runtime.socketPath;
 const abort = new AbortController();
@@ -90,6 +97,7 @@ try {
       threadId: runtime.threadId,
       marker: config.marker,
       completed: true,
+      ...policyVerification,
     }) + "\n",
   );
 } finally {

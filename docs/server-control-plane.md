@@ -26,6 +26,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
+- [x] Gate managed daemon plugin-tool invocations by current project/profile permissions, filter their contributed tool catalog and propagate the persisted user principal; deny unscoped private user SDK calls. The Qwen MCP bridge and scoped SDK adapter remain pending.
 - [ ] Carry verified user/run context through plugin calls and child creation. Plugin identity, parentThreadId and origin metadata are not authentication.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
@@ -361,3 +362,50 @@ provider tests pass, with strict database/server/provider typechecks and
 changed-file lint/format checks. The complete Docker deployment passes,
 including native daemon dispatch and prior crash recovery checks. See
 `control-plane-phase-12-verification.json`. The full feature list remains open.
+
+## Thirteenth increment: mandatory delegated tool admission
+
+Managed `/internal/session/tool-call` requests now pass an unconditional core
+authorization check after machine-session/host ownership checks and before
+built-in or plugin invocation. Each call re-resolves the persisted thread owner,
+current project access, profile grant and enabled version. Only starting/active
+threads can invoke tools. Profile `mcpServers: ["bb"]` and an exact
+`tools: ["bb:<registered-tool-name>"]` entry are both required for a delegated
+BB tool. Native Qwen tool identifiers keep their existing meaning. The
+contributed tool catalog and tool-associated instructions are filtered through
+the same allow predicate before dispatch. A caller-provided user/project/thread
+inside tool arguments does not select execution authority.
+
+The plugin invocation runs inside the persisted owner's asynchronous principal
+context, including across awaited work. Unmanaged desktop threads retain their
+existing behavior. `update_environment_directory` remains denied for managed
+threads even if listed: its general workspace implementation has not yet been
+adapted to registered personal projects. Approval and other delegated adapters
+are still required before enabling the Qwen MCP bridge; the provider continues
+to reject these MCP profiles explicitly.
+
+Inspection also found that carrying a user principal through private SDK fetch
+was insufficient: the trusted-request path bypasses the public HTTP gate, while
+many native handlers still lack scoped object checks. Private user SDK HTTP
+calls now fail with `User SDK operations require scoped authorization`, matching
+the existing user realtime refusal. Trusted service and administrative plugin
+calls remain available. Scoped SDK operations and child/workflow authority will
+replace this refusal as their boundaries are implemented. This is not a claim
+that all plugins can already operate safely on behalf of users.
+
+Real migrated-database HTTP tests exercise an authorized plugin call, foreign
+and built-in tools, profile-grant/version revocation, user disablement, viewer
+project access, foreign environment paths and inactive threads. No denied call
+reaches the plugin; restored authority permits another invocation. A Linux
+Docker fixture uses the deployed source's production guard and real SQLite to
+verify exact catalog filtering, async principal propagation, revocation and
+private user SDK denial. That fixture does not claim a live Qwen MCP round-trip;
+its activation remains the next integration. The complete actual fork Docker
+server/daemon/Qwen deployment is also rerun for this increment.
+
+Verification: 94 selected server security, internal tool and runtime-config tests
+pass; the new tool case also passes with additional viewer-project and foreign
+workspace probes. Strict server typecheck and changed-file lint/format checks
+pass. The full fork Docker deployment passes with the production guard/SQLite
+fixture and previous native runtime checks. See
+`control-plane-phase-13-verification.json`.

@@ -37,6 +37,7 @@ import {
 import { readWorkspaceAgentContext } from "./workspace-agent-context.js";
 import { resolveDeprecatedWorkspaceProvisionType } from "../environments/environment-response.js";
 import { markTurnTraceSpan } from "../system/turn-trace.js";
+import { filterControlPlaneTools } from "../../control-plane/tool-authority.js";
 
 const UPDATE_ENVIRONMENT_DIRECTORY_INSTRUCTIONS =
   "If the user asks you to move this thread to another checkout, worktree, or directory, make sure the target directory exists, then call `update_environment_directory` with its absolute path. After it succeeds, end the current turn; bb starts the next turn in the updated environment automatically so you can continue there.";
@@ -212,8 +213,11 @@ export async function resolveThreadRuntimeCommandConfig(
     deps.logger,
     deps.config.dataDir,
   );
-  const dynamicToolContributions = resolveDynamicTools(
-    conditionalConfiguration.tools,
+  const dynamicToolContributions = filterControlPlaneTools(
+    deps.db,
+    args.thread.id,
+    resolveDynamicTools(conditionalConfiguration.tools),
+    (contribution) => contribution.tool.name,
   );
   const dynamicTools = dynamicToolContributions.map(
     (contribution) => contribution.tool,

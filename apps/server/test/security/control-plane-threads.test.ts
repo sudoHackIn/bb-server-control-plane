@@ -203,7 +203,7 @@ it("rejects unauthenticated service creation, foreign identities and workspace o
   }
 });
 
-it("preserves user authority across private SDK calls without granting it to other requests", async () => {
+it("denies unscoped user SDK calls while preserving unrelated trusted service requests", async () => {
   const access = createControlPlaneAccess({
     version: 1,
     publicOrigin: "https://bb.example",
@@ -218,10 +218,9 @@ it("preserves user authority across private SDK calls without granting it to oth
     context.json(currentControlPlanePrincipal()),
   );
   const url = "https://bb.example/api/v1/probe";
-  const user = await withControlPlaneUser("alice", () =>
-    access.dispatch(app, url),
-  );
-  expect(await user.json()).toEqual({ kind: "user", userId: "alice" });
+  await expect(
+    withControlPlaneUser("alice", () => access.dispatch(app, url)),
+  ).rejects.toThrow("scoped authorization");
   const service = await access.dispatch(app, url);
   expect(await service.json()).toEqual({ kind: "service" });
   expect((await app.request(url)).status).toBe(401);

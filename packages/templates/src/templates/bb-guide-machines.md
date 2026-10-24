@@ -257,6 +257,13 @@ fail before launch. The personal thread API remains closed pending delegated
 MCP/approval enforcement. The installer pins the reviewed stock CLI artifact;
 a corporate fork requires separate verification.
 
+Delegated BB tools reserve `mcpServers: ["bb"]` plus exact `bb:<tool-name>`
+profile entries. The server rechecks current grants before plugin invocation.
+The Qwen MCP adapter is still pending, so these profiles cannot launch yet.
+User plugin SDK calls require a scoped adapter; the full private SDK is not
+available to user-principal code. Managed `update_environment_directory` remains
+disabled pending registered-project validation.
+
 `profiles grant <profile-id> <user-id>` and `profiles revoke <profile-id>
 <user-id>` change a registered user's access to that profile's enabled versions.
 `profiles access <profile-id> [--limit <count>] [--cursor <id>]` lists its grants.

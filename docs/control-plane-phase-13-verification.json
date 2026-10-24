@@ -1,0 +1,41 @@
+{
+  "scope": "Mandatory core admission and user principal for managed delegated BB tools; Qwen MCP activation and scoped SDK remain pending",
+  "previousStageCommit": "f79b58824",
+  "tests": {
+    "selectedServerSecurityInternalToolsAndRuntimeConfig": 94,
+    "additionalProjectViewerAndForeignEnvironmentCasesPassed": true,
+    "strictServerTypecheck": true,
+    "changedFileLintAndFormatting": true
+  },
+  "authorization": {
+    "machineSessionAndHostChecksRetained": true,
+    "persistedOwnerProjectProfileGrantRecheckedForEveryCall": true,
+    "exactBbServerAndNamespacedToolRequired": true,
+    "inactiveThreadsDenied": true,
+    "toolCatalogAndAssociatedInstructionsFiltered": true,
+    "pluginRunsWithPersistedUserPrincipalAcrossAwait": true,
+    "toolArgumentIdentityCannotOverridePrincipal": true,
+    "managedWorkspaceChangeDeniedPendingRegistryAdapter": true,
+    "unscopedPrivateUserSdkHttpDenied": true,
+    "trustedServiceSdkRetained": true,
+    "unmanagedDesktopBehaviorRetained": true,
+    "hostDaemonWireChanged": false
+  },
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "actualForkServerDaemonQwenDeploymentPassed": true,
+    "productionToolGuardRealSqliteFixturePassed": true,
+    "fixtureChecksFilteringAsyncPrincipalRevocationAndPrivateSdkDenial": true,
+    "liveQwenDelegatedMcpRoundTripVerified": false,
+    "nativeResumeNamespacesTimelineCrashRecoveryPassed": true,
+    "backend": "Local deterministic OpenAI-compatible fixture"
+  },
+  "qwenDelegatedMcpAdapterComplete": false,
+  "scopedPluginSdkAdapterComplete": false,
+  "interactivePermissionAdapterComplete": false,
+  "limitedUserThreadApiComplete": false,
+  "personalUiComplete": false,
+  "personalWorkflowsAutomationsSchedulesComplete": false,
+  "allMachineRpcAuthorizationAudited": false,
+  "fullRepositorySuiteRun": false
+}
