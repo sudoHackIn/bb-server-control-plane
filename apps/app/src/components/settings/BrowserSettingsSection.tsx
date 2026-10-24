@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 import { ExpandableText } from "@bb/shared-ui/expandable-text";
 import { useCallback, useEffect, useState } from "react";
 import type { BbDesktopBrowserApi } from "@bb/desktop-contract";
@@ -45,7 +46,7 @@ const DOT_TONE_CLASS: Record<SourceRowTone, string> = {
 
 function localStorageOrNull(): Storage | null {
   try {
-    return typeof window === "undefined" ? null : window.localStorage;
+    return typeof window === "undefined" ? null : accountLocalStorage();
   } catch {
     return null;
   }

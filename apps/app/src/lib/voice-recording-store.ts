@@ -1,3 +1,4 @@
+import { accountDatabaseName } from "./account-storage";
 import { useSyncExternalStore } from "react";
 import {
   createStore,
@@ -63,7 +64,7 @@ function enqueueDatabaseTask(
     database =
       typeof indexedDB === "undefined"
         ? null
-        : createStore("bb-voice-recordings", "recordings");
+        : createStore(accountDatabaseName("bb-voice-recordings"), "recordings");
   }
   const store = database;
   if (!store) return databaseQueue;

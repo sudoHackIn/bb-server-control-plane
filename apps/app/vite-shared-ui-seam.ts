@@ -20,6 +20,8 @@ export function sharedUiEnvSeam(): Plugin {
       ) {
         return null;
       }
+      if (/(^|\/)lib\/account-storage(\.js)?$/.test(source))
+        return resolve(appDir, "./src/lib/account-storage.ts");
       if (/(^|\/)lib\/portal-scope(\.js)?$/.test(source)) return portalScope;
       if (/(^|\/)hooks\/useBrowserDimmingModal(\.js)?$/.test(source)) {
         return browserDimming;

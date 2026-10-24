@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { createControlPlaneThreadClient } from "./control-plane-threads.js";
 import {
+  controlPlaneBrowserContextSchema,
   controlPlaneUserSessionSchema,
   controlPlaneUserProjectSchema,
   controlPlaneUserBootstrapSchema,
@@ -167,6 +168,16 @@ export function createControlPlaneClient(args: {
   const adminProfiles = "/control-plane/admin/profiles";
   const ok = z.object({ ok: z.literal(true) });
   return {
+    async browserContext(signal?: AbortSignal) {
+      return controlPlaneBrowserContextSchema.parse(
+        await request(
+          "/control-plane/browser-context",
+          "GET",
+          undefined,
+          signal,
+        ),
+      );
+    },
     browserLoginUrl: () => new URL("/control-plane/user/login", url).href,
     async bootstrap(signal?: AbortSignal) {
       return controlPlaneUserBootstrapSchema.parse(

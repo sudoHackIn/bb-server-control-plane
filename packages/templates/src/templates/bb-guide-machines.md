@@ -248,6 +248,22 @@ invalid explicit Bearer credentials never fall back to a cookie. Sign-in/out
 responses request browser cache/storage clearing; native-app cache isolation
 remains a separate integration stage.
 
+`bb server access browser-context --json` and the personal SDK's
+`browserContext()` read the current UI mode (`standalone`, `anonymous`, `admin`
+or `user`). Authenticated modes include the verified identity and a noncredential
+`cacheEpoch` tied to the current session. It stays stable across a personal
+server restart and changes on a fresh sign-in. The built-in web entry checks it
+before loading the native application or reading account caches.
+
+Core web caches/drafts and recordings are scoped to identity plus session epoch.
+Identity/session changes unmount the application, cancel native queries, close
+the native socket and reload through the entry gate. Background/returning pages
+are hidden until their identity is revalidated. Same-origin application requests
+assert their expected identity/session through `x-bb-client-identity` and
+`x-bb-client-session`; existing credentials
+still determine authority. Standalone BB keeps its preexisting local settings.
+Personal native UI and legacy plugin-owned persistence remain separate stages.
+
 `bb server access profiles list [--limit <count>] [--cursor <id>]` lists your
 permitted agent profiles. `profiles get <profile-id> [--version <version-id>]`
 reads the latest enabled or specified enabled version. `profiles versions

@@ -1,8 +1,11 @@
+import { accountSessionStorage } from "@/lib/account-storage";
 const KEY = "bb.watched-plugin-updates";
 
 function watched(): string[] {
   try {
-    const value: unknown = JSON.parse(sessionStorage.getItem(KEY) ?? "[]");
+    const value: unknown = JSON.parse(
+      accountSessionStorage().getItem(KEY) ?? "[]",
+    );
     return Array.isArray(value)
       ? value.filter((id): id is string => typeof id === "string")
       : [];
@@ -19,6 +22,6 @@ export function trackPluginUpdate(id: string, active: boolean): void {
   const ids = watched().filter((candidate) => candidate !== id);
   if (active) ids.push(id);
   try {
-    sessionStorage.setItem(KEY, JSON.stringify(ids.slice(-100)));
+    accountSessionStorage().setItem(KEY, JSON.stringify(ids.slice(-100)));
   } catch {}
 }

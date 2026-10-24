@@ -21,6 +21,10 @@ export default defineConfig({
     host: viteDevConfig.appHost,
     port: viteDevConfig.appPort,
     proxy: {
+      "/control-plane": {
+        target: viteDevConfig.serverHttpOrigin,
+        changeOrigin: true,
+      },
       "/api": {
         target: viteDevConfig.serverHttpOrigin,
         changeOrigin: true,

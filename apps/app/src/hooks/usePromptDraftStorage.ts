@@ -1,3 +1,7 @@
+import {
+  accountLocalStorage,
+  accountStorageEventKey,
+} from "@/lib/account-storage";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftAttachment, PromptDraftState } from "@bb/client-core";
@@ -51,7 +55,7 @@ function readPromptDraft(storageKey: string | null): PromptDraftState {
     return promptDraftCache.get(storageKey)?.draft ?? EMPTY_PROMPT_DRAFT;
   }
 
-  const rawValue = window.localStorage.getItem(storageKey);
+  const rawValue = accountLocalStorage().getItem(storageKey);
   const cachedEntry = promptDraftCache.get(storageKey);
   if (cachedEntry && cachedEntry.rawValue === rawValue) {
     return cachedEntry.draft;
@@ -92,9 +96,9 @@ function persistPromptDraftCache(storageKey: string): boolean {
   );
   try {
     if (serialized === null) {
-      window.localStorage.removeItem(storageKey);
+      accountLocalStorage().removeItem(storageKey);
     } else {
-      window.localStorage.setItem(storageKey, serialized);
+      accountLocalStorage().setItem(storageKey, serialized);
     }
     if (cachedEntry) cachedEntry.rawValue = serialized;
     pendingPromptDraftStorageKeys.delete(storageKey);
@@ -113,7 +117,7 @@ function persistPromptDraftCache(storageKey: string): boolean {
 
 function readStoredPromptDraftValue(storageKey: string): string | null {
   try {
-    return window.localStorage.getItem(storageKey);
+    return accountLocalStorage().getItem(storageKey);
   } catch {
     return null;
   }
@@ -145,10 +149,11 @@ function ensurePromptDraftStorageObserver(): void {
 
   promptDraftStorageObserverInitialized = true;
   window.addEventListener("storage", (event) => {
-    if (!event.key) return;
-    if (pendingPromptDraftStorageKeys.has(event.key)) return;
-    promptDraftCache.delete(event.key);
-    emitPromptDraftChange(event.key);
+    const key = accountStorageEventKey(event);
+    if (!key) return;
+    if (pendingPromptDraftStorageKeys.has(key)) return;
+    promptDraftCache.delete(key);
+    emitPromptDraftChange(key);
   });
   window.addEventListener("pagehide", flushPendingPromptDraftPersists);
   document.addEventListener("visibilitychange", () => {

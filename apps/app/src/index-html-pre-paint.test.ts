@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THEME_STORAGE_KEY } from "./hooks/useTheme";
 import {
   APP_THEME_CSS_STORAGE_KEY,
-  applyAppThemeCss,
   applyCachedAppThemeCss,
 } from "./lib/themes";
 
@@ -66,29 +65,8 @@ describe("index.html pre-paint script", () => {
     document.body.innerHTML = "";
   });
 
-  it("adds the dark class before paint when the stored preference is dark", () => {
+  it("does not read an unverified account preference before paint", () => {
     localStorage.setItem(THEME_STORAGE_KEY, "dark");
-
-    runInlineScripts();
-
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-    expect(
-      document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-        ?.content,
-    ).toBe("#151515");
-  });
-
-  it("follows the system scheme when no preference is stored", () => {
-    stubPrefersDark(true);
-
-    runInlineScripts();
-
-    expect(document.documentElement.classList.contains("dark")).toBe(true);
-  });
-
-  it("keeps the light palette when the stored preference is light on a dark system", () => {
-    stubPrefersDark(true);
-    localStorage.setItem(THEME_STORAGE_KEY, "light");
 
     runInlineScripts();
 
@@ -99,18 +77,36 @@ describe("index.html pre-paint script", () => {
     ).toBe("#ffffff");
   });
 
-  it("injects the palette CSS cached by applyAppThemeCss as the last head style", () => {
-    const css = ":root { --canvas: oklch(0.3 0.02 250); }";
-    applyAppThemeCss(css);
-    document.getElementById("bb-app-theme")?.remove();
-    expect(localStorage.getItem(APP_THEME_CSS_STORAGE_KEY)).toBe(css);
+  it("follows the system scheme when no preference is stored", () => {
+    stubPrefersDark(true);
 
     runInlineScripts();
 
-    const style = document.getElementById("bb-app-theme");
-    expect(style).toBeInstanceOf(HTMLStyleElement);
-    expect(style?.textContent).toBe(css);
-    expect(document.head.lastElementChild).toBe(style);
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+  });
+
+  it("uses only the system palette until the account is verified", () => {
+    stubPrefersDark(true);
+    localStorage.setItem(THEME_STORAGE_KEY, "light");
+
+    runInlineScripts();
+
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(
+      document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+        ?.content,
+    ).toBe("#151515");
+  });
+
+  it("never injects cached account CSS from inline HTML before identity verification", () => {
+    localStorage.setItem(
+      APP_THEME_CSS_STORAGE_KEY,
+      ":root { --private-label: alice; }",
+    );
+    const read = vi.spyOn(Storage.prototype, "getItem");
+    runInlineScripts();
+    expect(read).not.toHaveBeenCalled();
+    expect(document.getElementById("bb-app-theme")).toBeNull();
   });
 
   it("does not inject a palette element when no palette is cached", () => {

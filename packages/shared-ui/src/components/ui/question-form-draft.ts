@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "../../lib/account-storage";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import {
   createInitialFormState,
@@ -85,7 +86,7 @@ export function useQuestionFormDraft(
     const cached = drafts.get(storageKey);
     let raw: string | null;
     try {
-      raw = window.localStorage.getItem(storageKey);
+      raw = accountLocalStorage().getItem(storageKey);
     } catch {
       return cached?.signature === signature ? cached.draft : initialDraft;
     }
@@ -120,8 +121,8 @@ export function useQuestionFormDraft(
     const raw = JSON.stringify({ version: 1, signature, ...draft });
     let storedRaw: string | null = null;
     try {
-      storedRaw = window.localStorage.getItem(storageKey);
-      window.localStorage.setItem(storageKey, raw);
+      storedRaw = accountLocalStorage().getItem(storageKey);
+      accountLocalStorage().setItem(storageKey, raw);
       storedRaw = raw;
     } catch {}
     drafts.set(storageKey, { raw: storedRaw, signature, draft });
@@ -152,7 +153,7 @@ export function useQuestionFormDraft(
       )
         return;
       try {
-        window.localStorage.removeItem(storageKey);
+        accountLocalStorage().removeItem(storageKey);
       } catch {}
       drafts.delete(storageKey);
     },

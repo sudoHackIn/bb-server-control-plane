@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 import {
   isBuiltInThemeId,
   type AppTheme,
@@ -71,8 +72,8 @@ export function applyAppThemeCss(css: string): void {
   previewedAppThemeCss = null;
   renderAppThemeCss();
   try {
-    if (css) localStorage.setItem(APP_THEME_CSS_STORAGE_KEY, css);
-    else localStorage.removeItem(APP_THEME_CSS_STORAGE_KEY);
+    if (css) accountLocalStorage().setItem(APP_THEME_CSS_STORAGE_KEY, css);
+    else accountLocalStorage().removeItem(APP_THEME_CSS_STORAGE_KEY);
   } catch {}
 }
 
@@ -91,7 +92,7 @@ export function applyCachedAppThemeCss(): void {
   if (typeof document === "undefined") return;
   let cached: string | null = null;
   try {
-    cached = localStorage.getItem(APP_THEME_CSS_STORAGE_KEY);
+    cached = accountLocalStorage().getItem(APP_THEME_CSS_STORAGE_KEY);
   } catch {
     cached = null;
   }

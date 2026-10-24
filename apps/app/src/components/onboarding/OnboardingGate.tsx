@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { useUpdateGeneralSettings } from "@/hooks/mutations/settings-mutations";
@@ -13,7 +14,7 @@ const ONBOARDING_SEEN_STORAGE_KEY = "bb.onboarding.seen";
 
 function readOnboardingSeen(): boolean {
   try {
-    return window.localStorage.getItem(ONBOARDING_SEEN_STORAGE_KEY) === "1";
+    return accountLocalStorage().getItem(ONBOARDING_SEEN_STORAGE_KEY) === "1";
   } catch {
     return false;
   }
@@ -21,7 +22,7 @@ function readOnboardingSeen(): boolean {
 
 function rememberOnboardingSeen(): void {
   try {
-    window.localStorage.setItem(ONBOARDING_SEEN_STORAGE_KEY, "1");
+    accountLocalStorage().setItem(ONBOARDING_SEEN_STORAGE_KEY, "1");
   } catch {
     return;
   }

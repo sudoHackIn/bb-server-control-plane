@@ -397,6 +397,10 @@ describe("control-plane personal authorization", () => {
           return { value: value.split(";")[0]!, attributes: value };
         };
         const browserPath = "/control-plane/user/login";
+        expect(
+          JSON.parse((await send("/control-plane/browser-context")).text),
+        ).toEqual({ mode: "anonymous" });
+
         for (const user of [undefined, "rogue", "server"])
           expect(
             (
@@ -440,6 +444,36 @@ describe("control-plane personal authorization", () => {
           body: { login: "admin", password: "long-test-only-password" },
         });
         const oldAdmin = cookie(adminLogin, "bb_admin_session").value;
+        expect(
+          JSON.parse(
+            (
+              await send("/control-plane/browser-context", {
+                headers: { cookie: oldAdmin },
+              })
+            ).text,
+          ),
+        ).toMatchObject({ mode: "admin", identity: "admin" });
+        expect(
+          (
+            await send("/api/v1/projects", {
+              headers: {
+                cookie: oldAdmin,
+                "x-bb-client-identity": "user:forged",
+              },
+            })
+          ).status,
+        ).toBe(403);
+        expect(
+          (
+            await send("/api/v1/projects", {
+              headers: {
+                cookie: oldAdmin,
+                "x-bb-client-identity": "admin%3Aadmin",
+              },
+            })
+          ).status,
+        ).toBe(200);
+
         expect(
           (await send("/api/v1/projects", { headers: { cookie: oldAdmin } }))
             .status,

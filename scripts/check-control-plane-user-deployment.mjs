@@ -707,6 +707,12 @@ export async function verifyUserDeployment({
       const bootstrap = JSON.parse(
         await command([...cli, "bootstrap", "--json"], "", { env }),
       );
+      const browserContext = JSON.parse(
+        await command([...cli, "browser-context", "--json"], "", { env }),
+      );
+      assert.equal(browserContext.mode, "user");
+      assert.equal(browserContext.identity, bootstrap.session.user.id);
+
       assert.equal(bootstrap.session.user.login, "alice");
       assert.equal(
         bootstrap.projects.projects.some(
@@ -946,6 +952,49 @@ async function verifyBrowserDeployment({
     body: { login: "operator", password },
   });
   const oldAdmin = cookie(operator, "bb_admin_session").value;
+  assert.deepEqual(
+    JSON.parse((await send("/control-plane/browser-context")).text),
+    { mode: "anonymous" },
+  );
+  const adminContext = JSON.parse(
+    (
+      await send("/control-plane/browser-context", {
+        headers: { cookie: oldAdmin },
+      })
+    ).text,
+  );
+  assert.equal(adminContext.mode, "admin");
+  assert.equal(adminContext.identity, "operator");
+  assert.match(adminContext.cacheEpoch, /^[a-f0-9]{64}$/u);
+  assert.equal(
+    (
+      await send("/api/v1/projects", {
+        headers: { cookie: oldAdmin, "x-bb-client-session": "0".repeat(64) },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await send("/api/v1/projects", {
+        headers: {
+          cookie: oldAdmin,
+          "x-bb-client-session": adminContext.cacheEpoch,
+        },
+      })
+    ).status,
+    200,
+  );
+
+  assert.equal(
+    (
+      await send("/api/v1/projects", {
+        headers: { cookie: oldAdmin, "x-bb-client-identity": "user:stale" },
+      })
+    ).status,
+    403,
+  );
+
   assert.equal(
     (await send("/api/v1/projects", { headers: { cookie: oldAdmin } })).status,
     200,
@@ -959,6 +1008,64 @@ async function verifyBrowserDeployment({
   assert.equal(login.headers.location, "/control-plane/user");
   assert.equal(login.headers["clear-site-data"], '"cache", "storage"');
   const alice = cookie(login, "bb_user_session");
+  const identity = JSON.parse(
+    (await send("/control-plane/user", { headers: { cookie: alice.value } }))
+      .text,
+  ).user;
+  const personalContext = JSON.parse(
+    (
+      await send("/control-plane/browser-context", {
+        headers: { cookie: alice.value },
+      })
+    ).text,
+  );
+  assert.equal(personalContext.mode, "user");
+  assert.equal(personalContext.identity, identity.id);
+  assert.equal(personalContext.login, "alice");
+  assert.match(personalContext.cacheEpoch, /^[a-f0-9]{64}$/u);
+  assert.equal(
+    (
+      await send("/control-plane/user/bootstrap", {
+        headers: { cookie: alice.value, "x-bb-client-session": "0".repeat(64) },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await send("/control-plane/user/bootstrap", {
+        headers: {
+          cookie: alice.value,
+          "x-bb-client-session": personalContext.cacheEpoch,
+        },
+      })
+    ).status,
+    200,
+  );
+
+  assert.equal(
+    (
+      await send("/control-plane/user/bootstrap", {
+        headers: {
+          cookie: alice.value,
+          "x-bb-client-identity": "admin:operator",
+        },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await send("/control-plane/user/bootstrap", {
+        headers: {
+          cookie: alice.value,
+          "x-bb-client-identity": encodeURIComponent(`user:${identity.id}`),
+        },
+      })
+    ).status,
+    200,
+  );
+
   for (const flag of [
     "Secure",
     "HttpOnly",
@@ -1092,8 +1199,18 @@ async function verifyBrowserDeployment({
     await send(path, { user: "alice", method: "POST", headers: { origin } }),
     "bb_user_session",
   ).value;
+  const persistedContext = JSON.parse(
+    (
+      await send("/control-plane/browser-context", {
+        headers: { cookie: persisted },
+      })
+    ).text,
+  );
+  assert.notEqual(persistedContext.cacheEpoch, personalContext.cacheEpoch);
   return {
     verification: {
+      browserContextAndExpectedIdentityHeader: true,
+      browserCacheEpochBoundToCredential: true,
       certificateBrowserSession: true,
       cookieWriteOriginRequired: true,
       browserRoleSwitchRevokesPriorSessions: true,
@@ -1104,6 +1221,16 @@ async function verifyBrowserDeployment({
       realBrowserUrlAndBootstrapCli: true,
     },
     async afterRestart() {
+      assert.equal(
+        JSON.parse(
+          (
+            await send("/control-plane/browser-context", {
+              headers: { cookie: persisted },
+            })
+          ).text,
+        ).cacheEpoch,
+        persistedContext.cacheEpoch,
+      );
       assert.equal(
         JSON.parse(
           (

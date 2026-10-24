@@ -1,9 +1,10 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 const PALETTE_RECENTS_KEY = "bb.palette.recents";
 const PALETTE_RECENTS_LIMIT = 8;
 
 export function readPaletteRecents(): string[] {
   try {
-    const stored = window.localStorage.getItem(PALETTE_RECENTS_KEY);
+    const stored = accountLocalStorage().getItem(PALETTE_RECENTS_KEY);
     if (stored === null) return [];
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed)) return [];
@@ -24,7 +25,7 @@ export function recordPaletteRecent(
     ...recents.filter((entry) => entry !== actionId),
   ].slice(0, PALETTE_RECENTS_LIMIT);
   try {
-    window.localStorage.setItem(PALETTE_RECENTS_KEY, JSON.stringify(next));
+    accountLocalStorage().setItem(PALETTE_RECENTS_KEY, JSON.stringify(next));
   } catch {}
   return next;
 }

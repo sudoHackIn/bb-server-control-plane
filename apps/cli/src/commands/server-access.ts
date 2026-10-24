@@ -89,6 +89,24 @@ export function registerServerAccessCommands(
         );
       }),
     );
+  access
+    .command("browser-context")
+    .description(
+      "Read the current server UI identity without loading administrative data",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async () => {
+        console.log(
+          JSON.stringify(
+            await createControlPlaneClient({
+              origin: endpoint(getUrl(), "/").origin,
+              fetch: cliFetch,
+            }).browserContext(),
+          ),
+        );
+      }),
+    );
   const projects = access
     .command("projects")
     .description("Manage your authorized server projects");

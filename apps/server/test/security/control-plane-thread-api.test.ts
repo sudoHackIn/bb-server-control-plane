@@ -254,6 +254,52 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
           ).toBeNull();
       });
       expect((await request(null, base)).status).toBe(401);
+      const browserContext = await client(alice.token).browserContext();
+      expect(browserContext).toMatchObject({
+        mode: "user",
+        identity: alice.user.id,
+        login: "alice",
+      });
+      if (browserContext.mode !== "user")
+        throw new Error("Expected personal context");
+      expect(browserContext.cacheEpoch).toMatch(/^[a-f0-9]{64}$/u);
+      expect(await client(alice.token).browserContext()).toEqual(
+        browserContext,
+      );
+      expect(
+        await createControlPlaneClient({
+          origin,
+          fetch: async (input, init) =>
+            server.app.fetch(new Request(input, init)),
+        }).browserContext(),
+      ).toEqual({ mode: "anonymous" });
+      for (const identity of [
+        `user:${bob.user.id}`,
+        "admin:operator",
+        "%E0%A4%A",
+      ])
+        expect(
+          (
+            await server.app.request("/control-plane/user/bootstrap", {
+              headers: {
+                authorization: `Bearer ${alice.token}`,
+                "x-bb-client-identity": identity,
+              },
+            })
+          ).status,
+        ).toBe(403);
+      expect(
+        (
+          await server.app.request("/control-plane/user/bootstrap", {
+            headers: {
+              authorization: `Bearer ${alice.token}`,
+              "x-bb-client-identity": encodeURIComponent(
+                `user:${alice.user.id}`,
+              ),
+            },
+          })
+        ).status,
+      ).toBe(200);
       const bootstrap = await client(alice.token).bootstrap();
       expect(bootstrap.session.user.id).toBe(alice.user.id);
       expect(

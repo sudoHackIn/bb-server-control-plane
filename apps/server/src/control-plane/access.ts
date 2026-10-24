@@ -40,6 +40,16 @@ function tokenKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function expectedBrowserIdentity(context: Context): string | null | undefined {
+  const value = context.req.header("x-bb-client-identity");
+  if (value === undefined) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
 function loginPage(personalSignIn: boolean): string {
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BB administration</title><body><main><h1>BB administration</h1><form method="post" action="/control-plane/login"><p><label>Login <input name="login" autocomplete="username" required maxlength="100"></label></p><p><label>Password <input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label></p><button type="submit">Sign in</button></form>${personalSignIn ? '<p><a href="/control-plane/user/login">User certificate sign-in</a></p>' : ""}</main></body></html>`;
 }
@@ -113,6 +123,32 @@ export function createControlPlaneAccess(
         )
           return context.json({ error: "noncanonical_path" }, 400);
         if (
+          path === "/control-plane/browser-context" &&
+          context.req.method === "GET"
+        ) {
+          const origin = context.req.header("origin");
+          if (origin !== undefined && !safeOrigin(context))
+            return context.json({ error: "forbidden_origin" }, 403);
+          context.header("cache-control", "no-store");
+          context.header("x-content-type-options", "nosniff");
+          const administrator = session(context);
+          if (administrator)
+            return context.json({
+              mode: "admin",
+              identity: administrator.login,
+              cacheEpoch: tokenKey(`browser-cache:${administrator.key}`),
+            });
+          const user = users?.authenticate(context);
+          return user
+            ? context.json({
+                mode: "user",
+                identity: user.user.id,
+                login: user.user.login,
+                cacheEpoch: tokenKey(`browser-cache:${user.digest}`),
+              })
+            : context.json({ mode: "anonymous" });
+        }
+        if (
           path === "/health" &&
           ["GET", "HEAD"].includes(context.req.method) &&
           !session(context)
@@ -132,6 +168,24 @@ export function createControlPlaneAccess(
               !safeOrigin(context))
           )
             return context.json({ error: "forbidden_origin" }, 403);
+          const expected = expectedBrowserIdentity(context);
+          const expectedSession = context.req.header("x-bb-client-session");
+          if (
+            (expected !== undefined || expectedSession !== undefined) &&
+            path.startsWith("/control-plane/user") &&
+            path !== "/control-plane/user/login"
+          ) {
+            const identity = users.authenticate(context);
+            if (
+              !identity ||
+              (expected !== undefined &&
+                expected !== `user:${identity.user.id}`) ||
+              (expectedSession !== undefined &&
+                expectedSession !==
+                  tokenKey(`browser-cache:${identity.digest}`))
+            )
+              return context.json({ error: "identity_changed" }, 403);
+          }
           return next();
         }
         if (
@@ -151,6 +205,15 @@ export function createControlPlaneAccess(
           }
           return denied(context);
         }
+        const expected = expectedBrowserIdentity(context);
+        if (expected !== undefined && expected !== `admin:${value.login}`)
+          return context.json({ error: "identity_changed" }, 403);
+        const expectedSession = context.req.header("x-bb-client-session");
+        if (
+          expectedSession !== undefined &&
+          expectedSession !== tokenKey(`browser-cache:${value.key}`)
+        )
+          return context.json({ error: "identity_changed" }, 403);
         const origin = context.req.header("origin");
         const bearer = context.req.header("authorization") !== undefined;
         if (
@@ -234,6 +297,7 @@ export function createControlPlaneAccess(
           if (sessions.size >= 100)
             return context.json({ error: "session_limit" }, 429);
           users?.clearBrowserSession(context);
+          context.header("clear-site-data", '"cache", "storage"');
           const old = session(context);
           if (old) revoke(old.key);
           const token = randomBytes(32).toString("base64url"),
@@ -265,6 +329,7 @@ export function createControlPlaneAccess(
       app.post("/control-plane/logout", (context) => {
         const value = session(context);
         if (value) revoke(value.key);
+        context.header("clear-site-data", '"cache", "storage"');
         deleteCookie(context, cookieName, {
           path: "/",
           secure,

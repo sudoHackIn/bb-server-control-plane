@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 import { useSyncExternalStore } from "react";
 import { z } from "zod";
 
@@ -19,7 +20,7 @@ const listeners = new Set<() => void>();
 
 function readUsageCounts(): Readonly<Record<string, number>> {
   if (typeof window === "undefined") return EMPTY_USAGE_COUNTS;
-  const storedValue = window.localStorage.getItem(
+  const storedValue = accountLocalStorage().getItem(
     PLUGIN_COMPOSER_ACTION_USAGE_STORAGE_KEY,
   );
   if (storedValue === null) return EMPTY_USAGE_COUNTS;
@@ -92,7 +93,7 @@ export function recordPluginComposerActionUse(pluginId: string): void {
     [pluginId]: Math.min((current[pluginId] ?? 0) + 1, MAX_USAGE_COUNT),
   });
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(
+    accountLocalStorage().setItem(
       PLUGIN_COMPOSER_ACTION_USAGE_STORAGE_KEY,
       JSON.stringify(next),
     );

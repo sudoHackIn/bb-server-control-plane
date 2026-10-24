@@ -35,6 +35,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
+- [x] Gate native web initialization on verified browser context, namespace core caches/drafts/recordings by actor and session epoch, revalidate returning pages, and reject frontend requests bound to an old actor. Legacy plugin persistence and rendered personal UI remain pending.
 - [ ] Clear account-scoped browser caches and drafts when switching identities or signing out.
 - [ ] Use this fork's native UI for both roles. Keep projects/threads/composer/timeline/model controls for users; remove the right workspace panel and administrative controls in user mode.
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
@@ -673,3 +674,63 @@ real bootstrap/login-URL CLI commands and browser-cookie persistence across BB
 restart while retaining native Qwen/MCP/approval/timeline/isolation checks.
 This verifies HTTP/cookie behavior, not rendered native user UI or browser cache
 clearing effectiveness. See `control-plane-phase-18-verification.json`.
+
+## Nineteenth increment: verified browser initialization and core cache scope
+
+The web entry now verifies browser context before dynamically importing the
+native application. Shared-server responses describe only the current
+administrator/user or anonymous mode. Standalone BB returns an explicit
+standalone mode and keeps its preexisting local settings on the first boot.
+Personal mode still redirects to the identity endpoint; this increment does
+not open the full administrative app or claim a completed personal UI.
+SDK `browserContext()` and CLI `server access browser-context` expose the same
+metadata without granting native API access.
+
+Authenticated context includes a stable noncredential fingerprint derived from
+the current credential verifier with a separate cache domain. A fresh sign-in
+changes this epoch even for the same account; an existing personal session's
+epoch survives server restart. The frontend captures immutable actor/session
+storage scope for the document. Deferred writes from an old document cannot
+retarget a newly signed-in identity/session. Core local/session storage, prompt
+and question drafts, sidebar/model/workspace caches, theme preferences and voice
+recordings use that scope. Initialization clears previous/legacy core data and
+prunes inactive namespaces; known recordings are reset in IndexedDB, with
+additional inactive database cleanup when enumeration is supported.
+
+Cached account CSS is applied only after verification. Inline HTML pre-paint
+uses the system scheme without reading stored account data. The stylesheet/font
+ordering guard now recognizes an explicit pre-paint marker instead of requiring
+a raw theme-key read. The existing native application moved to a lazy entry;
+its disposer unmounts React, cancels and clears queries, closes the native
+socket and removes browser/chunk-recovery listeners. Identity/epoch changes
+hide and retire the old view, clear core data and reload. Hidden/history-returned
+pages revalidate before showing the view; stale overlapping checks cannot
+restore a retired identity. Unverifiable context fails closed.
+
+Same-origin frontend fetches assert the verified actor through the optional
+`x-bb-client-identity` header. `x-bb-client-session` also asserts the current credential epoch. The backend compares both assertions with existing
+credentials before protected operations. It accepts percent-encoded
+UTF-8, rejects mismatches/malformed encodings, and never treats the header as
+login authority. Context observation and sign-in flows remain available to
+change identities. Administrator login/logout also emit cache/storage clearing
+headers. The Vite development proxy forwards the new context route so ordinary
+standalone development still boots.
+
+Legacy plugin frontend code using raw storage is not migrated here. The broader
+cache-isolation checklist stays open until those approved plugin paths and the
+rendered personal native UI are integrated and verified. Production browser
+rendering remains a subsequent required check; DOM/cache tests and a rebuilt
+Docker HTTP deployment do not substitute for that evidence.
+
+Verification: 137 selected app/cache/theme/draft/recording/bootstrap/header tests,
+47 server security tests, 129 SDK tests and 12 CLI checks pass. Bundle and
+stylesheet/font/module-preload guard checks pass. Strict app/server/SDK/CLI
+typechecks, changed-file formatting and lint error checks pass; four React
+compiler warnings remain in unchanged component statements. The Docker image
+rebuilds the native lazy entry and verifies real context/CLI responses, stale
+actor/session-header denial, credential-bound epochs and personal-epoch
+persistence across restart while retaining the full Qwen/MCP/approval/timeline
+and UID isolation checks. DOM tests cover portal/title hiding during history
+restore; this is not a production-browser rendering verification. Personal UI
+and legacy plugin persistence remain open. See
+`control-plane-phase-19-verification.json`.

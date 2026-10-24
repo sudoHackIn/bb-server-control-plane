@@ -1352,3 +1352,23 @@ Each navigation page is bounded to 50 with a separate list cursor. No browser
 credential enables native UI assets, full BB API, raw WebSocket or plugin
 installation in this increment. Browser cookies and PKCE CLI/plugin tokens
 share the existing hashed-session table and server-side revocation checks.
+
+The native web entry now reads `/control-plane/browser-context` before importing
+application state. The SDK's `browserContext()` and CLI `server access
+browser-context --json` expose the same mode/identity metadata. Authenticated
+responses include a session-bound noncredential `cacheEpoch`; personal epochs
+remain stable across BB restart. A fresh sign-in gets a fresh cache namespace,
+even for the same login. The marker and namespaced storage are client cache
+coordination, not authorization credentials.
+
+Core local/session storage, prompt/question drafts, cached sidebars, workspace
+state and voice recordings use the verified identity/session namespace. Old
+namespaces and legacy core data are cleared before application startup. Native
+query/socket cleanup and page visibility/focus/history checks protect account
+transitions. Same-origin frontend requests bind `x-bb-client-identity` to the
+verified actor; `x-bb-client-session` also asserts the verified cache epoch. The backend rejects a mismatch with current credentials. The
+header supports percent-encoded UTF-8. Administrator login/logout also request
+browser cache/storage clearing. The first standalone boot preserves legacy local
+settings. First-party/third-party plugin code that directly uses raw browser
+storage is not migrated by this increment; personal plugin frontend loading
+remains closed until its scoped adapter is implemented.

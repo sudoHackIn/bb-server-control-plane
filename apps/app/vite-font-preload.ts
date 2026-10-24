@@ -60,7 +60,7 @@ export function reorderHeadForFirstPaint(
   if (block === "") return html;
 
   const anchor = firstPreloadableTagIndex(withoutStylesheets);
-  const themeScriptAt = withoutStylesheets.indexOf("bb.theme");
+  const themeScriptAt = withoutStylesheets.indexOf("data-bb-pre-paint");
   if (themeScriptAt === -1 || anchor <= themeScriptAt) {
     throw new Error(
       "bb:font-preload: the pre-paint theme script must precede the injected asset tags in index.html; refusing to move the stylesheet ahead of it",

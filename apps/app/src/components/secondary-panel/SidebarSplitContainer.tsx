@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 import {
   Fragment,
   useCallback,
@@ -264,9 +265,9 @@ export function SidebarSplitContainer({
     }
     try {
       if (persistedValue === null) {
-        window.localStorage.removeItem(storageKey);
+        accountLocalStorage().removeItem(storageKey);
       } else {
-        window.localStorage.setItem(storageKey, persistedValue);
+        accountLocalStorage().setItem(storageKey, persistedValue);
       }
       lastPersistedValueRef.current = { storageKey, value: persistedValue };
     } catch (error) {
@@ -375,7 +376,9 @@ export function SidebarSplitContainer({
     next?.scrollIntoView({ block: "nearest" });
     return true;
   };
-  useAppCommandHandler("panel.previousNewTabItem", () => navigateNewTabItem(-1));
+  useAppCommandHandler("panel.previousNewTabItem", () =>
+    navigateNewTabItem(-1),
+  );
   useAppCommandHandler("panel.nextNewTabItem", () => navigateNewTabItem(1));
 
   const focusPane = useCallback(

@@ -1,3 +1,4 @@
+import { accountSessionStorage } from "@/lib/account-storage";
 import { flushPendingPromptDraftPersists } from "../hooks/usePromptDraftStorage";
 
 const RELOAD_GUARD_KEY = "bb.stale-chunk-reload";
@@ -44,7 +45,7 @@ export function installStaleChunkRecovery(): () => void {
     try {
       const deployedEntry = await readDeployedEntryScript();
       if (deployedEntry === null || deployedEntry === loadedEntry) return;
-      const storage = window.sessionStorage;
+      const storage = accountSessionStorage();
       if (storage.getItem(RELOAD_GUARD_KEY) === deployedEntry) return;
       if (!flushPendingPromptDraftPersists()) return;
       storage.setItem(RELOAD_GUARD_KEY, deployedEntry);

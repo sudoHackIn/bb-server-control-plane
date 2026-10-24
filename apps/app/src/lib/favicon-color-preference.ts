@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 import { useEffect } from "react";
 import { atom, getDefaultStore, useSetAtom } from "jotai";
 import {
@@ -32,7 +33,7 @@ export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
 function readCachedFaviconColor(): FaviconColorPreference {
   try {
     const parsed = faviconColorPreferenceSchema.safeParse(
-      localStorage.getItem(FAVICON_COLOR_STORAGE_KEY),
+      accountLocalStorage().getItem(FAVICON_COLOR_STORAGE_KEY),
     );
     return parsed.success ? parsed.data : defaultFaviconColor;
   } catch {
@@ -43,9 +44,9 @@ function readCachedFaviconColor(): FaviconColorPreference {
 function cacheFaviconColor(color: FaviconColorPreference): void {
   try {
     if (color === defaultFaviconColor) {
-      localStorage.removeItem(FAVICON_COLOR_STORAGE_KEY);
+      accountLocalStorage().removeItem(FAVICON_COLOR_STORAGE_KEY);
     } else {
-      localStorage.setItem(FAVICON_COLOR_STORAGE_KEY, color);
+      accountLocalStorage().setItem(FAVICON_COLOR_STORAGE_KEY, color);
     }
   } catch {}
 }

@@ -115,7 +115,7 @@ const SHARED_FIXTURE_ANCHORS: readonly FixtureAnchor[] = [
       "The mode switch writes localStorage `bb.theme` and dispatches the storage event so Settings → Appearance stays synchronized.",
   },
   {
-    file: "apps/app/src/main.tsx",
+    file: "apps/app/src/native-main.tsx",
     mustContain: ["AppToaster"],
     because:
       "The toast specimen fires a real sonner toast rendered by the app-mounted Toaster.",

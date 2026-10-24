@@ -1,3 +1,4 @@
+import { accountLocalStorage } from "@/lib/account-storage";
 import type { z } from "zod";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 
@@ -30,8 +31,8 @@ export function createLastKnownCache<T>({
     pruned = true;
     try {
       const stale: string[] = [];
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const stored = window.localStorage.key(index);
+      for (let index = 0; index < accountLocalStorage().length; index += 1) {
+        const stored = accountLocalStorage().key(index);
         if (
           stored !== null &&
           ((stored.startsWith(`${prefix}.`) &&
@@ -46,7 +47,7 @@ export function createLastKnownCache<T>({
           stale.push(stored);
         }
       }
-      for (const key of stale) window.localStorage.removeItem(key);
+      for (const key of stale) accountLocalStorage().removeItem(key);
     } catch {}
   };
   const pruneExcessEntries = (
@@ -57,8 +58,8 @@ export function createLastKnownCache<T>({
     try {
       const otherKeys: string[] = [];
       let hasCurrentKey = false;
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const stored = window.localStorage.key(index);
+      for (let index = 0; index < accountLocalStorage().length; index += 1) {
+        const stored = accountLocalStorage().key(index);
         if (stored === currentKey) {
           hasCurrentKey = true;
           continue;
@@ -81,7 +82,7 @@ export function createLastKnownCache<T>({
         index += 1
       ) {
         const key = otherKeys[index];
-        if (key !== undefined) window.localStorage.removeItem(key);
+        if (key !== undefined) accountLocalStorage().removeItem(key);
       }
     } catch {}
   };
@@ -110,8 +111,8 @@ export function createLastKnownCache<T>({
     clear: () => {
       try {
         const owned: string[] = [];
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          const stored = window.localStorage.key(index);
+        for (let index = 0; index < accountLocalStorage().length; index += 1) {
+          const stored = accountLocalStorage().key(index);
           if (
             stored !== null &&
             (stored === zeroScopeKey || stored.startsWith(versionPrefix))
@@ -119,7 +120,7 @@ export function createLastKnownCache<T>({
             owned.push(stored);
           }
         }
-        for (const key of owned) window.localStorage.removeItem(key);
+        for (const key of owned) accountLocalStorage().removeItem(key);
       } catch {}
     },
   };

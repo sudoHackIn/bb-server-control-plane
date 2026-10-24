@@ -524,6 +524,11 @@ export function createApp(
     deps.config.appUrl = controlPlane.publicOrigin;
   }
   controlPlane?.install(app);
+  if (!controlPlane)
+    app.get("/control-plane/browser-context", (context) => {
+      context.header("cache-control", "no-store");
+      return context.json({ mode: "standalone" });
+    });
   const sdkFetch: typeof fetch | undefined = controlPlane
     ? (input, init) => controlPlane.dispatch(app, input, init)
     : undefined;

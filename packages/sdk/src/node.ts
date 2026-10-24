@@ -125,4 +125,7 @@ export { createControlPlaneClient } from "./control-plane.js";
 
 export type { ControlPlaneThreadStreamMessage } from "@bb/server-contract";
 
-export type { ControlPlaneUserBootstrap } from "@bb/domain";
+export type {
+  ControlPlaneUserBootstrap,
+  ControlPlaneBrowserContext,
+} from "@bb/domain";

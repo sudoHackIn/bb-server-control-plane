@@ -1,3 +1,8 @@
+import {
+  accountLocalStorage,
+  accountSessionStorage,
+  accountStorageEventKey,
+} from "./account-storage";
 import { atomWithStorage } from "jotai/utils";
 
 type StringValueGuard<T extends string> = (value: string) => value is T;
@@ -42,7 +47,7 @@ export function withLocalStorage<T>(
     return fallback;
   }
   try {
-    return operation(window.localStorage);
+    return operation(accountLocalStorage());
   } catch {
     return fallback;
   }
@@ -54,7 +59,7 @@ function withSessionStorage<T>(
 ): T {
   if (typeof window === "undefined") return fallback;
   try {
-    return operation(window.sessionStorage);
+    return operation(accountSessionStorage());
   } catch {
     return fallback;
   }
@@ -74,7 +79,7 @@ function subscribeToLocalStorageKey(
   }
 
   const handleStorage = (event: StorageEvent) => {
-    if (event.storageArea === localStorage && event.key === key) {
+    if (accountStorageEventKey(event) === key) {
       callback(event.newValue);
     }
   };

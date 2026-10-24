@@ -1,4 +1,8 @@
 import {
+  activeBrowserIdentity,
+  activeBrowserSessionEpoch,
+} from "./account-storage";
+import {
   APP_SURFACE_DESKTOP,
   APP_SURFACE_HEADER_NAME,
   APP_SURFACE_WEB,
@@ -32,5 +36,22 @@ export function fetchWithAppSurface(
   input: Parameters<typeof fetch>[0],
   init?: RequestInit,
 ): ReturnType<typeof fetch> {
-  return fetch(input, appSurfaceRequestInit(init));
+  const request = appSurfaceRequestInit(init);
+  const identity = activeBrowserIdentity();
+  if (identity && typeof window !== "undefined") {
+    const url = new URL(
+      typeof input !== "string" && "url" in input
+        ? input.url
+        : input.toString(),
+      window.location.origin,
+    );
+    if (url.origin === window.location.origin) {
+      const headers = new Headers(request.headers);
+      headers.set("x-bb-client-identity", encodeURIComponent(identity));
+      const epoch = activeBrowserSessionEpoch();
+      if (epoch) headers.set("x-bb-client-session", epoch);
+      request.headers = headers;
+    }
+  }
+  return fetch(input, request);
 }

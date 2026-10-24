@@ -44,3 +44,22 @@ export const controlPlaneUserBootstrapSchema = z.object({
 export type ControlPlaneUserBootstrap = z.infer<
   typeof controlPlaneUserBootstrapSchema
 >;
+
+export const controlPlaneBrowserContextSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("standalone") }),
+  z.object({ mode: z.literal("anonymous") }),
+  z.object({
+    mode: z.literal("admin"),
+    identity: z.string().min(1),
+    cacheEpoch: z.string().regex(/^[a-f0-9]{64}$/u),
+  }),
+  z.object({
+    mode: z.literal("user"),
+    identity: z.string().uuid(),
+    login: z.string(),
+    cacheEpoch: z.string().regex(/^[a-f0-9]{64}$/u),
+  }),
+]);
+export type ControlPlaneBrowserContext = z.infer<
+  typeof controlPlaneBrowserContextSchema
+>;
