@@ -40,8 +40,8 @@ function tokenKey(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function loginPage(): string {
-  return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BB administration</title><body><main><h1>BB administration</h1><form method="post" action="/control-plane/login"><p><label>Login <input name="login" autocomplete="username" required maxlength="100"></label></p><p><label>Password <input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label></p><button type="submit">Sign in</button></form></main></body></html>';
+function loginPage(personalSignIn: boolean): string {
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BB administration</title><body><main><h1>BB administration</h1><form method="post" action="/control-plane/login"><p><label>Login <input name="login" autocomplete="username" required maxlength="100"></label></p><p><label>Password <input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label></p><button type="submit">Sign in</button></form>${personalSignIn ? '<p><a href="/control-plane/user/login">User certificate sign-in</a></p>' : ""}</main></body></html>`;
 }
 
 export function createControlPlaneAccess(
@@ -125,7 +125,12 @@ export function createControlPlaneAccess(
           return next();
         if (users && isUserAuthPath(path, context.req.method)) {
           const origin = context.req.header("origin");
-          if (origin !== undefined && !safeOrigin(context))
+          if (
+            (origin !== undefined && !safeOrigin(context)) ||
+            (!["GET", "HEAD", "OPTIONS"].includes(context.req.method) &&
+              users.usesBrowserCredential(context) &&
+              !safeOrigin(context))
+          )
             return context.json({ error: "forbidden_origin" }, 403);
           return next();
         }
@@ -172,7 +177,7 @@ export function createControlPlaneAccess(
       app.get("/control-plane/login", (context) =>
         session(context)
           ? context.redirect("/", 303)
-          : context.html(loginPage()),
+          : context.html(loginPage(users !== undefined)),
       );
       app.post(
         "/control-plane/login",
@@ -228,6 +233,7 @@ export function createControlPlaneAccess(
             if (value.expiresAt <= now()) sessions.delete(key);
           if (sessions.size >= 100)
             return context.json({ error: "session_limit" }, 429);
+          users?.clearBrowserSession(context);
           const old = session(context);
           if (old) revoke(old.key);
           const token = randomBytes(32).toString("base64url"),
@@ -268,7 +274,15 @@ export function createControlPlaneAccess(
           ? context.redirect("/control-plane/login", 303)
           : context.json({ ok: true });
       });
-      users?.install(app);
+      users?.install(app, (context) => {
+        const token = getCookie(context, cookieName);
+        if (token) revoke(tokenKey(token));
+        deleteCookie(context, cookieName, {
+          path: "/",
+          secure,
+          sameSite: "Strict",
+        });
+      });
     },
     attachSockets(server: WebSocketServer) {
       server.on("connection", (socket, request) => {

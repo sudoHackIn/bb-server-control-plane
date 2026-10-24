@@ -56,6 +56,39 @@ export function registerServerAccessCommands(
       fetch: cliFetch,
     }),
   );
+  access
+    .command("browser")
+    .description("Print the certificate browser sign-in URL")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async () => {
+        console.log(
+          JSON.stringify({
+            url: createControlPlaneClient({
+              origin: endpoint(getUrl(), "/").origin,
+            }).browserLoginUrl(),
+          }),
+        );
+      }),
+    );
+  access
+    .command("bootstrap")
+    .description(
+      "Read your authorized project, conversation and agent navigation pages",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async () => {
+        console.log(
+          JSON.stringify(
+            await createControlPlaneClient({
+              origin: endpoint(getUrl(), "/").origin,
+              fetch: cliFetch,
+            }).bootstrap(),
+          ),
+        );
+      }),
+    );
   const projects = access
     .command("projects")
     .description("Manage your authorized server projects");

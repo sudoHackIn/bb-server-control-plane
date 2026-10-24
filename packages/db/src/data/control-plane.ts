@@ -192,6 +192,42 @@ export class ControlPlaneRegistry {
     );
   }
 
+  createSession(
+    userId: string,
+    digest: string,
+    expiresAt: number,
+    now: number,
+    previousDigest: string | null,
+  ) {
+    return this.db.transaction(
+      (tx) => {
+        const user = tx
+          .select()
+          .from(controlPlaneUsers)
+          .where(
+            and(
+              eq(controlPlaneUsers.id, userId),
+              eq(controlPlaneUsers.enabled, true),
+            ),
+          )
+          .get();
+        if (!user || expiresAt <= now) return false;
+        tx.delete(controlPlaneUserSessions)
+          .where(lte(controlPlaneUserSessions.expiresAt, now))
+          .run();
+        if (previousDigest)
+          tx.delete(controlPlaneUserSessions)
+            .where(eq(controlPlaneUserSessions.digest, previousDigest))
+            .run();
+        tx.insert(controlPlaneUserSessions)
+          .values({ userId, digest, expiresAt })
+          .run();
+        return true;
+      },
+      { behavior: "immediate" },
+    );
+  }
+
   authenticate(digest: string, now: number) {
     return this.db
       .select({

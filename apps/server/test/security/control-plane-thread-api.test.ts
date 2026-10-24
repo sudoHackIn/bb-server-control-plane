@@ -254,6 +254,33 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
           ).toBeNull();
       });
       expect((await request(null, base)).status).toBe(401);
+      const bootstrap = await client(alice.token).bootstrap();
+      expect(bootstrap.session.user.id).toBe(alice.user.id);
+      expect(
+        bootstrap.projects.projects.map((project) => project.projectId),
+      ).toEqual([alice.project.id]);
+      expect(bootstrap.threads.threads.map((thread) => thread.id)).toEqual([
+        alice.thread.id,
+      ]);
+      expect(bootstrap.profiles.profiles.map((profile) => profile.id)).toEqual([
+        alice.profile.profileId,
+      ]);
+      expect(JSON.stringify(bootstrap)).not.toContain(bob.thread.id);
+      expect(JSON.stringify(bootstrap)).not.toContain(bob.user.home);
+      expect(bootstrap.capabilities).toEqual({
+        canCreateProjects: true,
+        canInstallPlugins: false,
+        canUseTerminals: false,
+      });
+      expect(
+        (
+          await request(
+            alice.token,
+            "/control-plane/user/bootstrap?userId=" + bob.user.id,
+          )
+        ).status,
+      ).toBe(400);
+
       expect((await api.list()).threads.map((thread) => thread.id)).toEqual([
         alice.thread.id,
       ]);
@@ -288,6 +315,30 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
       ])
         expect((await request(alice.token, path)).status).toBe(400);
 
+      const cookieApi = createControlPlaneClient({
+        origin,
+        fetch: async (input, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set("cookie", `bb_user_session=${alice.token}`);
+          return server.app.fetch(new Request(input, { ...init, headers }));
+        },
+      });
+      expect((await cookieApi.bootstrap()).session.user.id).toBe(alice.user.id);
+      const cookieAbort = new AbortController();
+      const cookieStream = cookieApi.threads.stream(alice.thread.id, {
+        after: last.cursor,
+        signal: cookieAbort.signal,
+      });
+      expect((await cookieStream.next()).value).toMatchObject({
+        kind: "realtime",
+        message: { type: "thread-timeline" },
+      });
+      expect((await cookieStream.next()).value).toEqual({
+        kind: "ready",
+        cursor: last.cursor,
+      });
+      cookieAbort.abort();
+      await cookieStream.return();
       const streamAbort = new AbortController();
       const stream = api.stream(alice.thread.id, {
         after: first.cursor,
@@ -554,6 +605,10 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
         ).toBeNull(),
       );
       expect((await api.list()).threads).toEqual([]);
+      const revokedBootstrap = await client(alice.token).bootstrap();
+      expect(revokedBootstrap.projects.projects).toEqual([]);
+      expect(revokedBootstrap.threads.threads).toEqual([]);
+
       expect(
         (await request(alice.token, `${base}/${alice.thread.id}`)).status,
       ).toBe(404);

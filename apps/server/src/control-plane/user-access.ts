@@ -1,3 +1,7 @@
+import {
+  createControlPlaneBrowserAccess,
+  controlPlaneBrowserToken,
+} from "./browser-access.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { IncomingMessage } from "node:http";
 import { TLSSocket } from "node:tls";
@@ -6,6 +10,7 @@ import {
   ControlPlaneProjectError,
   getControlPlaneProject,
   listControlPlaneProjects,
+  listControlPlaneProfiles,
 } from "@bb/db";
 import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -77,7 +82,10 @@ export function isUserAuthPath(path: string, method: string): boolean {
     return method === "GET";
   if (path === "/control-plane/user/environment")
     return ["GET", "POST"].includes(method);
-  if (path === "/control-plane/user") return method === "GET";
+  if (path === "/control-plane/user/login")
+    return ["GET", "POST"].includes(method);
+  if (["/control-plane/user", "/control-plane/user/bootstrap"].includes(path))
+    return method === "GET";
   if (
     [
       "/control-plane/auth/start",
@@ -102,19 +110,32 @@ export function createControlPlaneUserAccess(
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
     const authorization = context.req.header("authorization");
-    if (
-      !authorization ||
-      !/^Bearer agt_[A-Za-z0-9_-]{43}$/u.test(authorization)
-    )
-      return null;
-    const token = authorization.slice(7);
+    const token =
+      authorization === undefined
+        ? controlPlaneBrowserToken(context)
+        : /^Bearer agt_[A-Za-z0-9_-]{43}$/u.test(authorization)
+          ? authorization.slice(7)
+          : null;
+    if (!token) return null;
     const value = registry.authenticate(digest(token), now());
     return value ? { ...value, digest: digest(token) } : null;
   };
+  const browser = createControlPlaneBrowserAccess({
+    registry,
+    publicOrigin,
+    now,
+    certificateLogin,
+  });
   return {
+    usesBrowserCredential: browser.usesCookie,
+    clearBrowserSession: browser.clear,
     close: () => threads?.close(),
     authenticate,
-    install(app: Hono) {
+    install(
+      app: Hono,
+      signOutAdministrator: (context: Context) => void = () => {},
+    ) {
+      browser.install(app, signOutAdministrator);
       installControlPlaneProfileRoutes(app, registry.db, authenticate);
       if (threads) installControlPlaneThreadRoutes(app, threads, authenticate);
       const projectResponse = (
@@ -130,6 +151,49 @@ export function createControlPlaneUserAccess(
         canRun:
           row.ownerUserId === userId && ["owner", "runner"].includes(row.role),
         canManage: row.ownerUserId === userId && row.role === "owner",
+      });
+      app.get("/control-plane/user/bootstrap", (context) => {
+        const identity = authenticate(context);
+        if (!identity)
+          return context.json({ error: "authentication_required" }, 401);
+        if (Object.keys(context.req.query()).length)
+          return context.json({ error: "invalid_request" }, 400);
+        if (!threads)
+          return context.json({ error: "execution_unavailable" }, 503);
+        const page = { cursor: null, limit: 50 };
+        const projects = listControlPlaneProjects(
+          registry.db,
+          identity.user.id,
+          page,
+        );
+        return context.json({
+          session: {
+            role: "user",
+            user: {
+              id: identity.user.id,
+              login: identity.user.login,
+              environmentStatus: identity.user.environmentStatus,
+            },
+            expiresAt: identity.expiresAt,
+          },
+          projects: {
+            projects: projects.projects.map((row) =>
+              projectResponse(row, identity.user.id),
+            ),
+            nextCursor: projects.nextCursor,
+          },
+          threads: threads.list(identity.user.id, page),
+          profiles: listControlPlaneProfiles(
+            registry.db,
+            identity.user.id,
+            page,
+          ),
+          capabilities: {
+            canCreateProjects: identity.user.environmentStatus === "ready",
+            canInstallPlugins: false,
+            canUseTerminals: false,
+          },
+        });
       });
       app.use("/control-plane/user/projects", bodyLimit({ maxSize: 4096 }));
       app.get("/control-plane/user/projects", (context) => {
@@ -385,6 +449,11 @@ export function createControlPlaneUserAccess(
         if (!value)
           return context.json({ error: "authentication_required" }, 401);
         registry.revoke(value.digest);
+        if (browser.usesCookie(context)) {
+          browser.clear(context);
+          if (context.req.header("accept")?.includes("text/html"))
+            return context.redirect("/control-plane/user/login", 303);
+        }
         return context.json({ ok: true });
       });
     },

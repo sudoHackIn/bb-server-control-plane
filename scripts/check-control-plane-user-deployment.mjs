@@ -104,7 +104,7 @@ export async function verifyUserDeployment({
     },
   );
   const ca = await readFile(`${directory}/ca.crt`);
-  const send = async (path, { user, body, headers = {} } = {}) => {
+  const send = async (path, { user, body, method, headers = {} } = {}) => {
     const key = user ? await readFile(`${directory}/${user}.key`) : undefined;
     const cert = user ? await readFile(`${directory}/${user}.crt`) : undefined;
     return new Promise((complete, reject) => {
@@ -115,7 +115,7 @@ export async function verifyUserDeployment({
           key,
           cert,
           signal,
-          method: body ? "POST" : "GET",
+          method: method ?? (body ? "POST" : "GET"),
           headers: {
             ...(body && typeof body !== "string"
               ? { "content-type": "application/json" }
@@ -126,7 +126,9 @@ export async function verifyUserDeployment({
         (res) => {
           let text = "";
           res.setEncoding("utf8").on("data", (part) => (text += part));
-          res.once("end", () => complete({ status: res.statusCode, text }));
+          res.once("end", () =>
+            complete({ status: res.statusCode, text, headers: res.headers }),
+          );
         },
       );
       req.once("error", reject);
@@ -196,6 +198,7 @@ export async function verifyUserDeployment({
     );
   };
   let server = await start();
+  let browserVerification;
   try {
     const env = {
       ...process.env,
@@ -690,6 +693,27 @@ export async function verifyUserDeployment({
         rejected.stderr.resume();
         assert.notEqual((await once(rejected, "exit", { signal }))[0], 0);
       }
+      const browser = await verifyBrowserDeployment({
+        send,
+        origin,
+        password,
+        aliceProject,
+        bobProject,
+      });
+      assert.deepEqual(
+        JSON.parse(await command([...cli, "browser", "--json"], "", { env })),
+        { url: origin + "/control-plane/user/login" },
+      );
+      const bootstrap = JSON.parse(
+        await command([...cli, "bootstrap", "--json"], "", { env }),
+      );
+      assert.equal(bootstrap.session.user.login, "alice");
+      assert.equal(
+        bootstrap.projects.projects.some(
+          (project) => project.projectId === bobProject.projectId,
+        ),
+        false,
+      );
       const asAlice = { file: "/usr/bin/setpriv", uid: 0, gid: 0 };
       const aliceCommand = [
         `--reuid=${alice.uid}`,
@@ -748,6 +772,8 @@ export async function verifyUserDeployment({
       server.kill("SIGTERM");
       await once(server, "exit", { signal });
       server = await start();
+      await browser.afterRestart();
+      browserVerification = browser.verification;
       assert.equal(
         (await send("/control-plane/user", { headers: aliceHeaders })).status,
         200,
@@ -842,6 +868,7 @@ export async function verifyUserDeployment({
     }
     return {
       certificatePkce: true,
+      ...browserVerification,
       realUserCli: true,
       distinctUserUidHomes: true,
       homeDirectoriesProvisioned: true,
@@ -864,4 +891,237 @@ export async function verifyUserDeployment({
     server.kill("SIGTERM");
     if (server.exitCode === null) await once(server, "exit", { signal });
   }
+}
+
+async function verifyBrowserDeployment({
+  send,
+  origin,
+  password,
+  aliceProject,
+  bobProject,
+}) {
+  const path = "/control-plane/user/login";
+  const cookie = (response, name) => {
+    const value = response.headers["set-cookie"]?.find((value) =>
+      value.startsWith(name + "="),
+    );
+    assert.ok(value, "Missing browser credential");
+    return { value: value.split(";")[0], attributes: value };
+  };
+  assert.equal(
+    (
+      await send(path, {
+        headers: { "x-user-id": "alice", "x-ssl-client-s-dn": "CN=alice" },
+      })
+    ).status,
+    403,
+  );
+  assert.equal((await send(path, { user: "alice" })).status, 200);
+  assert.equal(
+    (await send(path, { user: "alice", method: "POST" })).status,
+    403,
+  );
+  assert.equal(
+    (
+      await send(path, {
+        user: "alice",
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await send(path, {
+        user: "alice",
+        method: "POST",
+        headers: { origin },
+        body: { login: "bob" },
+      })
+    ).status,
+    400,
+  );
+  const operator = await send("/control-plane/login", {
+    body: { login: "operator", password },
+  });
+  const oldAdmin = cookie(operator, "bb_admin_session").value;
+  assert.equal(
+    (await send("/api/v1/projects", { headers: { cookie: oldAdmin } })).status,
+    200,
+  );
+  const login = await send(path, {
+    user: "alice",
+    method: "POST",
+    headers: { origin, cookie: oldAdmin, authorization: "Bearer unrelated" },
+  });
+  assert.equal(login.status, 303);
+  assert.equal(login.headers.location, "/control-plane/user");
+  assert.equal(login.headers["clear-site-data"], '"cache", "storage"');
+  const alice = cookie(login, "bb_user_session");
+  for (const flag of [
+    "Secure",
+    "HttpOnly",
+    "SameSite=Strict",
+    "Max-Age=86400",
+    "Path=/",
+  ])
+    assert.ok(alice.attributes.includes(flag));
+  assert.equal(login.text.includes("agt_"), false);
+  assert.equal(
+    (await send("/api/v1/projects", { headers: { cookie: oldAdmin } })).status,
+    401,
+  );
+  for (const path of [
+    "/api/v1/projects",
+    "/api/v1/threads",
+    "/assets/private.js",
+  ])
+    assert.equal(
+      (await send(path, { headers: { cookie: alice.value } })).status,
+      401,
+    );
+  assert.equal(
+    (
+      await send("/control-plane/user", {
+        headers: { cookie: alice.value, authorization: "Bearer invalid" },
+      })
+    ).status,
+    401,
+  );
+  const bootstrap = await send("/control-plane/user/bootstrap", {
+    headers: { cookie: alice.value },
+  });
+  assert.equal(bootstrap.status, 200);
+  const data = JSON.parse(bootstrap.text);
+  assert.equal(data.session.user.login, "alice");
+  assert.ok(
+    data.projects.projects.some(
+      (project) => project.projectId === aliceProject.projectId,
+    ),
+  );
+  assert.equal(
+    data.projects.projects.some(
+      (project) => project.projectId === bobProject.projectId,
+    ),
+    false,
+  );
+  assert.deepEqual(data.capabilities, {
+    canCreateProjects: true,
+    canInstallPlugins: false,
+    canUseTerminals: false,
+  });
+  assert.equal(
+    (
+      await send("/control-plane/user/environment", {
+        method: "POST",
+        headers: { cookie: alice.value },
+        body: {},
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await send("/control-plane/user/environment", {
+        method: "POST",
+        headers: { cookie: alice.value, origin },
+        body: {},
+      })
+    ).status,
+    200,
+  );
+  const bobLogin = await send(path, {
+    user: "bob",
+    method: "POST",
+    headers: { origin, cookie: alice.value },
+  });
+  const bob = cookie(bobLogin, "bb_user_session").value;
+  assert.equal(
+    (await send("/control-plane/user", { headers: { cookie: alice.value } }))
+      .status,
+    401,
+  );
+  assert.equal(
+    JSON.parse(
+      (await send("/control-plane/user", { headers: { cookie: bob } })).text,
+    ).user.login,
+    "bob",
+  );
+  const administrator = await send("/control-plane/login", {
+    body: { login: "operator", password },
+    headers: { cookie: bob },
+  });
+  assert.equal(
+    (await send("/control-plane/user", { headers: { cookie: bob } })).status,
+    401,
+  );
+  assert.equal(
+    (
+      await send("/api/v1/projects", {
+        headers: { cookie: cookie(administrator, "bb_admin_session").value },
+      })
+    ).status,
+    200,
+  );
+  const logoutCookie = cookie(
+    await send(path, { user: "alice", method: "POST", headers: { origin } }),
+    "bb_user_session",
+  ).value;
+  assert.equal(
+    (
+      await send("/control-plane/user/logout", {
+        method: "POST",
+        headers: { cookie: logoutCookie },
+      })
+    ).status,
+    403,
+  );
+  const loggedOut = await send("/control-plane/user/logout", {
+    method: "POST",
+    headers: { cookie: logoutCookie, origin },
+  });
+  assert.equal(loggedOut.status, 200);
+  assert.equal(loggedOut.headers["clear-site-data"], '"cache", "storage"');
+  assert.equal(
+    (await send("/control-plane/user", { headers: { cookie: logoutCookie } }))
+      .status,
+    401,
+  );
+  const persisted = cookie(
+    await send(path, { user: "alice", method: "POST", headers: { origin } }),
+    "bb_user_session",
+  ).value;
+  return {
+    verification: {
+      certificateBrowserSession: true,
+      cookieWriteOriginRequired: true,
+      browserRoleSwitchRevokesPriorSessions: true,
+      personalBrowserBootstrapScoped: true,
+      browserLogoutRevokesCredential: true,
+      browserSessionSurvivesRestart: true,
+      userBrowserCannotUseNativeApiOrAssets: true,
+      realBrowserUrlAndBootstrapCli: true,
+    },
+    async afterRestart() {
+      assert.equal(
+        JSON.parse(
+          (
+            await send("/control-plane/user", {
+              headers: { cookie: persisted },
+            })
+          ).text,
+        ).user.login,
+        "alice",
+      );
+      assert.equal(
+        (
+          await send("/control-plane/user/bootstrap", {
+            headers: { cookie: persisted },
+          })
+        ).status,
+        200,
+      );
+    },
+  };
 }

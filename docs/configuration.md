@@ -1333,3 +1333,22 @@ persisted event sequence. Tokens belong only in authorization headers, never
 stream URLs. User streams are limited to four per user and 64 per server, use
 bounded queues, and release native hub subscriptions on cancellation, revocation
 or transport failure. Native BB WebSocket access remains administrative.
+
+Browser users open `/control-plane/user/login` over the configured client-CA TLS
+listener and submit the empty certificate sign-in form with a matching Origin.
+The verified client certificate CN selects the registry identity. The response
+sets a 24-hour HttpOnly/Secure/SameSite=Strict cookie and redirects to the personal
+identity endpoint. Cookie-authenticated mutations require the configured Origin;
+explicit invalid Authorization headers never fall back to cookies. Browser role
+switches retire the previous credential, including the opposite administrative
+or personal browser session. Login/logout responses emit `Clear-Site-Data` for
+cache/storage. Application memory and persistent cache partitioning remain pending;
+this header alone is not proof of complete native UI isolation.
+
+The personal SDK's `browserLoginUrl()` and `bb server access browser --json`
+return the certificate login URL. `bootstrap()` / `server access bootstrap`
+read source-filtered identity, project/thread/profile pages and capabilities.
+Each navigation page is bounded to 50 with a separate list cursor. No browser
+credential enables native UI assets, full BB API, raw WebSocket or plugin
+installation in this increment. Browser cookies and PKCE CLI/plugin tokens
+share the existing hashed-session table and server-side revocation checks.

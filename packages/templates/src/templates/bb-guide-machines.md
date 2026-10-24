@@ -228,6 +228,26 @@ and `projects get <project-id>` expose your current project grants. List limits
 are 1–100, default 50; continue using the returned `nextCursor`.
 Project creation cannot override your UID, HOME, host or base directory.
 
+`bb server access browser --json` prints the certificate browser sign-in URL.
+Open it in your own browser, select your trusted client certificate and submit
+the empty sign-in form. The server derives the login from the verified CN;
+body identity overrides are rejected. The browser receives a 24-hour HttpOnly,
+Secure, SameSite=Strict cookie. No token is returned in the page or URL.
+`createControlPlaneClient(...).browserLoginUrl()` returns the same URL.
+Switching browser identities revokes the previous browser credential. Switching
+between administrator and personal sign-in retires the opposite browser session.
+PKCE-issued CLI/plugin credentials remain separate.
+
+`bb server access bootstrap --json` and the personal SDK's `bootstrap()` read
+identity, capabilities and the first project/thread/profile navigation pages.
+Each page contains at most 50 records and an independent `nextCursor`; continue
+through the corresponding list command. Reads use current project/profile
+grants and thread ownership. The full native UI, raw BB API and WebSocket are
+not opened by this browser cookie yet. Browser writes require a matching Origin;
+invalid explicit Bearer credentials never fall back to a cookie. Sign-in/out
+responses request browser cache/storage clearing; native-app cache isolation
+remains a separate integration stage.
+
 `bb server access profiles list [--limit <count>] [--cursor <id>]` lists your
 permitted agent profiles. `profiles get <profile-id> [--version <version-id>]`
 reads the latest enabled or specified enabled version. `profiles versions

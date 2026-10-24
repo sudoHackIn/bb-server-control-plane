@@ -34,6 +34,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Carry verified user/run context through plugin calls and child creation. Plugin identity, parentThreadId and origin metadata are not authentication.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
+- [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
 - [ ] Clear account-scoped browser caches and drafts when switching identities or signing out.
 - [ ] Use this fork's native UI for both roles. Keep projects/threads/composer/timeline/model controls for users; remove the right workspace panel and administrative controls in user mode.
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
@@ -623,3 +624,52 @@ The CLI now marks emitted JSON lines so a later transport failure cannot append
 a pretty-printed error envelope to the live output. The local deterministic
 model and pinned stock CLI remain the backend, not a verified corporate fork.
 See `control-plane-phase-17-verification.json`.
+
+## Eighteenth increment: certificate browser sessions and personal bootstrap
+
+The browser sign-in page uses the existing trusted-client-CA TLS listener and
+verified certificate CN. The empty form requires the configured Origin and
+rejects body fields. Registry allocation remains UUID/atomic UID based. An
+opaque 24-hour browser cookie is HttpOnly, Secure on HTTPS, SameSite=Strict and
+stored only as a digest in the existing session table. Browser session rotation
+and revocation are transactional; a failed issue leaves the previous credential
+intact. Missing, disabled and expired identities cannot receive a new session.
+PKCE CLI/plugin credentials keep their existing behavior.
+
+Personal endpoints accept the browser cookie only when Authorization is absent.
+An explicit invalid Bearer credential never falls back to either role's cookie.
+Cookie mutations require a matching Origin. Personal browser sign-in revokes
+and clears the previous administrative browser cookie; administrative password
+sign-in revokes and clears the personal cookie. Switching certificate users
+retires the prior browser credential. Logout revokes the session server-side.
+Browser sessions survive BB restart and expire without refresh. Native API,
+UI assets and raw WebSocket access remain closed to personal cookies at this
+stage; the sign-in redirect is the personal identity endpoint, not a claim that
+the native user UI is finished.
+
+The new personal bootstrap returns identity, fixed capabilities and the first
+50 project/thread/profile records, with separate continuation cursors. It uses
+the existing current-grant SQL queries and persisted thread ownership, not a
+filtered copy of the administrator's bootstrap. It includes no global settings,
+all-host catalog or unrestricted plugin registry. SDK `bootstrap()` and CLI
+`server access bootstrap` expose the same result; `browserLoginUrl()` and
+`server access browser` expose certificate sign-in navigation. Bootstrap accepts
+no user/environment overrides. Navigation continues through scoped list APIs.
+
+Login/logout responses request `Clear-Site-Data` cache/storage clearing. This
+is a server-side header only: application memory, drafts, persistent native UI
+caches and concurrent-tab identity changes still require client integration and
+verification. The full cache-isolation and native-UI checklist items remain open.
+
+Verification: 644 database tests, 46 server security tests, 129 SDK tests and
+12 CLI registration/JSON/error-output checks pass. TLS tests use actual trusted,
+rogue and wrong-purpose certificates, exercise cookie flags, Origin checks,
+explicit invalid Bearer rejection, browser role transitions, disabled identities,
+expiry and logout. A personal API test verifies cookie-authenticated bootstrap
+and native live-stream reads, plus source-filtered ownership and revocation.
+Strict server/CLI/SDK/database typechecks and changed-file lint/format checks pass.
+The full fork Docker deployment verifies the same certificate/browser boundary,
+real bootstrap/login-URL CLI commands and browser-cookie persistence across BB
+restart while retaining native Qwen/MCP/approval/timeline/isolation checks.
+This verifies HTTP/cookie behavior, not rendered native user UI or browser cache
+clearing effectiveness. See `control-plane-phase-18-verification.json`.

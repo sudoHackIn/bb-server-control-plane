@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash, randomBytes } from "node:crypto";
@@ -235,6 +236,7 @@ describe("control-plane personal authorization", () => {
           path: string,
           options: {
             user?: string;
+            method?: string;
             body?: object | string;
             headers?: Record<string, string>;
           } = {},
@@ -245,46 +247,52 @@ describe("control-plane personal authorization", () => {
           const cert = options.user
             ? await readFile(join(directory, `${options.user}.crt`))
             : undefined;
-          return new Promise<{ status: number; text: string }>(
-            (resolve, reject) => {
-              const req = request(
-                `${origin}${path}`,
-                {
-                  ca,
-                  key,
-                  cert,
-                  method: options.body ? "POST" : "GET",
-                  headers: {
-                    ...(options.body && typeof options.body !== "string"
-                      ? { "content-type": "application/json" }
-                      : {}),
-                    ...options.headers,
-                  },
-                  timeout: 5000,
+          return new Promise<{
+            status: number;
+            text: string;
+            headers: IncomingHttpHeaders;
+          }>((resolve, reject) => {
+            const req = request(
+              `${origin}${path}`,
+              {
+                ca,
+                key,
+                cert,
+                method: options.method ?? (options.body ? "POST" : "GET"),
+                headers: {
+                  ...(options.body && typeof options.body !== "string"
+                    ? { "content-type": "application/json" }
+                    : {}),
+                  ...options.headers,
                 },
-                (res) => {
-                  let text = "";
-                  res
-                    .setEncoding("utf8")
-                    .on("data", (part: string) => (text += part));
-                  res.once("end", () =>
-                    resolve({ status: res.statusCode ?? 0, text }),
-                  );
-                },
-              );
-              req.once("error", reject);
-              req.once("timeout", () =>
-                req.destroy(new Error("TLS request timeout")),
-              );
-              req.end(
-                options.body
-                  ? typeof options.body === "string"
-                    ? options.body
-                    : JSON.stringify(options.body)
-                  : undefined,
-              );
-            },
-          );
+                timeout: 5000,
+              },
+              (res) => {
+                let text = "";
+                res
+                  .setEncoding("utf8")
+                  .on("data", (part: string) => (text += part));
+                res.once("end", () =>
+                  resolve({
+                    status: res.statusCode ?? 0,
+                    text,
+                    headers: res.headers,
+                  }),
+                );
+              },
+            );
+            req.once("error", reject);
+            req.once("timeout", () =>
+              req.destroy(new Error("TLS request timeout")),
+            );
+            req.end(
+              options.body
+                ? typeof options.body === "string"
+                  ? options.body
+                  : JSON.stringify(options.body)
+                : undefined,
+            );
+          });
         };
         const sdk = createControlPlaneClient({
           origin,
@@ -378,10 +386,203 @@ describe("control-plane personal authorization", () => {
           '"login":"alice"',
         );
         expect((await send("/api/v1/projects", { headers })).status).toBe(401);
+        const cookie = (
+          result: { headers: IncomingHttpHeaders },
+          name: string,
+        ) => {
+          const value = result.headers["set-cookie"]?.find((value) =>
+            value.startsWith(name + "="),
+          );
+          if (!value) throw new Error("Missing browser session cookie");
+          return { value: value.split(";")[0]!, attributes: value };
+        };
+        const browserPath = "/control-plane/user/login";
+        for (const user of [undefined, "rogue", "server"])
+          expect(
+            (
+              await send(browserPath, {
+                user,
+                headers: {
+                  "x-user-id": "alice",
+                  "x-ssl-client-s-dn": "CN=alice",
+                },
+              })
+            ).status,
+          ).toBe(403);
+        expect((await send(browserPath, { user: "alice" })).text).toContain(
+          "Войти как alice",
+        );
+        const invalidOrigins: Record<string, string>[] = [
+          {},
+          { origin: "https://evil.example" },
+        ];
+        for (const headers of invalidOrigins)
+          expect(
+            (
+              await send(browserPath, {
+                user: "alice",
+                method: "POST",
+                headers,
+              })
+            ).status,
+          ).toBe(403);
+        expect(
+          (
+            await send(browserPath, {
+              user: "alice",
+              method: "POST",
+              headers: { origin },
+              body: { login: "bob" },
+            })
+          ).status,
+        ).toBe(400);
+        const adminLogin = await send("/control-plane/login", {
+          body: { login: "admin", password: "long-test-only-password" },
+        });
+        const oldAdmin = cookie(adminLogin, "bb_admin_session").value;
+        expect(
+          (await send("/api/v1/projects", { headers: { cookie: oldAdmin } }))
+            .status,
+        ).toBe(200);
+        const webLogin = await send(browserPath, {
+          user: "alice",
+          method: "POST",
+          headers: {
+            origin,
+            cookie: oldAdmin,
+            authorization: "Bearer invalid",
+          },
+        });
+        expect(webLogin.status).toBe(303);
+        expect(webLogin.headers.location).toBe("/control-plane/user");
+        expect(webLogin.headers["clear-site-data"]).toBe('"cache", "storage"');
+        const aliceCookie = cookie(webLogin, "bb_user_session");
+        for (const attribute of [
+          "HttpOnly",
+          "Secure",
+          "SameSite=Strict",
+          "Max-Age=86400",
+          "Path=/",
+        ])
+          expect(aliceCookie.attributes).toContain(attribute);
+        expect(webLogin.text).not.toContain("agt_");
+        expect(
+          (
+            await send("/control-plane/user", {
+              headers: { cookie: aliceCookie.value },
+            })
+          ).text,
+        ).toContain('"login":"alice"');
+        for (const cookie of [
+          oldAdmin,
+          aliceCookie.value,
+          oldAdmin + "; " + aliceCookie.value,
+        ])
+          expect(
+            (await send("/api/v1/projects", { headers: { cookie } })).status,
+          ).toBe(401);
+        expect(
+          (
+            await send("/control-plane/user", {
+              headers: {
+                cookie: aliceCookie.value,
+                authorization: "Bearer invalid",
+              },
+            })
+          ).status,
+        ).toBe(401);
+        expect(
+          (
+            await send("/control-plane/user/logout", {
+              method: "POST",
+              headers: { cookie: aliceCookie.value },
+            })
+          ).status,
+        ).toBe(403);
+        const bobLogin = await send(browserPath, {
+          user: "bob",
+          method: "POST",
+          headers: { origin, cookie: aliceCookie.value },
+        });
+        const bobCookie = cookie(bobLogin, "bb_user_session").value;
+        expect(
+          (
+            await send("/control-plane/user", {
+              headers: { cookie: aliceCookie.value },
+            })
+          ).status,
+        ).toBe(401);
+        expect(
+          (
+            await send("/control-plane/user", {
+              headers: { cookie: bobCookie },
+            })
+          ).text,
+        ).toContain('"login":"bob"');
+        const administrator = await send("/control-plane/login", {
+          body: { login: "admin", password: "long-test-only-password" },
+          headers: { cookie: bobCookie },
+        });
+        expect(administrator.status).toBe(200);
+        expect(
+          (
+            await send("/control-plane/user", {
+              headers: { cookie: bobCookie },
+            })
+          ).status,
+        ).toBe(401);
+        expect(
+          (
+            await send("/api/v1/projects", {
+              headers: {
+                cookie: cookie(administrator, "bb_admin_session").value,
+              },
+            })
+          ).status,
+        ).toBe(200);
+        const logoutCookie = cookie(
+          await send(browserPath, {
+            user: "alice",
+            method: "POST",
+            headers: { origin },
+          }),
+          "bb_user_session",
+        ).value;
+        const loggedOut = await send("/control-plane/user/logout", {
+          method: "POST",
+          headers: { origin, cookie: logoutCookie },
+        });
+        expect(loggedOut.status).toBe(200);
+        expect(loggedOut.headers["clear-site-data"]).toBe('"cache", "storage"');
+        expect(
+          (
+            await send("/control-plane/user", {
+              headers: { cookie: logoutCookie },
+            })
+          ).status,
+        ).toBe(401);
+        const expiringCookie = cookie(
+          await send(browserPath, {
+            user: "alice",
+            method: "POST",
+            headers: { origin },
+          }),
+          "bb_user_session",
+        ).value;
         db.update(controlPlaneUsers)
           .set({ enabled: false })
           .where(eq(controlPlaneUsers.login, "alice"))
           .run();
+        expect(
+          (
+            await send(browserPath, {
+              user: "alice",
+              method: "POST",
+              headers: { origin },
+            })
+          ).status,
+        ).toBe(403);
+
         expect((await send("/control-plane/user", { headers })).status).toBe(
           401,
         );
@@ -389,7 +590,23 @@ describe("control-plane personal authorization", () => {
           .set({ enabled: true })
           .where(eq(controlPlaneUsers.login, "alice"))
           .run();
+        expect(
+          (
+            await send(browserPath, {
+              user: "alice",
+              method: "POST",
+              headers: { origin },
+            })
+          ).status,
+        ).toBe(303);
         now = issued.expiresAt;
+        expect(
+          (
+            await send("/control-plane/user", {
+              headers: { cookie: expiringCookie },
+            })
+          ).status,
+        ).toBe(401);
         expect((await send("/control-plane/user", { headers })).status).toBe(
           401,
         );

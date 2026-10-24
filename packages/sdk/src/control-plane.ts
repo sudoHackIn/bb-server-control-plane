@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { createControlPlaneThreadClient } from "./control-plane-threads.js";
 import {
+  controlPlaneUserSessionSchema,
+  controlPlaneUserProjectSchema,
+  controlPlaneUserBootstrapSchema,
   controlPlaneProfileCreateSchema,
   controlPlaneProfileDefinitionSchema,
   controlPlaneProfileDetailSchema,
@@ -24,15 +27,7 @@ const exchangeSchema = z.discriminatedUnion("status", [
     expiresAt: z.number(),
   }),
 ]);
-const userSchema = z.object({
-  role: z.literal("user"),
-  user: z.object({
-    id: z.string().uuid(),
-    login: z.string(),
-    environmentStatus: z.enum(["allocated", "provisioning", "ready", "failed"]),
-  }),
-  expiresAt: z.number(),
-});
+const userSchema = controlPlaneUserSessionSchema;
 const environmentSchema = z.object({
   userId: z.string().uuid(),
   uid: z.number().int(),
@@ -41,16 +36,7 @@ const environmentSchema = z.object({
   projectsRoot: z.string(),
   status: z.enum(["allocated", "provisioning", "ready", "failed"]),
 });
-const projectSchema = z.object({
-  projectId: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  hostId: z.string(),
-  cwd: z.string(),
-  role: z.enum(["owner", "runner", "viewer"]),
-  canRun: z.boolean(),
-  canManage: z.boolean(),
-});
+const projectSchema = controlPlaneUserProjectSchema;
 
 export function createControlPlaneClient(args: {
   origin: string;
@@ -181,6 +167,17 @@ export function createControlPlaneClient(args: {
   const adminProfiles = "/control-plane/admin/profiles";
   const ok = z.object({ ok: z.literal(true) });
   return {
+    browserLoginUrl: () => new URL("/control-plane/user/login", url).href,
+    async bootstrap(signal?: AbortSignal) {
+      return controlPlaneUserBootstrapSchema.parse(
+        await request(
+          "/control-plane/user/bootstrap",
+          "GET",
+          undefined,
+          signal,
+        ),
+      );
+    },
     threads: createControlPlaneThreadClient(request, requestResponse),
     profiles: profileReader("/control-plane/user/profiles"),
     admin: {

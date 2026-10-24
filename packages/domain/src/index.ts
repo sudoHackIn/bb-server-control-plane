@@ -86,3 +86,5 @@ export const ARCHIVE_UNDO_GRACE_MS = 30_000;
 export * from "./control-plane-profile.js";
 
 export * from "./control-plane-thread.js";
+
+export * from "./control-plane-user.js";
