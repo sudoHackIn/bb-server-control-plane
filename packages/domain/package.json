@@ -88,6 +88,11 @@
       "source": "./src/prompt-attachment-limits.ts",
       "types": "./src/prompt-attachment-limits.ts",
       "default": "./src/prompt-attachment-limits.ts"
+    },
+    "./control-plane-job": {
+      "source": "./src/control-plane-job.ts",
+      "types": "./src/control-plane-job.ts",
+      "default": "./src/control-plane-job.ts"
     }
   },
   "types": "./src/index.ts",

@@ -88,3 +88,5 @@ export * from "./control-plane-profile.js";
 export * from "./control-plane-thread.js";
 
 export * from "./control-plane-user.js";
+
+export * from "./control-plane-job.js";

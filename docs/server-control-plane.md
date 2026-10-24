@@ -32,6 +32,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
 - [x] Gate managed daemon plugin-tool invocations by current project/profile permissions, filter their contributed tool catalog and propagate the persisted user principal; deny unscoped private user SDK calls. The Qwen MCP bridge and scoped SDK adapter remain pending.
 - [ ] Carry verified user/run context through plugin calls and child creation. Plugin identity, parentThreadId and origin metadata are not authentication.
+- [x] Add the internal durable background authority-binding registry, immutable object revisions, current-grant/source checks and user-principal callback scope. Actual workflow/automation/scheduler integration remains pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -970,3 +971,42 @@ registered UID/HOME/project cwd. Strict app/server typechecks, changed-file
 lint/format and diff checks pass. A screenshot of the successful native
 conversation was inspected. These are focused integration checks, not the full
 repository suite. See `control-plane-phase-24-verification.json`.
+
+## Twenty-fifth increment: durable background authority-binding foundation
+
+Migration 0152 adds an internal shared-DB registry for workflow definitions/runs,
+automations/runs and schedules. Native product persistence is reused; workflow
+history, results, source and scheduler state are not duplicated. The new binding
+stores owner/project/profile references, object revision, optional source binding
+and original thread. Definition edits can allocate a new immutable revision
+without mutating prior runs or moving the object to another owner/project.
+No browser credential or client-supplied UID/HOME is accepted.
+
+Current owner/project filtering precedes SQL pagination. Execution resolves the
+registered identity and pinned profile anew and checks every source's enabled,
+deleted and grant state. Foreign sources, missing bindings, deleted origins,
+source cycles and chains beyond 32 bindings fail closed. Authorized history can
+remain readable after profile revocation; safe disable/delete operations remain
+available while re-enable requires renewed execution authority. Tombstoned
+binding revisions cannot be resurrected by repeated registration.
+
+The server callback guard adopts the saved user principal and rejects a different
+user principal, including across asynchronous work. This is internal plumbing;
+there is no new public plugin SDK method or personal job-management API yet.
+Existing plugins have not been wired to it, tenant scripts still need registered
+UID execution, and legacy objects have not been migrated. The complete required
+workflow/automation/schedule stage remains unchecked. The inspected source map
+and next integration boundaries are in `control-plane-background-execution.md`.
+
+Verification: 19 migrated-SQLite control-plane tests pass, including 8 binding
+cases covering ownership, shared projects, pagination, rollback/idempotency,
+profile revisions, grant loss, origin cleanup, deleted/cyclic/deep sources and
+credential-independent reopening. Strict DB/domain/server typechecks and
+changed-file lint/format/diff checks pass. The actual Docker fork runs migration
+0152 and creates bindings for two real personal Qwen threads in its service DB.
+It verifies source disable/re-enable and foreign denial, restarts the server,
+then runs parallel callbacks with each saved user's principal and pinned
+registry/profile context, after Bob's browser/CLI credential was revoked. All
+61 Docker build/deployment tasks pass. This proves the binding kernel and its
+callback scope, not actual personal scheduler/workflow execution. See
+`control-plane-phase-25-verification.json`.

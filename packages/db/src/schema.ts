@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
+import { controlPlaneJobKindValues } from "@bb/domain/control-plane-job";
 import { queuedMessageStateValues } from "@bb/domain/queued-message-lifecycle";
 import { threadStatusValues } from "@bb/domain/thread-status";
 import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
@@ -332,6 +333,46 @@ export const controlPlaneThreads = sqliteTable(
       table.threadId,
     ),
     uniqueIndex("control_plane_threads_session_idx").on(table.qwenSessionId),
+  ],
+);
+
+export const controlPlaneJobBindings = sqliteTable(
+  "control_plane_job_bindings",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: controlPlaneJobKindValues }).notNull(),
+    objectId: text("object_id").notNull(),
+    revision: integer("revision").notNull(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => controlPlaneProjects.projectId, {
+        onDelete: "cascade",
+      }),
+    profileVersionId: text("profile_version_id")
+      .notNull()
+      .references(() => controlPlaneProfileVersions.id),
+    originThreadId: text("origin_thread_id"),
+    sourceBindingId: text("source_binding_id").references(
+      (): AnySQLiteColumn => controlPlaneJobBindings.id,
+    ),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    deletedAt: integer("deleted_at"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_job_bindings_object_idx").on(
+      table.kind,
+      table.objectId,
+      table.revision,
+    ),
+    index("control_plane_job_bindings_owner_idx").on(
+      table.ownerUserId,
+      table.id,
+    ),
+    index("control_plane_job_bindings_source_idx").on(table.sourceBindingId),
   ],
 );
 

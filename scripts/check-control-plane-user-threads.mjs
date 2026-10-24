@@ -382,6 +382,30 @@ export function createUserThreadFixture({ db, users }) {
         });
       }
       const [alice, bob] = created;
+      async function bindingCheck(mode, subjects) {
+        const child = launch([
+          "job-bindings-check.mjs",
+          mode,
+          ...(subjects ? [JSON.stringify(subjects)] : []),
+        ]);
+        let output = "",
+          error = "";
+        child.stdout.on("data", (part) => (output += part));
+        child.stderr.on("data", (part) => (error += part));
+        child.stdin.end();
+        assert.equal((await once(child, "exit", { signal }))[0], 0, error);
+        return JSON.parse(output);
+      }
+      const jobBindings = await bindingCheck(
+        "create",
+        created.map(({ user, project, profile, thread }) => ({
+          userId: user.id,
+          projectId: project.projectId,
+          profileVersionId: profile.body.version.id,
+          originThreadId: thread.id,
+        })),
+      );
+
       const productionBrowser = await verifyExternalBrowser({
         origin,
         signal,
@@ -785,9 +809,10 @@ export function createUserThreadFixture({ db, users }) {
         alice.thread.id,
         replayAfter,
       );
-      saved = { command, alice, wait, shutdownStream };
+      saved = { command, alice, wait, shutdownStream, bindingCheck };
       return {
         ...productionBrowser,
+        ...jobBindings,
         personalThreadCertificateCliAndFreshEnvironment: true,
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,
@@ -804,7 +829,8 @@ export function createUserThreadFixture({ db, users }) {
       };
     },
     async afterRestart() {
-      const { command, alice, wait, shutdownStream } = saved;
+      const { command, alice, wait, shutdownStream, bindingCheck } = saved;
+      const jobBindingRestart = await bindingCheck("resume");
       assert.notEqual((await shutdownStream.done)[0], 0);
       assert.equal(
         (await command("alice", ["threads", "get", alice.thread.id, "--json"]))
@@ -834,6 +860,7 @@ export function createUserThreadFixture({ db, users }) {
       assert.equal(resumed, true);
       await command("alice", ["threads", "stop", alice.thread.id, "--json"]);
       return {
+        ...jobBindingRestart,
         personalTokenAndThreadSurviveRestart: true,
         personalStreamsClosedOnServerShutdown: true,
         personalNativeQwenSessionResumedWithHistory: true,

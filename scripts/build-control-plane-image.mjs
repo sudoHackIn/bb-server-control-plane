@@ -61,6 +61,16 @@ try {
   }
   await buildNodeEsmEntry({
     cleanDist: false,
+    entryPoint: join(
+      repo,
+      "apps/server/test/fixtures/control-plane-job-binding-fixture.ts",
+    ),
+    outfile: join(directory, "job-bindings-check.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
+  await buildNodeEsmEntry({
+    cleanDist: false,
     entryPoint: join(repo, "scripts/configure-control-plane.ts"),
     outfile: join(directory, "configure.mjs"),
     packageRoot: repo,
