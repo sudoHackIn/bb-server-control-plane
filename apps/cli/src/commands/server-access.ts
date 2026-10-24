@@ -7,6 +7,19 @@ import { createHash, randomBytes } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { createControlPlaneClient } from "@bb/sdk/node";
 import { registerServerProfileCommands } from "./server-profiles.js";
+import { outputJson } from "./helpers.js";
+import { noteJsonPayloadWritten } from "../cli-error-output.js";
+
+function authorizationEvent(
+  options: { json?: boolean },
+  data: object,
+  message: string,
+) {
+  if (options.json) {
+    console.log(JSON.stringify(data));
+    noteJsonPayloadWritten();
+  } else console.log(message);
+}
 
 function endpoint(base: string, path: string): URL {
   const url = new URL(base);
@@ -46,6 +59,7 @@ export function registerServerAccessCommands(
     }).projects;
   projects
     .command("list")
+    .option("--json", "Print machine-readable JSON output")
     .option("--cursor <id>", "Continue after the returned cursor")
     .option("--limit <count>", "Maximum projects, from 1 to 100", "50")
     .action(
@@ -65,15 +79,19 @@ export function registerServerAccessCommands(
         );
       }),
     );
-  projects.command("get <project-id>").action(
-    action(async (projectId: string) => {
-      console.log(
-        JSON.stringify(await projectClient().get(projectId), null, 2),
-      );
-    }),
-  );
+  projects
+    .command("get <project-id>")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (projectId: string) => {
+        console.log(
+          JSON.stringify(await projectClient().get(projectId), null, 2),
+        );
+      }),
+    );
   projects
     .command("create <slug>")
+    .option("--json", "Print machine-readable JSON output")
     .requiredOption("--name <name>", "Project display name")
     .action(
       action(async (slug: string, options: { name: string }) => {
@@ -88,6 +106,7 @@ export function registerServerAccessCommands(
     );
   access
     .command("environment")
+    .option("--json", "Print machine-readable JSON output")
     .description(
       "Inspect your server environment, or provision its directories",
     )
@@ -110,6 +129,7 @@ export function registerServerAccessCommands(
     );
   access
     .command("authorize")
+    .option("--json", "Print machine-readable JSON output")
     .description("Authorize as a user through a browser client certificate")
     .option(
       "--client-name <name>",
@@ -117,7 +137,7 @@ export function registerServerAccessCommands(
       "BB CLI",
     )
     .action(
-      action(async (options: { clientName: string }) => {
+      action(async (options: { clientName: string; json?: boolean }) => {
         const target = endpoint(getUrl(), "/control-plane/auth/start");
         const client = createControlPlaneClient({
           origin: target.origin,
@@ -130,7 +150,13 @@ export function registerServerAccessCommands(
           createHash("sha256").update(verifier).digest("base64url"),
           signal,
         );
-        console.log(
+        authorizationEvent(
+          options,
+          {
+            status: "pending",
+            authorizationUrl: flow.authorizationUrl,
+            expiresAt: flow.expiresAt,
+          },
           `Open this URL in your browser and sign in with your user certificate:\n${flow.authorizationUrl}`,
         );
         while (Date.now() < flow.expiresAt) {
@@ -141,7 +167,15 @@ export function registerServerAccessCommands(
               token: result.accessToken,
               expiresAt: result.expiresAt,
             });
-            console.log("Signed in as user");
+            authorizationEvent(
+              options,
+              {
+                status: "authorized",
+                role: "user",
+                expiresAt: result.expiresAt,
+              },
+              "Signed in as user",
+            );
             return;
           }
           await setTimeout(flow.pollIntervalMs, undefined, { signal });
@@ -151,55 +185,71 @@ export function registerServerAccessCommands(
     );
   access
     .command("login")
+    .option("--json", "Print machine-readable JSON output")
     .requiredOption("--login <name>", "Administrator login")
     .requiredOption("--password-stdin", "Read the password from private stdin")
     .action(
-      action(async (options: { login: string; passwordStdin: boolean }) => {
-        if (!options.passwordStdin || process.stdin.isTTY)
-          throw new Error("Supply the password on stdin from a private file");
-        let size = 0;
-        const chunks: Buffer[] = [];
-        for await (const chunk of process.stdin) {
-          const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          size += value.length;
-          if (size > 4096) throw new Error("Password input is too large");
-          chunks.push(value);
-        }
-        const target = endpoint(getUrl(), "/control-plane/login");
-        const response = await cliFetch(target, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            login: options.login,
-            password: Buffer.concat(chunks)
-              .toString("utf8")
-              .replace(/\r?\n$/u, ""),
-          }),
-        });
-        if (!response.ok)
-          throw new Error(`Server sign-in failed (${response.status})`);
-        const body: unknown = await response.json();
-        const result = z
-          .object({
-            token: z.string(),
-            expiresAt: z.number(),
-            role: z.literal("admin"),
-          })
-          .safeParse(body);
-        if (!result.success) throw new Error("Invalid server sign-in response");
-        createServerAccessStore().save({
-          origin: target.origin,
-          token: result.data.token,
-          expiresAt: result.data.expiresAt,
-        });
-        console.log(`Signed in as administrator ${options.login}`);
-      }),
+      action(
+        async (options: {
+          login: string;
+          passwordStdin: boolean;
+          json?: boolean;
+        }) => {
+          if (!options.passwordStdin || process.stdin.isTTY)
+            throw new Error("Supply the password on stdin from a private file");
+          let size = 0;
+          const chunks: Buffer[] = [];
+          for await (const chunk of process.stdin) {
+            const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            size += value.length;
+            if (size > 4096) throw new Error("Password input is too large");
+            chunks.push(value);
+          }
+          const target = endpoint(getUrl(), "/control-plane/login");
+          const response = await cliFetch(target, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              login: options.login,
+              password: Buffer.concat(chunks)
+                .toString("utf8")
+                .replace(/\r?\n$/u, ""),
+            }),
+          });
+          if (!response.ok)
+            throw new Error(`Server sign-in failed (${response.status})`);
+          const body: unknown = await response.json();
+          const result = z
+            .object({
+              token: z.string(),
+              expiresAt: z.number(),
+              role: z.literal("admin"),
+            })
+            .safeParse(body);
+          if (!result.success)
+            throw new Error("Invalid server sign-in response");
+          createServerAccessStore().save({
+            origin: target.origin,
+            token: result.data.token,
+            expiresAt: result.data.expiresAt,
+          });
+          if (
+            !outputJson(options, {
+              role: "admin",
+              login: options.login,
+              expiresAt: result.data.expiresAt,
+            })
+          )
+            console.log(`Signed in as administrator ${options.login}`);
+        },
+      ),
     );
   access
     .command("status")
+    .option("--json", "Print machine-readable JSON output")
     .description("Show the current administrative session")
     .action(
-      action(async () => {
+      action(async (options: { json?: boolean }) => {
         const target = endpoint(getUrl(), "/control-plane/session");
         if (
           createServerAccessStore()
@@ -210,7 +260,8 @@ export function registerServerAccessCommands(
             origin: target.origin,
             fetch: cliFetch,
           }).session();
-          console.log(`User: ${result.user.login}`);
+          if (!outputJson(options, result))
+            console.log(`User: ${result.user.login}`);
           return;
         }
         const response = await cliFetch(
@@ -223,14 +274,16 @@ export function registerServerAccessCommands(
           .object({ role: z.literal("admin"), login: z.string() })
           .safeParse(body);
         if (!value.success) throw new Error("Invalid server session response");
-        console.log(`Administrator: ${value.data.login}`);
+        if (!outputJson(options, value.data))
+          console.log(`Administrator: ${value.data.login}`);
       }),
     );
   access
     .command("logout")
+    .option("--json", "Print machine-readable JSON output")
     .description("Revoke the current administrative session")
     .action(
-      action(async () => {
+      action(async (options: { json?: boolean }) => {
         const target = endpoint(getUrl(), "/control-plane/logout");
         if (
           createServerAccessStore()
@@ -242,14 +295,14 @@ export function registerServerAccessCommands(
             fetch: cliFetch,
           }).logout();
           createServerAccessStore().remove(target.origin);
-          console.log("Signed out");
+          if (!outputJson(options, { ok: true })) console.log("Signed out");
           return;
         }
         const response = await cliFetch(target, { method: "POST" });
         if (!response.ok)
           throw new Error(`Server sign-out failed (${response.status})`);
         createServerAccessStore().remove(target.origin);
-        console.log("Signed out");
+        if (!outputJson(options, { ok: true })) console.log("Signed out");
       }),
     );
 }

@@ -322,6 +322,9 @@ export const controlPlaneThreads = sqliteTable(
       .notNull()
       .references(() => controlPlaneUsers.id),
     qwenSessionId: text("qwen_session_id"),
+    profileVersionId: text("profile_version_id").references(
+      () => controlPlaneProfileVersions.id,
+    ),
   },
   (table) => [
     index("control_plane_threads_owner_idx").on(

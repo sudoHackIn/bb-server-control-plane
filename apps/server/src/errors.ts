@@ -1,4 +1,5 @@
 import { ProjectAttachmentError } from "@bb/domain";
+import { ControlPlaneThreadError } from "@bb/db";
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ThreadEventScopeKind, ThreadEventType } from "@bb/domain";
@@ -94,6 +95,12 @@ function errorToResponse(
   logger: ServerLogger,
   request: FailedRequest,
 ): Response {
+  if (error instanceof ControlPlaneThreadError)
+    return new ApiError(
+      403,
+      "execution_not_authorized",
+      "Thread execution is not authorized",
+    ).toResponse();
   if (error instanceof ProjectAttachmentError) {
     return new ApiError(400, "invalid_request", error.message).toResponse();
   }

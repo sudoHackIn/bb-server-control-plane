@@ -59,6 +59,7 @@ interface ThreadSpawnCommandOptions {
   parentThread?: string;
   provider?: string;
   model?: string;
+  profileVersion?: string;
   reasoningLevel?: string;
   title?: string;
   lifecycleOwnerThread?: string;
@@ -369,6 +370,10 @@ export function registerSpawnCommand(
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
     .option("--provider <id>", PROVIDER_HELP)
     .option(
+      "--profile-version <id>",
+      "Approved immutable profile version required for managed shared-server threads",
+    )
+    .option(
       "--model <model>",
       "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
     )
@@ -600,6 +605,9 @@ export function registerSpawnCommand(
             sdk,
           });
           thread = await sdk.threads.spawn({
+            ...(opts.profileVersion
+              ? { controlPlaneProfileVersionId: opts.profileVersion }
+              : {}),
             origin: "cli",
             projectId,
             ...(providerId ? { providerId } : {}),
@@ -641,8 +649,6 @@ export function registerSpawnCommand(
             `First message scheduled for ${new Date(sendAt).toLocaleString()}; the thread stays pending until then.`,
           );
         }
-        // A hidden child reports to its parent too, so the promise follows the
-        // parent link alone.
         if (
           thread.parentThreadId &&
           thread.parentThreadId === resolveContextThreadId()

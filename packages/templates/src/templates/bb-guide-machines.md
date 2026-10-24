@@ -210,6 +210,11 @@ approval and saves a private 24-hour user token without printing it. `status`
 and `logout` work for user sessions as well. User sessions survive a server
 restart until expiry or revocation; their available operations depend on the
 server's user API and permissions. A user token cannot access the full BB API.
+All `server access` leaf commands accept `--json`. Catalog/project/environment
+commands already print JSON by default; login/status/logout select structured
+output with that flag. `authorize --json` streams one JSON line for `pending`
+(with the browser URL) and one for `authorized`. Tokens and PKCE verifiers are
+never printed.
 
 `bb server access environment` inspects your allocated UID/HOME and directory
 state. Add `--provision` to create or verify your registered HOME and project
@@ -239,6 +244,15 @@ publishes another immutable version. Supply JSON with `prompt`,
 values, environment overrides or executable MCP commands. Publishing does not
 modify earlier versions. Execution binding and enforcement remain a separate
 server integration stage.
+
+Managed native thread creation requires `bb thread spawn --profile-version
+<version-id>` (SDK/native HTTP field `controlPlaneProfileVersionId`) with a
+currently granted, enabled profile and version. The server stores that exact
+version atomically with thread ownership and rechecks it on actual dispatch and
+resume. New publications do not upgrade existing threads. A legacy unbound
+thread remains historical data but cannot execute. This admission check does not
+yet apply every profile model/tool/MCP setting; the personal thread API remains
+closed pending that enforcement stage.
 
 `profiles grant <profile-id> <user-id>` and `profiles revoke <profile-id>
 <user-id>` change a registered user's access to that profile's enabled versions.

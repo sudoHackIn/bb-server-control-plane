@@ -268,6 +268,7 @@ function upsertThreadTitleSearchSegments(
 
 export interface CreateThreadInput {
   controlPlaneOwnerUserId?: string;
+  controlPlaneProfileVersionId?: string;
   projectId: string;
   environmentId?: string | null;
   providerId: string;
@@ -308,6 +309,7 @@ export function createThread(
       const owner = requireControlPlaneThreadOwner(tx, {
         projectId: input.projectId,
         ownerUserId: input.controlPlaneOwnerUserId,
+        profileVersionId: input.controlPlaneProfileVersionId,
         providerId: input.providerId,
         relatedThreadIds: [
           input.parentThreadId,
@@ -374,6 +376,7 @@ export function createThread(
           .values({
             threadId: createdThread.id,
             ownerUserId: owner.user.id,
+            profileVersionId: owner.profileVersion.id,
           })
           .run();
         requireControlPlaneThreadDispatch(tx, createdThread.id);

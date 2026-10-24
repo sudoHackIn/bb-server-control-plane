@@ -103,6 +103,7 @@ export function createThreadRecord(
 
   try {
     const thread = createThread(deps.db, deps.hub, {
+      controlPlaneProfileVersionId: args.request.controlPlaneProfileVersionId,
       controlPlaneOwnerUserId: controlPlaneThreadOwnerForCreate(
         deps.db,
         args.request,

@@ -100,13 +100,18 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     );
   });
   await new Promise((resolve) => backend.listen(38888, "127.0.0.1", resolve));
-  const send = (path, body, token) =>
+  const send = (
+    path,
+    body,
+    token,
+    method = body === undefined ? "GET" : "POST",
+  ) =>
     new Promise((resolve, reject) => {
       const req = request(
         config.publicOrigin + path,
         {
           ca,
-          method: body === undefined ? "GET" : "POST",
+          method,
           signal,
           headers: {
             ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -223,6 +228,35 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     assert.equal(enabled.status, 200, JSON.stringify(enabled.body));
     const created = [];
     for (const user of users) {
+      const approved = await send(
+        "/control-plane/admin/profiles",
+        {
+          slug: `execution-${user.login}`,
+          name: `Execution ${user.login}`,
+          definition: {
+            prompt: "Managed fixture",
+            providerId: "qwen-server",
+            model: "qwen-job-test",
+            reasoningLevel: "none",
+            permissionMode: "full",
+            tools: ["run_shell_command"],
+            mcpServers: [],
+          },
+        },
+        token,
+      );
+      assert.equal(approved.status, 201);
+      assert.equal(
+        (
+          await send(
+            `/control-plane/admin/profiles/${approved.body.profile.id}/access/${user.id}`,
+            { allowed: true },
+            token,
+            "PUT",
+          )
+        ).status,
+        200,
+      );
       const project = db
         .prepare(
           "SELECT * FROM control_plane_projects WHERE owner_user_id = ? AND slug = 'app'",
@@ -231,27 +265,56 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       const environment = db
         .prepare("SELECT * FROM environments WHERE project_id = ? AND path = ?")
         .get(project.project_id, project.cwd);
-      const result = await send(
-        "/api/v1/threads",
-        {
-          projectId: project.project_id,
-          providerId: "qwen-server",
-          origin: "app",
-          model: "qwen-configured-default",
-          reasoningLevel: "none",
-          permissionMode: "full",
-          title: `Managed ${user.login}`,
-          input: [
-            {
-              type: "text",
-              text: `BB_MANAGED_${user.login.toUpperCase()} first`,
-              mentions: [],
-            },
-          ],
-          environment: { type: "reuse", environmentId: environment.id },
-        },
-        token,
+      const threadInput = {
+        projectId: project.project_id,
+        controlPlaneProfileVersionId: approved.body.version.id,
+        providerId: "qwen-server",
+        origin: "app",
+        model: "qwen-configured-default",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        title: `Managed ${user.login}`,
+        input: [
+          {
+            type: "text",
+            text: `BB_MANAGED_${user.login.toUpperCase()} first`,
+            mentions: [],
+          },
+        ],
+        environment: { type: "reuse", environmentId: environment.id },
+      };
+      const beforeRejected = db
+        .prepare("SELECT count(*) AS value FROM threads")
+        .get().value;
+      assert.equal(
+        (
+          await send(
+            "/api/v1/threads",
+            { ...threadInput, controlPlaneProfileVersionId: undefined },
+            token,
+          )
+        ).status,
+        404,
       );
+      if (created[0])
+        assert.equal(
+          (
+            await send(
+              "/api/v1/threads",
+              {
+                ...threadInput,
+                controlPlaneProfileVersionId: created[0].profileVersionId,
+              },
+              token,
+            )
+          ).status,
+          404,
+        );
+      assert.equal(
+        db.prepare("SELECT count(*) AS value FROM threads").get().value,
+        beforeRejected,
+      );
+      const result = await send("/api/v1/threads", threadInput, token);
       assert.equal(result.status, 201, JSON.stringify(result.body) + log);
       const threadId = result.body.id;
       await wait(() => {
@@ -279,6 +342,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         .prepare("SELECT * FROM control_plane_threads WHERE thread_id = ?")
         .get(threadId);
       assert.equal(owner.owner_user_id, user.id);
+      assert.equal(owner.profile_version_id, approved.body.version.id);
       assert.match(owner.qwen_session_id, /^[0-9a-f-]{36}$/u);
       const timeline = await send(
         `/api/v1/threads/${threadId}/timeline`,
@@ -290,8 +354,60 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         JSON.stringify(timeline.body),
         new RegExp(`Managed ${user.login} probe completed`, "u"),
       );
-      created.push({ threadId, sessionId: owner.qwen_session_id });
+      created.push({
+        threadId,
+        sessionId: owner.qwen_session_id,
+        profileId: approved.body.profile.id,
+        profileVersionId: approved.body.version.id,
+      });
     }
+    assert.equal(
+      (
+        await send(
+          `/control-plane/admin/profiles/${created[0].profileId}/access/${users[0].id}`,
+          { allowed: false },
+          token,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
+    const eventCount = db
+      .prepare("SELECT count(*) AS value FROM events WHERE thread_id = ?")
+      .get(created[0].threadId).value;
+    const revoked = await send(
+      `/api/v1/threads/${created[0].threadId}/send`,
+      {
+        input: [
+          {
+            type: "text",
+            text: "Must not execute after revocation",
+            mentions: [],
+          },
+        ],
+        mode: "start",
+      },
+      token,
+    );
+    assert.equal(revoked.status, 403);
+    assert.equal(revoked.body.code, "execution_not_authorized");
+    assert.equal(
+      db
+        .prepare("SELECT count(*) AS value FROM events WHERE thread_id = ?")
+        .get(created[0].threadId).value,
+      eventCount,
+    );
+    assert.equal(
+      (
+        await send(
+          `/control-plane/admin/profiles/${created[0].profileId}/access/${users[0].id}`,
+          { allowed: true },
+          token,
+          "PUT",
+        )
+      ).status,
+      200,
+    );
     const sdkSignals = [];
     let observerReady = false;
     observer = new WebSocket(
@@ -500,6 +616,9 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       managedShutdown: true,
       persistedDaemonIdentity: true,
       resumedThreadAfterRestart: true,
+      immutableProfileBoundBeforeCreation: true,
+      missingAndForeignProfileCreationDenied: true,
+      revokedProfileResumeDeniedBeforeEvents: true,
       parentDeathStopsDaemonAndQwen: true,
       daemonDescendantsExitAfterParentDeath: true,
       crashRecoveryRetainsIdentityAndThreads: true,

@@ -24,6 +24,7 @@ import {
 import { createMigratedConnection } from "@bb/db/testing";
 import { expect, it } from "vitest";
 import { startControlPlaneQwenContextService } from "../../src/control-plane/qwen-context.js";
+import { seedControlPlaneProfile } from "../helpers/control-plane-profile.js";
 
 function send(socketPath: string, body: object, path = "/resolve") {
   return new Promise<{ status: number | undefined; body: unknown }>(
@@ -80,6 +81,8 @@ it("serves only validated owned thread/session bindings on a private Unix socket
     environmentId: environment.id,
     providerId: "qwen-server",
     controlPlaneOwnerUserId: user.id,
+    controlPlaneProfileVersionId: seedControlPlaneProfile(db, user.id)
+      .versionId,
   });
   const service = await startControlPlaneQwenContextService(db, directory);
   try {

@@ -18,6 +18,8 @@ After environment provisioning and local host registration, `bb server access pr
 
 Approved profile definitions, immutable versions, availability and user grants are stored in the same BB database. `bb server access profiles list|get|versions` reads the user's permitted enabled records; administrators add `--admin` for all records and use `create|publish|grant|revoke|enable|disable|access` to manage them. Create/publish take definition JSON on `--definition-stdin`, never executable command/environment overrides or credentials. See `bb guide machines` and [profile integration status](server-control-plane.md#tenth-increment-approved-profile-catalog). The catalog is not execution authority until native threads are bound to approved versions and the provider enforces their model/tool/MCP policies.
 
+Managed thread creation additionally requires `controlPlaneProfileVersionId` on the native HTTP/SDK request, or `bb thread spawn --profile-version <version-id>`. This pins an authorized enabled version with ownership before thread creation notifications. Dispatch and the private Qwen resolver recheck current profile grants and availability; later publications never upgrade an existing thread. Migration 0151 preserves older unbound rows for history and denies their execution. Full profile model/tool/MCP translation and the personal thread API remain pending; the new binding alone does not enforce those settings.
+
 The packaged `npx bb-app` flow stores persistent package settings under
 `~/.bb/config.json`, provider environment values under `~/.bb/env.json`, and
 client SSH target mappings under `~/.bb/client.json`.

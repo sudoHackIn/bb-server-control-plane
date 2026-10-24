@@ -1,0 +1,1 @@
+ALTER TABLE `control_plane_threads` ADD `profile_version_id` text REFERENCES control_plane_profile_versions(id);

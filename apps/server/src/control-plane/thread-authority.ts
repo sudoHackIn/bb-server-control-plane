@@ -20,12 +20,17 @@ export function controlPlaneThreadOwnerForCreate(
     | "sourceThreadId"
     | "lifecycleOwnerThreadId"
     | "senderThreadId"
+    | "controlPlaneProfileVersionId"
   >,
 ): string | undefined {
   const managed = getControlPlaneProjectOwner(db, request.projectId);
   const principal = currentControlPlanePrincipal();
   if (!managed) {
-    if (principal?.kind === "user" || request.providerId === "qwen-server")
+    if (
+      principal?.kind === "user" ||
+      request.providerId === "qwen-server" ||
+      request.controlPlaneProfileVersionId !== undefined
+    )
       throw new ApiError(404, "project_not_found", "Project not found");
     return undefined;
   }
@@ -39,6 +44,7 @@ export function controlPlaneThreadOwnerForCreate(
     const context = requireControlPlaneThreadOwner(db, {
       projectId: request.projectId,
       ownerUserId: userId,
+      profileVersionId: request.controlPlaneProfileVersionId,
       providerId: request.providerId ?? "",
       relatedThreadIds: [
         request.parentThreadId,

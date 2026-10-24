@@ -206,7 +206,7 @@ export async function verifyUserDeployment({
       NODE_EXTRA_CA_CERTS: `${directory}/ca.crt`,
     };
     const cli = ["apps/cli/dist/index.js", "server", "access"];
-    const child = launch([...cli, "authorize"], { env });
+    const child = launch([...cli, "authorize", "--json"], { env });
     const completed = once(child, "exit", { signal });
     let output = "";
     let error = "";
@@ -231,6 +231,20 @@ export async function verifyUserDeployment({
     await approve(new URL(authorizationUrl).pathname, "alice");
     assert.equal((await completed)[0], 0, error);
     assert.doesNotMatch(output, /agt_[A-Za-z0-9_-]{43}/u);
+    const authorizationEvents = output
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      authorizationEvents.map((event) => event.status),
+      ["pending", "authorized"],
+    );
+    assert.equal(authorizationEvents[1].role, "user");
+    assert.equal(
+      JSON.parse(await command([...cli, "status", "--json"], "", { env })).user
+        .login,
+      "alice",
+    );
     assert.match(await command([...cli, "status"], "", { env }), /alice/);
     assert.equal(
       JSON.parse(
@@ -357,11 +371,26 @@ export async function verifyUserDeployment({
       const alice = users[0];
       const bob = users[1];
       const adminEnv = { ...env, HOME: "/tmp/bb-profile-admin" };
-      await command(
-        [...cli, "login", "--login", "operator", "--password-stdin"],
-        password,
-        { env: adminEnv },
+      const adminCliSession = JSON.parse(
+        await command(
+          [
+            ...cli,
+            "login",
+            "--login",
+            "operator",
+            "--password-stdin",
+            "--json",
+          ],
+          password,
+          { env: adminEnv },
+        ),
       );
+      assert.equal(adminCliSession.role, "admin");
+      assert.deepEqual(Object.keys(adminCliSession).sort(), [
+        "expiresAt",
+        "login",
+        "role",
+      ]);
       const adminProfiles = (args, input = "") =>
         command([...cli, "profiles", ...args], input, { env: adminEnv });
       const definition = {
@@ -800,7 +829,10 @@ export async function verifyUserDeployment({
         ).status,
         401,
       );
-      await command([...cli, "logout"], "", { env });
+      assert.deepEqual(
+        JSON.parse(await command([...cli, "logout", "--json"], "", { env })),
+        { ok: true },
+      );
       assert.equal(
         (await send("/control-plane/user", { headers: aliceHeaders })).status,
         401,

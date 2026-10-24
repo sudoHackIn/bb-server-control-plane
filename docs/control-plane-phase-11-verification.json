@@ -1,0 +1,46 @@
+{
+  "scope": "Atomic native thread/profile-version binding and current admission rechecks; CLI JSON contracts",
+  "previousStageCommit": "61be41906",
+  "migration": "0151_smart_namor.sql",
+  "tests": {
+    "database": 639,
+    "selectedServerControlPlane": 26,
+    "cliCommandOutputAndJsonContracts": 577,
+    "cliExistingSkipped": 1,
+    "cliPsFixtureRequiredHostSandboxException": true,
+    "strictDatabaseServerSdkCliTypechecks": true,
+    "changedFileLintAndFormatting": true
+  },
+  "admission": {
+    "explicitProfileVersionOnManagedCreation": true,
+    "unmanagedProfileFieldRejected": true,
+    "ownerAndProfileCommittedBeforeNotifications": true,
+    "currentGrantProfileVersionProviderChecked": true,
+    "dispatchTurnAndPrivateResolverRechecks": true,
+    "newPublicationDoesNotUpgradeExistingThread": true,
+    "retiredPinnedVersionDoesNotFallback": true,
+    "legacyNullBindingCannotExecute": true,
+    "legacyHistoryPreserved": true,
+    "nativeHttpPolicyErrorIsExplicit403": true,
+    "hostDaemonWireChanged": false
+  },
+  "dockerDeployment": {
+    "image": "bb-control-plane:local",
+    "profilesAndGrantsCreatedThroughAdministrativeApi": true,
+    "missingAndForeignVersionDeniedBeforeInsertion": true,
+    "revokedContinuationDeniedBeforeConversationEvents": true,
+    "restoredGrantAllowsNativeResumeAfterRestart": true,
+    "realCertificateAuthorizeJsonLinesWithoutTokenOrVerifier": true,
+    "realCliLoginStatusLogoutJsonWithoutToken": true,
+    "nativeUidHomeNamespacesToolsTimelineAndCrashRecovery": true,
+    "backend": "Deterministic local OpenAI-compatible fixture"
+  },
+  "profileModelToolsMcpExecutionEnforcementComplete": false,
+  "limitedUserThreadApiComplete": false,
+  "verifiedChildAndWorkflowProfileInheritanceComplete": false,
+  "tenantScopedPluginSdkOperationsComplete": false,
+  "personalWorkflowsAutomationsSchedulesComplete": false,
+  "corporateQwenAuthorizationVerified": false,
+  "liveExternalModelBackendVerified": false,
+  "fullRepositorySuiteRun": false
+}

@@ -35,6 +35,7 @@ Spawning:
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
     --lifecycle-owner-thread <id>  Archive/delete with this owner
     --provider <id>                Provider override
+    --profile-version <id>         Approved immutable profile version for a managed shared-server thread
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level id the model lists: low, medium, high, xhigh, max, or a provider-specific id
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)

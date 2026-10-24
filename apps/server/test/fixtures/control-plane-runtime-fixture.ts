@@ -8,6 +8,7 @@ import {
   noopNotifier,
 } from "@bb/db";
 import { startControlPlaneQwenContextService } from "../../src/control-plane/qwen-context.js";
+import { seedControlPlaneProfile } from "../helpers/control-plane-profile.js";
 
 export async function createRuntimeFixture(config: {
   id: string;
@@ -53,6 +54,8 @@ export async function createRuntimeFixture(config: {
         environmentId: environment.id,
         providerId: "qwen-server",
         controlPlaneOwnerUserId: config.id,
+        controlPlaneProfileVersionId: seedControlPlaneProfile(db, config.id)
+          .versionId,
         status: "starting",
       }).id;
     }

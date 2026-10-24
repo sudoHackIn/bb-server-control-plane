@@ -1058,6 +1058,13 @@
       "when": 1792854683356,
       "tag": "0150_goofy_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "6",
+      "when": 1792855804602,
+      "tag": "0151_smart_namor",
+      "breakpoints": true
     }
   ]
 }

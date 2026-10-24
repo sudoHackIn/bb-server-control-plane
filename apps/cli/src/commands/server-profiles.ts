@@ -34,6 +34,7 @@ export function registerServerProfileCommands(
   };
   profiles
     .command("versions <profile-id>")
+    .option("--json", "Print machine-readable JSON output")
     .option("--admin", "Include disabled versions as an administrator")
     .option("--cursor <number>", "Continue before this version number")
     .option("--limit <count>", "Maximum versions, 1 to 100", "50")
@@ -66,6 +67,7 @@ export function registerServerProfileCommands(
     );
   profiles
     .command("list")
+    .option("--json", "Print machine-readable JSON output")
     .option("--admin", "List all profiles as an administrator")
     .option("--cursor <id>", "Pagination cursor")
     .option("--limit <count>", "Maximum profiles, 1 to 100", "50")
@@ -87,6 +89,7 @@ export function registerServerProfileCommands(
     );
   profiles
     .command("get <profile-id>")
+    .option("--json", "Print machine-readable JSON output")
     .option("--admin", "Read a profile as an administrator")
     .option("--version <id>", "Read a specific immutable version")
     .action(
@@ -103,6 +106,7 @@ export function registerServerProfileCommands(
     );
   profiles
     .command("create <slug>")
+    .option("--json", "Print machine-readable JSON output")
     .requiredOption("--name <name>", "Profile display name")
     .requiredOption(
       "--definition-stdin",
@@ -126,6 +130,7 @@ export function registerServerProfileCommands(
     );
   profiles
     .command("publish <profile-id>")
+    .option("--json", "Print machine-readable JSON output")
     .requiredOption(
       "--definition-stdin",
       "Read the new definition JSON from stdin",
@@ -146,6 +151,7 @@ export function registerServerProfileCommands(
   ] as const) {
     profiles
       .command(`${name} <profile-id>`)
+      .option("--json", "Print machine-readable JSON output")
       .option("--version <id>", "Change only this version's availability")
       .action(
         action(async (id: string, options: { version?: string }) => {
@@ -161,14 +167,18 @@ export function registerServerProfileCommands(
     ["grant", true],
     ["revoke", false],
   ] as const) {
-    profiles.command(`${name} <profile-id> <user-id>`).action(
-      action(async (id: string, userId: string) => {
-        output(await client().admin.profiles.setAccess(id, userId, allowed));
-      }),
-    );
+    profiles
+      .command(`${name} <profile-id> <user-id>`)
+      .option("--json", "Print machine-readable JSON output")
+      .action(
+        action(async (id: string, userId: string) => {
+          output(await client().admin.profiles.setAccess(id, userId, allowed));
+        }),
+      );
   }
   profiles
     .command("access <profile-id>")
+    .option("--json", "Print machine-readable JSON output")
     .option("--cursor <id>", "Pagination cursor")
     .option("--limit <count>", "Maximum users, 1 to 100", "50")
     .action(

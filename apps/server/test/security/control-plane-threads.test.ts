@@ -1,5 +1,7 @@
 import {
   createControlPlaneProject,
+  setControlPlaneProfileAccess,
+  setControlPlaneProfileEnabled,
   createEnvironment,
   ControlPlaneRegistry,
   ControlPlaneThreadError,
@@ -24,6 +26,89 @@ import type { ThreadCreateServiceRequest } from "../../src/services/threads/thre
 import { attemptDispatch } from "../../src/services/threads/dispatch-attempt.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import { textInput } from "../helpers/prompt-input.js";
+import { seedControlPlaneProfile } from "../helpers/control-plane-profile.js";
+
+it("rechecks the saved profile grant and version before inline or queued dispatch", async () => {
+  await withTestHarness(async (harness) => {
+    const registry = new ControlPlaneRegistry(harness.db, {
+      usersRoot: "/srv/users",
+      firstUid: 200000,
+      lastUid: 299999,
+    });
+    const user = registry.reserve("alice", 1);
+    registry.environmentState(user.id, "ready");
+    const host = upsertHost(harness.db, harness.hub, { name: "Host" });
+    const { project } = createControlPlaneProject(harness.db, harness.hub, {
+      userId: user.id,
+      hostId: host.id,
+      name: "App",
+      slug: "app",
+    });
+    const profile = seedControlPlaneProfile(harness.db, user.id);
+    const thread = createThread(harness.db, harness.hub, {
+      projectId: project.id,
+      providerId: "qwen-server",
+      controlPlaneOwnerUserId: user.id,
+      controlPlaneProfileVersionId: profile.versionId,
+      status: "pending",
+    });
+    for (const revoke of [
+      () =>
+        setControlPlaneProfileAccess(
+          harness.db,
+          profile.profileId,
+          user.id,
+          false,
+        ),
+      () =>
+        setControlPlaneProfileEnabled(
+          harness.db,
+          profile.profileId,
+          false,
+          profile.versionId,
+        ),
+      () => setControlPlaneProfileEnabled(harness.db, profile.profileId, false),
+    ]) {
+      revoke();
+      for (const source of [
+        { kind: "inline" },
+        {
+          kind: "drain",
+          claimed: [],
+          respectManualStopPause: false,
+          sendNow: false,
+        },
+      ] satisfies Parameters<typeof attemptDispatch>[1]["source"][]) {
+        await expect(
+          attemptDispatch(harness.deps, {
+            thread,
+            source,
+            payload: { input: textInput("Must not execute"), mode: "start" },
+            queuePayload: { kind: "inline" },
+            pluginSubmission: null,
+            origin: null,
+            originPluginId: null,
+            startedOnBehalfOf: null,
+            trigger: source.kind === "inline" ? "user" : "auto-dispatch",
+          }),
+        ).rejects.toThrow(ControlPlaneThreadError);
+      }
+      setControlPlaneProfileAccess(
+        harness.db,
+        profile.profileId,
+        user.id,
+        true,
+      );
+      setControlPlaneProfileEnabled(
+        harness.db,
+        profile.profileId,
+        true,
+        profile.versionId,
+      );
+      setControlPlaneProfileEnabled(harness.db, profile.profileId, true);
+    }
+  });
+});
 
 it("rejects unauthenticated service creation, foreign identities and workspace overrides before creating a managed thread", () => {
   const db = createMigratedConnection();
@@ -53,6 +138,8 @@ it("rejects unauthenticated service creation, foreign identities and workspace o
       status: "ready",
     });
     const request: ThreadCreateServiceRequest = {
+      controlPlaneProfileVersionId: seedControlPlaneProfile(db, alice.id)
+        .versionId,
       projectId: project.id,
       providerId: "qwen-server",
       environment: { type: "reuse", environmentId: environment.id },
@@ -161,6 +248,8 @@ it("blocks initial and queued dispatch after revocation without depending on a p
       projectId: project.id,
       providerId: "qwen-server",
       controlPlaneOwnerUserId: user.id,
+      controlPlaneProfileVersionId: seedControlPlaneProfile(harness.db, user.id)
+        .versionId,
       status: "pending",
     });
     harness.db

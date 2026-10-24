@@ -2,12 +2,14 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
   controlPlaneProjects,
+  controlPlaneProfileVersions,
   controlPlaneThreads,
   controlPlaneUsers,
   environments,
   threads,
 } from "../schema.js";
 import { getControlPlaneProject } from "./control-plane-projects.js";
+import { getControlPlaneProfile } from "./control-plane-profiles.js";
 
 export class ControlPlaneThreadError extends Error {
   constructor() {
@@ -32,13 +34,18 @@ export function requireControlPlaneThreadOwner(
   input: {
     projectId: string;
     ownerUserId: string | undefined;
+    profileVersionId: string | undefined;
     providerId: string;
     relatedThreadIds: readonly (string | null | undefined)[];
   },
 ) {
   const managed = getControlPlaneProjectOwner(db, input.projectId);
   if (!managed) {
-    if (input.ownerUserId !== undefined || input.providerId === "qwen-server")
+    if (
+      input.ownerUserId !== undefined ||
+      input.profileVersionId !== undefined ||
+      input.providerId === "qwen-server"
+    )
       throw new ControlPlaneThreadError();
     return null;
   }
@@ -85,7 +92,19 @@ export function requireControlPlaneThreadOwner(
     )
       throw new ControlPlaneThreadError();
   }
-  return { user, project };
+  const version = input.profileVersionId
+    ? db
+        .select()
+        .from(controlPlaneProfileVersions)
+        .where(eq(controlPlaneProfileVersions.id, input.profileVersionId))
+        .get()
+    : null;
+  const profile = version
+    ? getControlPlaneProfile(db, user.id, version.profileId, version.id)
+    : null;
+  if (!profile || profile.version.definition.providerId !== input.providerId)
+    throw new ControlPlaneThreadError();
+  return { user, project, profileVersion: profile.version };
 }
 
 export function requireControlPlaneThreadDispatch(
@@ -106,6 +125,7 @@ export function requireControlPlaneThreadDispatch(
   const context = requireControlPlaneThreadOwner(db, {
     projectId: thread.projectId,
     ownerUserId: owner?.ownerUserId,
+    profileVersionId: owner?.profileVersionId ?? undefined,
     providerId: thread.providerId,
     relatedThreadIds: [],
   });

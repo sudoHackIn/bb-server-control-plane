@@ -9,6 +9,11 @@ import {
   controlPlaneProjectAccess,
   controlPlaneUsers,
   createControlPlaneProject,
+  createProject,
+  createControlPlaneProfile,
+  publishControlPlaneProfileVersion,
+  setControlPlaneProfileAccess,
+  setControlPlaneProfileEnabled,
   createEnvironment,
   createThread,
   createConnection,
@@ -46,7 +51,21 @@ function fixture() {
       providerOwnsPath: false,
       status: "ready",
     });
-    return { user, project, cwd, environment };
+    const profile = createControlPlaneProfile(db, {
+      slug: login,
+      name: login,
+      definition: {
+        prompt: "Fixture",
+        providerId: "qwen-server",
+        model: "qwen-job-test",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: [],
+        mcpServers: [],
+      },
+    });
+    setControlPlaneProfileAccess(db, profile.profileId, user.id, true);
+    return { user, project, cwd, environment, profile };
   });
   const alice = users[0],
     bob = users[1];
@@ -61,6 +80,7 @@ function fixture() {
       providerId: "qwen-server",
       status: "starting",
       controlPlaneOwnerUserId: owner.user.id,
+      controlPlaneProfileVersionId: owner.profile.versionId,
       ...overrides,
     });
   return { db, alice, bob, start };
@@ -81,6 +101,7 @@ it("commits ownership before notifications and rolls back missing or foreign aut
             .where(eq(controlPlaneThreads.threadId, id))
             .get();
           if (!owner) throw new Error("Published a thread before its owner");
+          expect(owner.profileVersionId).toBe(alice.profile.versionId);
           observed.push(owner.ownerUserId);
         },
       },
@@ -88,6 +109,7 @@ it("commits ownership before notifications and rolls back missing or foreign aut
         projectId: alice.project.id,
         providerId: "qwen-server",
         controlPlaneOwnerUserId: alice.user.id,
+        controlPlaneProfileVersionId: alice.profile.versionId,
       },
     );
     expect(observed).toEqual([alice.user.id]);
@@ -139,6 +161,111 @@ it("commits ownership before notifications and rolls back missing or foreign aut
         ControlPlaneThreadError,
       );
     expect(db.select().from(threads).all()).toHaveLength(3);
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("pins an authorized version before creation and denies revoked, retired or legacy unbound execution without upgrading the version", () => {
+  const { db, alice, bob, start } = fixture();
+  try {
+    expect(() =>
+      start(alice, { controlPlaneProfileVersionId: undefined }),
+    ).toThrow(ControlPlaneThreadError);
+    expect(() =>
+      start(alice, { controlPlaneProfileVersionId: bob.profile.versionId }),
+    ).toThrow(ControlPlaneThreadError);
+    const unmanaged = createProject(db, noopNotifier, {
+      name: "Unmanaged",
+      source: {
+        type: "local_path",
+        hostId: alice.environment.hostId,
+        path: "/srv/unmanaged",
+      },
+    });
+    expect(() =>
+      createThread(db, noopNotifier, {
+        projectId: unmanaged.project.id,
+        providerId: "test",
+        controlPlaneProfileVersionId: alice.profile.versionId,
+      }),
+    ).toThrow(ControlPlaneThreadError);
+    expect(
+      createThread(db, noopNotifier, {
+        projectId: unmanaged.project.id,
+        providerId: "test",
+      }).projectId,
+    ).toBe(unmanaged.project.id);
+    const thread = start();
+    const original = requireControlPlaneThreadDispatch(
+      db,
+      thread.id,
+    )?.profileVersion;
+    if (!original) throw new Error("Missing admitted version");
+    const revised = publishControlPlaneProfileVersion(
+      db,
+      alice.profile.profileId,
+      { ...original.definition, prompt: "Published later" },
+    );
+    expect(
+      requireControlPlaneThreadDispatch(db, thread.id)?.profileVersion.id,
+    ).toBe(original.id);
+    setControlPlaneProfileAccess(
+      db,
+      alice.profile.profileId,
+      alice.user.id,
+      false,
+    );
+    expect(() => requireControlPlaneThreadDispatch(db, thread.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    expect(() =>
+      resolveControlPlaneQwenContext(db, {
+        threadId: thread.id,
+        cwd: alice.cwd,
+        sessionId: randomUUID(),
+      }),
+    ).toThrow(ControlPlaneThreadError);
+    setControlPlaneProfileAccess(
+      db,
+      alice.profile.profileId,
+      alice.user.id,
+      true,
+    );
+    setControlPlaneProfileEnabled(
+      db,
+      alice.profile.profileId,
+      false,
+      original.id,
+    );
+    expect(() => requireControlPlaneThreadDispatch(db, thread.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    expect(revised.id).not.toBe(original.id);
+    setControlPlaneProfileEnabled(
+      db,
+      alice.profile.profileId,
+      true,
+      original.id,
+    );
+    setControlPlaneProfileEnabled(db, alice.profile.profileId, false);
+    expect(() => requireControlPlaneThreadDispatch(db, thread.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    setControlPlaneProfileEnabled(db, alice.profile.profileId, true);
+    expect(
+      requireControlPlaneThreadDispatch(db, thread.id)?.profileVersion.id,
+    ).toBe(original.id);
+    db.update(controlPlaneThreads)
+      .set({ profileVersionId: null })
+      .where(eq(controlPlaneThreads.threadId, thread.id))
+      .run();
+    expect(() => requireControlPlaneThreadDispatch(db, thread.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    expect(
+      db.select().from(threads).where(eq(threads.id, thread.id)).get()?.id,
+    ).toBe(thread.id);
   } finally {
     db.$client.close();
   }
