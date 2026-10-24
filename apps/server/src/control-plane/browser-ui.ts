@@ -1,7 +1,7 @@
 export function isPersonalBrowserUiPath(path: string, method: string): boolean {
   if (method !== "GET" && method !== "HEAD") return false;
   return (
-    path === "/control-plane/app" ||
+    isControlPlaneBrowserShellPath(path) ||
     /^\/assets\/[A-Za-z0-9_.-]+$/u.test(path) ||
     [
       "/favicon-32x32.png",
@@ -11,3 +11,4 @@ export function isPersonalBrowserUiPath(path: string, method: string): boolean {
     ].includes(path)
   );
 }
+import { isControlPlaneBrowserShellPath } from "@bb/server-contract";

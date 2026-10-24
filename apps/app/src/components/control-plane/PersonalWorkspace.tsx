@@ -1,4 +1,9 @@
 import { useState } from "react";
+import { useLocation, useMatch, useNavigate } from "react-router-dom";
+import {
+  getControlPlaneProjectPath,
+  getControlPlaneThreadPath,
+} from "@bb/server-contract";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { Button } from "@bb/shared-ui/button";
@@ -60,8 +65,32 @@ function WorkspaceNavigation({
   client: PersonalWorkspaceClient;
   bootstrap: Awaited<ReturnType<PersonalWorkspaceClient["bootstrap"]>>;
 }) {
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [threadId, setThreadId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const projectRoute = useMatch("/projects/:projectId");
+  const threadRoute = useMatch("/projects/:projectId/threads/:threadId");
+  const shortThreadRoute = useMatch("/threads/:threadId");
+  const threadId =
+    threadRoute?.params.threadId ?? shortThreadRoute?.params.threadId ?? null;
+  const pathProjectId =
+    threadRoute?.params.projectId ?? projectRoute?.params.projectId ?? null;
+  const messageSeq = new URLSearchParams(location.hash.slice(1)).get("msg");
+  const invalidMessage =
+    messageSeq !== null &&
+    (!/^(0|[1-9]\d*)$/u.test(messageSeq) ||
+      !Number.isSafeInteger(Number(messageSeq)));
+  const detail = useQuery({
+    queryKey: ["personal", "thread", threadId],
+    queryFn: ({ signal }) => {
+      if (!threadId) throw new Error("No thread selected");
+      return client.threads.get(threadId, signal);
+    },
+    enabled: threadId !== null,
+    refetchInterval: 15_000,
+  });
+  const projectId =
+    pathProjectId ??
+    (detail.data?.id === threadId ? detail.data.projectId : null);
   const [logoutError, setLogoutError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const closeSidebar = useCloseMobileSidebar();
@@ -84,18 +113,19 @@ function WorkspaceNavigation({
     ? []
     : (projects.data?.pages.flatMap((page) => page.projects) ??
       bootstrap.projects.projects);
-  const selectedProject = visibleProjects.find(
-    (project) => project.projectId === projectId,
-  );
   const project = useQuery({
-    queryKey: ["personal", "project", selectedProject?.projectId],
+    queryKey: ["personal", "project", projectId],
     queryFn: ({ signal }) => {
-      if (!selectedProject) throw new Error("No project selected");
-      return client.projects.get(selectedProject.projectId, signal);
+      if (!projectId) throw new Error("No project selected");
+      return client.projects.get(projectId, signal);
     },
-    enabled: selectedProject !== undefined,
+    enabled: projectId !== null,
     refetchInterval: 15_000,
   });
+  const selectedProject =
+    !project.isError && project.data?.projectId === projectId
+      ? project.data
+      : undefined;
   const threads = useInfiniteQuery({
     queryKey: ["personal", "threads", selectedProject?.projectId],
     initialPageParam: null,
@@ -121,23 +151,34 @@ function WorkspaceNavigation({
     project.isError || threads.isError
       ? []
       : (threads.data?.pages.flatMap((page) => page.threads) ?? []);
-  const selectedThread = visibleThreads.find(
-    (thread) => thread.id === threadId,
+  const selectedThread =
+    selectedProject &&
+    !detail.isError &&
+    detail.data?.id === threadId &&
+    detail.data.projectId === projectId
+      ? detail.data
+      : undefined;
+  const mismatchedThread =
+    detail.data !== undefined &&
+    detail.data.id === threadId &&
+    detail.data.projectId !== projectId;
+  const navigationProjects =
+    selectedProject &&
+    !visibleProjects.some(
+      (item) => item.projectId === selectedProject.projectId,
+    )
+      ? [...visibleProjects, selectedProject]
+      : visibleProjects;
+  const navigationThreads =
+    selectedThread &&
+    !visibleThreads.some((item) => item.id === selectedThread.id)
+      ? [...visibleThreads, selectedThread]
+      : visibleThreads;
+  const navigableProjects = navigationProjects.filter(
+    (item) => !project.isError || item.projectId !== projectId,
   );
-  const detail = useQuery({
-    queryKey: ["personal", "thread", selectedThread?.id],
-    queryFn: ({ signal }) => {
-      if (!selectedThread) throw new Error("No thread selected");
-      return client.threads.get(selectedThread.id, signal);
-    },
-    enabled: selectedThread !== undefined && !project.isError,
-    refetchInterval: 15_000,
-  });
-  const navigableProjects = visibleProjects.filter(
-    (item) => !project.isError || item.projectId !== selectedProject?.projectId,
-  );
-  const navigableThreads = visibleThreads.filter(
-    (item) => !detail.isError || item.id !== selectedThread?.id,
+  const navigableThreads = navigationThreads.filter(
+    (item) => !detail.isError || item.id !== threadId,
   );
   async function logout() {
     setLoggingOut(true);
@@ -164,8 +205,7 @@ function WorkspaceNavigation({
                     projectId === item.projectId ? "page" : undefined
                   }
                   onClick={() => {
-                    setProjectId(item.projectId);
-                    setThreadId(null);
+                    navigate(getControlPlaneProjectPath(item.projectId));
                   }}
                 >
                   <Icon name="Folder" />
@@ -184,7 +224,12 @@ function WorkspaceNavigation({
                             threadId === thread.id ? "page" : undefined
                           }
                           onClick={() => {
-                            setThreadId(thread.id);
+                            navigate(
+                              getControlPlaneThreadPath(
+                                thread.projectId,
+                                thread.id,
+                              ),
+                            );
                             closeSidebar();
                           }}
                         >
@@ -255,7 +300,7 @@ function WorkspaceNavigation({
               variant="ghost"
               size="sm"
               onClick={() => {
-                setThreadId(null);
+                if (projectId) navigate(getControlPlaneProjectPath(projectId));
                 closeSidebar();
               }}
             >
@@ -263,17 +308,24 @@ function WorkspaceNavigation({
             </Button>
           )}
         </header>
-        {project.isError || (selectedThread && detail.isError) ? (
+        {project.isError ||
+        (threadId !== null && detail.isError) ||
+        mismatchedThread ||
+        invalidMessage ? (
           <Unavailable
             onRetry={() => {
               void project.refetch();
               void threads.refetch();
-              if (selectedThread) void detail.refetch();
+              if (threadId) void detail.refetch();
             }}
           />
         ) : (
           <section className="flex min-h-0 flex-1 flex-col">
-            {selectedThread && detail.data ? (
+            {threadId !== null && !selectedThread ? (
+              <p role="status" className="p-6">
+                Loading conversation…
+              </p>
+            ) : selectedThread && detail.data ? (
               <>
                 <h1 className="px-6 pt-4 text-lg font-medium">
                   {detail.data.title ?? "Untitled thread"}
@@ -305,13 +357,20 @@ function WorkspaceNavigation({
         {selectedProject &&
           project.data &&
           !project.isError &&
-          (!selectedThread || (detail.data && !detail.isError)) && (
+          !mismatchedThread &&
+          !invalidMessage &&
+          (threadId === null ||
+            (selectedThread && detail.data && !detail.isError)) && (
             <PersonalConversationComposer
               key={`${selectedProject.projectId}:${selectedThread?.id ?? "new"}`}
               client={client}
               project={project.data}
               thread={selectedThread ? (detail.data ?? null) : null}
-              onCreated={(created) => setThreadId(created.id)}
+              onCreated={(created) =>
+                navigate(
+                  getControlPlaneThreadPath(created.projectId, created.id),
+                )
+              }
             />
           )}
       </SidebarInset>

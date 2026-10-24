@@ -12,6 +12,7 @@ import type { ControlPlaneConfig } from "./config.js";
 import { verifyAdminPassword } from "./credentials.js";
 import { isUserAuthPath, type ControlPlaneUserAccess } from "./user-access.js";
 import { isPersonalBrowserUiPath } from "./browser-ui.js";
+import { isControlPlaneBrowserShellPath } from "@bb/server-contract";
 
 export type ControlPlanePrincipal =
   | { kind: "admin"; login: string }
@@ -202,12 +203,17 @@ export function createControlPlaneAccess(
           const identity = users.authenticate(context);
           if (!identity) {
             if (
-              path === "/control-plane/app" &&
+              isControlPlaneBrowserShellPath(path) &&
               context.req.method === "GET" &&
               context.req.header("authorization") === undefined &&
               context.req.header("accept")?.includes("text/html")
             )
-              return context.redirect("/control-plane/user/login", 303);
+              return context.redirect(
+                path === "/control-plane/app"
+                  ? "/control-plane/user/login"
+                  : `/control-plane/user/login?returnTo=${encodeURIComponent(new URL(context.req.url).pathname + new URL(context.req.url).search)}`,
+                303,
+              );
             return denied(context);
           }
           const origin = context.req.header("origin");

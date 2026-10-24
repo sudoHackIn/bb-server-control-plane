@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getControlPlaneThreadPath } from "@bb/server-contract";
 import { createControlPlaneThreadClient } from "./control-plane-threads.js";
 import {
   controlPlaneBrowserContextSchema,
@@ -167,6 +168,7 @@ export function createControlPlaneClient(args: {
   });
   const adminProfiles = "/control-plane/admin/profiles";
   const ok = z.object({ ok: z.literal(true) });
+  const threads = createControlPlaneThreadClient(request, requestResponse);
   return {
     async browserContext(signal?: AbortSignal) {
       return controlPlaneBrowserContextSchema.parse(
@@ -189,7 +191,23 @@ export function createControlPlaneClient(args: {
         ),
       );
     },
-    threads: createControlPlaneThreadClient(request, requestResponse),
+    threads: {
+      ...threads,
+      async browserUrl(
+        id: string,
+        options: { messageSeq?: number; signal?: AbortSignal } = {},
+      ) {
+        const thread = await threads.get(id, options.signal);
+        return new URL(
+          getControlPlaneThreadPath(
+            thread.projectId,
+            thread.id,
+            options.messageSeq,
+          ),
+          url,
+        ).href;
+      },
+    },
     profiles: profileReader("/control-plane/user/profiles"),
     admin: {
       profiles: {

@@ -3,6 +3,7 @@ import type { Context, Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import type { ControlPlaneRegistry } from "@bb/db";
+import { controlPlaneBrowserReturnTo } from "@bb/server-contract";
 
 const cookieName = "bb_user_session";
 const lifetimeMs = 24 * 60 * 60 * 1000;
@@ -30,6 +31,17 @@ export function createControlPlaneBrowserAccess({
   certificateLogin: (context: Context) => string | null;
 }) {
   const secure = publicOrigin.startsWith("https:");
+  function destination(context: Context) {
+    if (
+      Object.keys(context.req.query()).some((key) => key !== "returnTo") ||
+      (context.req.queries("returnTo")?.length ?? 0) > 1
+    )
+      return null;
+    return controlPlaneBrowserReturnTo(
+      context.req.query("returnTo"),
+      publicOrigin,
+    );
+  }
   function clear(context: Context) {
     const token = controlPlaneBrowserToken(context);
     if (token) registry.revoke(digest(token));
@@ -55,8 +67,10 @@ export function createControlPlaneBrowserAccess({
             '<!doctype html><html lang="ru"><meta charset="utf-8"><title>BB</title><p>Для входа нужен пользовательский сертификат.</p><a href="/control-plane/login">Вход администратора</a></html>',
             403,
           );
+        if (destination(context) === null)
+          return context.json({ error: "invalid_request" }, 400);
         return context.html(
-          `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BB</title><main><h1>Вход в BB</h1><form method="post" action="${path}"><button type="submit">Войти как ${escapeHtml(login)}</button></form><a href="/control-plane/login">Вход администратора</a></main></html>`,
+          `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BB</title><main><h1>Вход в BB</h1><form method="post"><button type="submit">Войти как ${escapeHtml(login)}</button></form><a href="/control-plane/login">Вход администратора</a></main></html>`,
         );
       });
       app.post(path, async (context) => {
@@ -65,6 +79,9 @@ export function createControlPlaneBrowserAccess({
         const login = certificateLogin(context);
         if (!login) return context.json({ error: "certificate_required" }, 403);
         if ((await context.req.text()).length !== 0)
+          return context.json({ error: "invalid_request" }, 400);
+        const target = destination(context);
+        if (target === null)
           return context.json({ error: "invalid_request" }, 400);
         const user = registry.reserve(login, now());
         const token = `agt_${randomBytes(32).toString("base64url")}`;
@@ -88,7 +105,7 @@ export function createControlPlaneBrowserAccess({
           maxAge: lifetimeMs / 1000,
         });
         context.header("clear-site-data", '"cache", "storage"');
-        return context.redirect("/control-plane/app", 303);
+        return context.redirect(target, 303);
       });
     },
   };

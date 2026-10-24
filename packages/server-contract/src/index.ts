@@ -27,3 +27,4 @@ export * from "./client-route-descriptors.js";
 
 export * from "./control-plane-thread-stream.js";
 export * from "./control-plane-timeline.js";
+export * from "./control-plane-browser-path.js";

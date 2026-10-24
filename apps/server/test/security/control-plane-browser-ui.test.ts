@@ -41,9 +41,23 @@ it("admits authenticated personal shell assets without admitting administrative 
     expect(loginRedirect.headers.get("location")).toBe(
       "/control-plane/user/login",
     );
+    const deepRedirect = await app.request(
+      "/projects/p/threads/t?view=history",
+      {
+        headers: { accept: "text/html" },
+      },
+    );
+    expect(deepRedirect.status).toBe(303);
+    expect(deepRedirect.headers.get("location")).toBe(
+      "/control-plane/user/login?returnTo=%2Fprojects%2Fp%2Fthreads%2Ft%3Fview%3Dhistory",
+    );
     const headers = { cookie: `bb_user_session=${token}` };
     for (const path of [
       "/control-plane/app",
+      "/projects/own-project",
+      "/projects/own-project/threads/own-thread",
+      "/threads/own-thread",
+      "/projects/foreign-project/threads/foreign-thread",
       "/assets/main-123.js",
       "/assets/main-123.css",
       "/favicon-32x32.png",

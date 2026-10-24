@@ -608,3 +608,17 @@ Git config. `bb settings general machineGitCredentialsEnabled false` (the
 automatic GH_TOKEN switch in Settings → Environment variables) stops forwarding
 the server's gh credentials; `true` enables it again. This does not log the
 server out or suppress an explicit custom GH_TOKEN.
+
+Personal browser links use `/projects/<project-id>/threads/<thread-id>#msg=<sequence>`;
+project pages use `/projects/<project-id>` and `/threads/<thread-id>` also resolves
+an owned conversation. Native copy-message links use these same routes. The
+browser fetches selected objects through the personal API, including when they
+are outside the currently loaded sidebar page. Certificate login returns only
+to validated same-origin personal shell paths; a shell response grants no access
+to a thread. Foreign or mismatched project/thread links cannot display history or
+send messages. Browser Back/Forward follows URL selection.
+
+`bb server access threads link <thread-id> [--message <sequence>] --json` prints
+`{ "url": "..." }` without opening a browser. The personal SDK equivalent is
+`threads.browserUrl(id, { messageSeq, signal })`. Both first read the current
+authorized thread to obtain its actual project, and never put credentials in URLs.

@@ -40,6 +40,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Open a separate personal browser entry with native sidebar navigation, paginated own project/thread metadata and access-loss handling; leave administrative bootstrap and plugin frontends closed.
 - [x] Render owned conversations through the native timeline and scroll surface, personal SSE, older history and deferred tool details; retain the limited API boundary.
 - [x] Connect the native composer and approval/question forms to personal start/send/queue/stop/resolve operations, select approved profiles for new threads and read pinned profiles through SDK/CLI.
+- [x] Support personal project/thread/message URLs, URL-driven sidebar selection and authorized SDK/CLI browser links; validate certificate-login return destinations. Production-browser verification remains separate.
 - [ ] Use this fork's native UI for both roles. Keep projects/threads/composer/timeline/model controls for users; remove the right workspace panel and administrative controls in user mode.
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
@@ -880,3 +881,38 @@ DOM tests exercise the real editor, Enter, native approval/question forms,
 queue/stop, StrictMode cancellation and failed-delivery draft retention. These
 are not production-browser rendering tests. See
 `control-plane-phase-22-verification.json`.
+
+## Twenty-third increment: personal conversation links
+
+Personal navigation now follows canonical native project/thread URLs, including
+`/threads/<id>` and `#msg=<sequence>`. New conversations update the URL; Back and
+Forward restore selection. The selected project and thread are read directly
+through the personal SDK, even outside the loaded sidebar pages. Their actual
+relationship is checked before mounting history or the composer. Pending,
+revoked, foreign, inconsistent and invalid-message destinations do not expose
+conversation content or enable sends. Selected authorized objects join sidebar
+navigation without a global catalog fetch.
+
+Authenticated personal GET/HEAD requests can read the same production shell at
+these canonical paths. The shell contains no object data and does not establish
+ownership; all data/actions still require the limited API. Anonymous HTML reads
+redirect to certificate login with a bounded return destination. GET and POST
+reject duplicate/unknown return fields, external origins and non-personal paths.
+The login form posts to its current document URL. Preservation of message
+fragments through browser redirects and login is pending real-browser testing.
+
+`threads.browserUrl(id, { messageSeq, signal })` and
+`bb server access threads link <id> [--message <sequence>] --json` first read the
+current authorized thread, derive its actual project and return a credential-free
+URL. The command does not launch a browser. Native copied message links use the
+same URL shape.
+
+Verification: 52 selected app/native timeline/composer tests, 12 migrated-SQLite
+server security tests, 2 SDK transport tests, 1 path-contract test and 46 CLI
+registration/session/error tests pass. Strict app/server/SDK/CLI typechecks and
+changed-file lint/format checks pass without lint warnings. The full Docker
+build/deployment passes all 61 tasks, proves canonical shells use the identical
+protected production bundle and exercises the new link command against actual
+personal Qwen conversations. Rendering, fragment inheritance and native anchor
+scrolling in a production browser remain unverified at this increment. See
+`control-plane-phase-23-verification.json`.

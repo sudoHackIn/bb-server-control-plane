@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { afterEach, expect, it } from "vitest";
 import { PersonalWorkspace } from "./PersonalWorkspace";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { installPluginRuntime } from "@/lib/plugin-frontend";
 
 const queries: QueryClient[] = [];
@@ -62,7 +62,16 @@ const bootstrap = {
     canUseTerminals: false,
   },
 };
-function mount(fetcher: typeof fetch) {
+function HistoryControls() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button onClick={() => navigate(-1)}>History back</button>
+      <button onClick={() => navigate(1)}>History forward</button>
+    </>
+  );
+}
+function mount(fetcher: typeof fetch, entry = "/control-plane/app") {
   installPluginRuntime();
   const query = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -74,7 +83,8 @@ function mount(fetcher: typeof fetch) {
   });
   return render(
     <QueryClientProvider client={query}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[entry]}>
+        <HistoryControls />
         <PersonalWorkspace client={client} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -192,4 +202,88 @@ it("hides the workspace if a subsequent authenticated bootstrap fails", async ()
   await queries[0]?.invalidateQueries({ queryKey: ["personal", "bootstrap"] });
   await screen.findByRole("alert");
   expect(screen.queryByRole("button", { name: "Project a" })).toBeNull();
+});
+
+it.each(["/projects/off-page/threads/direct", "/threads/direct"])(
+  "opens authorized direct links outside the loaded navigation pages: %s",
+  async (entry) => {
+    const paths: string[] = [];
+    mount(async (input) => {
+      const path = new URL(input.toString()).pathname;
+      paths.push(path);
+      if (path.endsWith("/bootstrap")) return Response.json(bootstrap);
+      if (path.endsWith("/threads/direct"))
+        return Response.json(thread("direct", "off-page"));
+      if (path.endsWith("/projects/off-page"))
+        return Response.json(project("off-page"));
+      if (path.endsWith("/threads"))
+        return Response.json({ threads: [], nextCursor: null });
+      return Response.json({ error: "not_found" }, { status: 404 });
+    }, entry);
+    await screen.findByRole("heading", { name: "Thread direct" });
+    expect(
+      screen
+        .getByRole("button", { name: "Project off-page" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen
+        .getByRole("button", { name: "Thread direct" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(paths.every((path) => path.startsWith("/control-plane/user/"))).toBe(
+      true,
+    );
+  },
+);
+
+it.each([
+  "/projects/a/threads/foreign",
+  "/projects/a/threads/mismatched",
+  "/projects/a/threads/owned#msg=9007199254740992",
+])(
+  "hides conversation and composer for denied or inconsistent links: %s",
+  async (entry) => {
+    const paths: string[] = [];
+    mount(async (input) => {
+      const path = new URL(input.toString()).pathname;
+      paths.push(path);
+      if (path.endsWith("/bootstrap")) return Response.json(bootstrap);
+      if (path.endsWith("/projects/a")) return Response.json(project("a"));
+      if (path.endsWith("/threads/mismatched"))
+        return Response.json(thread("mismatched", "b"));
+      if (path.endsWith("/threads/owned"))
+        return Response.json(thread("owned", "a"));
+      if (path.endsWith("/threads"))
+        return Response.json({ threads: [], nextCursor: null });
+      return Response.json({ error: "not_found" }, { status: 404 });
+    }, entry);
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("heading", { name: /Thread/ })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(
+      paths.some((path) =>
+        /\/(timeline|stream|profile|interactions)$/u.test(path),
+      ),
+    ).toBe(false);
+  },
+);
+
+it("restores project selection with browser history without relying on prior component selection", async () => {
+  mount(async (input) => {
+    const path = new URL(input.toString()).pathname;
+    if (path.endsWith("/bootstrap")) return Response.json(bootstrap);
+    if (path.endsWith("/projects/a")) return Response.json(project("a"));
+    if (path.endsWith("/projects/b")) return Response.json(project("b"));
+    if (path.endsWith("/threads"))
+      return Response.json({ threads: [], nextCursor: null });
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }, "/projects/a");
+  await screen.findByRole("heading", { name: "Project a" });
+  fireEvent.click(screen.getByRole("button", { name: "Project b" }));
+  await screen.findByRole("heading", { name: "Project b" });
+  fireEvent.click(screen.getByRole("button", { name: "History back" }));
+  await screen.findByRole("heading", { name: "Project a" });
+  fireEvent.click(screen.getByRole("button", { name: "History forward" }));
+  await screen.findByRole("heading", { name: "Project b" });
 });

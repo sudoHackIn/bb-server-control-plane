@@ -94,6 +94,28 @@ export function registerServerThreadCommands(
         ),
       );
   threads
+    .command("link <thread-id>")
+    .description("Print an authorized personal conversation browser URL")
+    .option("--json", "Print machine-readable JSON output")
+    .option("--message <sequence>", "Link to a message sequence")
+    .action(
+      action(async (id: string, options: { message?: string }) =>
+        output({
+          url: await client().threads.browserUrl(id, {
+            messageSeq:
+              options.message === undefined
+                ? undefined
+                : z.coerce
+                    .number()
+                    .int()
+                    .nonnegative()
+                    .max(Number.MAX_SAFE_INTEGER)
+                    .parse(options.message),
+          }),
+        }),
+      ),
+    );
+  threads
     .command("timeline <thread-id>")
     .option("--json", "Print machine-readable JSON output")
     .option(

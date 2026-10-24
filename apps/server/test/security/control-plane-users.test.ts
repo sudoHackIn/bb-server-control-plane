@@ -440,6 +440,35 @@ describe("control-plane personal authorization", () => {
             })
           ).status,
         ).toBe(400);
+        for (const query of [
+          "returnTo=https%3A%2F%2Fevil.example",
+          "returnTo=%2F%2Fevil.example",
+          "returnTo=%2Fapi%2Fv1%2Fthreads",
+          "returnTo=%2Fprojects%2Fp&returnTo=%2Fprojects%2Fq",
+          "unexpected=1",
+        ]) {
+          for (const method of ["GET", "POST"])
+            expect(
+              (
+                await send(`${browserPath}?${query}`, {
+                  user: "alice",
+                  method,
+                  headers: { origin },
+                })
+              ).status,
+            ).toBe(400);
+        }
+        const destination = "/projects/p/threads/t#msg=42";
+        const linkedLogin = await send(
+          `${browserPath}?returnTo=${encodeURIComponent(destination)}`,
+          {
+            user: "alice",
+            method: "POST",
+            headers: { origin },
+          },
+        );
+        expect(linkedLogin.status).toBe(303);
+        expect(linkedLogin.headers.location).toBe(destination);
         const adminLogin = await send("/control-plane/login", {
           body: { login: "admin", password: "long-test-only-password" },
         });

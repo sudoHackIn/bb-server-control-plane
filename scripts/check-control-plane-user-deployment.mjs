@@ -1100,6 +1100,15 @@ async function verifyBrowserDeployment({
   assert.ok(
     !shell.headers["content-security-policy"]?.includes("default-src 'none'"),
   );
+  for (const path of [
+    "/projects/direct-project",
+    "/projects/direct-project/threads/direct-thread",
+    "/threads/direct-thread",
+  ]) {
+    const direct = await send(path, { headers: { cookie: alice.value } });
+    assert.equal(direct.status, 200);
+    assert.equal(direct.text, shell.text);
+  }
   const asset = /src="(\/assets\/[^"]+\.js)"/u.exec(shell.text)?.[1];
   assert.ok(asset, "Missing compiled native entry");
   const entry = await send(asset, { headers: { cookie: alice.value } });
@@ -1241,6 +1250,7 @@ async function verifyBrowserDeployment({
   return {
     verification: {
       browserContextAndExpectedIdentityHeader: true,
+      personalDeepLinkShellsUseSameProtectedProductionBundle: true,
       browserCacheEpochBoundToCredential: true,
       certificateBrowserSession: true,
       cookieWriteOriginRequired: true,

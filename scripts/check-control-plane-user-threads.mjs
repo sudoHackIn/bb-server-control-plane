@@ -271,6 +271,19 @@ export function createUserThreadFixture({ db, users }) {
           result.text,
           new RegExp(`Personal ${user.login} completed`, "u"),
         );
+        const browserLink = await command(user.login, [
+          "threads",
+          "link",
+          thread.id,
+          "--message",
+          "42",
+          "--json",
+        ]);
+        assert.equal(
+          browserLink.url,
+          `https://127.0.0.1:8080/projects/${thread.projectId}/threads/${thread.id}#msg=42`,
+        );
+        assert.ok(!browserLink.url.includes("agt_"));
         const newer = await sendAdmin(
           `/control-plane/admin/profiles/${profile.body.profile.id}/versions`,
           {
@@ -752,6 +765,7 @@ export function createUserThreadFixture({ db, users }) {
         personalEventsAndResults: true,
         personalNativeTimelineAndToolDetailsCli: true,
         personalPinnedProfileCliAfterNewVersion: true,
+        personalBrowserLinkCliUsesAuthorizedThread: true,
         personalCanonicalReplayAndLiveNativeTimeline: true,
         personalStreamCursorReconnect: true,
         personalRealCliStreamCancellationReleasesSlots: true,
