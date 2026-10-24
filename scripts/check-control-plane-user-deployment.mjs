@@ -1005,7 +1005,7 @@ async function verifyBrowserDeployment({
     headers: { origin, cookie: oldAdmin, authorization: "Bearer unrelated" },
   });
   assert.equal(login.status, 303);
-  assert.equal(login.headers.location, "/control-plane/user");
+  assert.equal(login.headers.location, "/control-plane/app");
   assert.equal(login.headers["clear-site-data"], '"cache", "storage"');
   const alice = cookie(login, "bb_user_session");
   const identity = JSON.parse(
@@ -1079,11 +1079,7 @@ async function verifyBrowserDeployment({
     (await send("/api/v1/projects", { headers: { cookie: oldAdmin } })).status,
     401,
   );
-  for (const path of [
-    "/api/v1/projects",
-    "/api/v1/threads",
-    "/assets/private.js",
-  ])
+  for (const path of ["/api/v1/projects", "/api/v1/threads"])
     assert.equal(
       (await send(path, { headers: { cookie: alice.value } })).status,
       401,
@@ -1092,6 +1088,41 @@ async function verifyBrowserDeployment({
     (
       await send("/control-plane/user", {
         headers: { cookie: alice.value, authorization: "Bearer invalid" },
+      })
+    ).status,
+    401,
+  );
+  const shell = await send("/control-plane/app", {
+    headers: { cookie: alice.value },
+  });
+  assert.equal(shell.status, 200);
+  assert.match(shell.text, /<div id="root"><\/div>/u);
+  assert.ok(
+    !shell.headers["content-security-policy"]?.includes("default-src 'none'"),
+  );
+  const asset = /src="(\/assets\/[^"]+\.js)"/u.exec(shell.text)?.[1];
+  assert.ok(asset, "Missing compiled native entry");
+  const entry = await send(asset, { headers: { cookie: alice.value } });
+  assert.equal(entry.status, 200);
+  const personalChunk = /personal-main-[A-Za-z0-9_-]+\.js/u.exec(
+    entry.text,
+  )?.[0];
+  assert.ok(personalChunk, "Missing separate personal entry");
+  const personal = await send(`/assets/${personalChunk}`, {
+    headers: { cookie: alice.value },
+  });
+  assert.equal(personal.status, 200);
+  assert.ok(personal.text.includes("Your workspace"));
+  assert.equal((await send(asset)).status, 401);
+  assert.equal(
+    (await send("/assets/private.js", { headers: { cookie: alice.value } }))
+      .status,
+    404,
+  );
+  assert.equal(
+    (
+      await send("/plugins/composer/app.js", {
+        headers: { cookie: alice.value },
       })
     ).status,
     401,
@@ -1217,7 +1248,8 @@ async function verifyBrowserDeployment({
       personalBrowserBootstrapScoped: true,
       browserLogoutRevokesCredential: true,
       browserSessionSurvivesRestart: true,
-      userBrowserCannotUseNativeApiOrAssets: true,
+      userBrowserCannotUseNativeApiOrPlugins: true,
+      personalShellAndCompiledAssets: true,
       realBrowserUrlAndBootstrapCli: true,
     },
     async afterRestart() {

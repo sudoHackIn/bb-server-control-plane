@@ -1337,20 +1337,27 @@ or transport failure. Native BB WebSocket access remains administrative.
 Browser users open `/control-plane/user/login` over the configured client-CA TLS
 listener and submit the empty certificate sign-in form with a matching Origin.
 The verified client certificate CN selects the registry identity. The response
-sets a 24-hour HttpOnly/Secure/SameSite=Strict cookie and redirects to the personal
-identity endpoint. Cookie-authenticated mutations require the configured Origin;
+sets a 24-hour HttpOnly/Secure/SameSite=Strict cookie and redirects to
+`/control-plane/app`, the personal navigation screen. Cookie-authenticated
+mutations require the configured Origin;
 explicit invalid Authorization headers never fall back to cookies. Browser role
 switches retire the previous credential, including the opposite administrative
 or personal browser session. Login/logout responses emit `Clear-Site-Data` for
-cache/storage. Application memory and persistent cache partitioning remain pending;
-this header alone is not proof of complete native UI isolation.
+cache/storage. Core caches use the identity/session scope described below;
+approved plugin cache integration remains pending. This header alone is not
+proof of complete native UI isolation.
 
 The personal SDK's `browserLoginUrl()` and `bb server access browser --json`
 return the certificate login URL. `bootstrap()` / `server access bootstrap`
 read source-filtered identity, project/thread/profile pages and capabilities.
-Each navigation page is bounded to 50 with a separate list cursor. No browser
-credential enables native UI assets, full BB API, raw WebSocket or plugin
-installation in this increment. Browser cookies and PKCE CLI/plugin tokens
+Each navigation page is bounded to 50 with a separate list cursor. The personal
+web entry reuses native sidebar components to browse accessible projects and
+owned thread summaries, with additional pages fetched through this same SDK.
+It loads a separate personal module without administrative bootstrap, plugin
+frontends, settings, terminals or a right workspace panel. Message timeline,
+composer and model controls remain a subsequent integration step. Authenticated
+users can read compiled static assets; this does not enable the full BB API,
+raw WebSocket or plugin installation. Browser cookies and PKCE CLI/plugin tokens
 share the existing hashed-session table and server-side revocation checks.
 
 The native web entry now reads `/control-plane/browser-context` before importing

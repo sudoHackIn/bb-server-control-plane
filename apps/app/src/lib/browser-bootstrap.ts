@@ -121,6 +121,7 @@ async function readContext(): Promise<ControlPlaneBrowserContext> {
 }
 export async function startBrowserApplication(
   loadNative: () => Promise<() => () => void>,
+  loadPersonal?: () => Promise<() => () => void>,
 ): Promise<() => void> {
   const root = document.getElementById("root");
   if (!root) throw new Error("Missing application root");
@@ -151,10 +152,13 @@ export async function startBrowserApplication(
     "cacheEpoch" in context ? context.cacheEpoch : null,
   );
   rememberIdentity(marker);
-  if (context.mode === "anonymous" || context.mode === "user") {
+  if (
+    context.mode === "anonymous" ||
+    (context.mode === "user" && !loadPersonal)
+  ) {
     window.location.replace(
       context.mode === "user"
-        ? "/control-plane/user"
+        ? "/control-plane/app"
         : previous?.startsWith("user:")
           ? "/control-plane/user/login"
           : "/control-plane/login",
@@ -270,7 +274,9 @@ export async function startBrowserApplication(
     void check();
   }, 5000);
   try {
-    const mount = await loadNative();
+    const mount = await (context.mode === "user" && loadPersonal
+      ? loadPersonal()
+      : loadNative());
     const latest = await readContext();
     if (stopped) return stop;
     if (markerFor(latest) !== marker) {

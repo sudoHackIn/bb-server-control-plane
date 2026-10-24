@@ -107,7 +107,7 @@ it("does not import the full administrative app for a personal or anonymous iden
   const load = vi.fn();
   stop = await startBrowserApplication(load);
   expect(load).not.toHaveBeenCalled();
-  expect(replace).toHaveBeenCalledWith("/control-plane/user");
+  expect(replace).toHaveBeenCalledWith("/control-plane/app");
 });
 it("drops an administrative load if the session changes while its module is loading", async () => {
   let calls = 0;
@@ -191,4 +191,33 @@ it("hides portal content and the previous title while a restored page awaits ide
   await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
   expect(portal.isConnected).toBe(false);
   expect(document.title).toBe("BB");
+});
+
+it("loads only the personal application after both identity checks and disposes it on a role change", async () => {
+  let mode = "user";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json(
+        mode === "user"
+          ? {
+              mode,
+              identity: "11111111-1111-4111-8111-111111111111",
+              login: "alice",
+              cacheEpoch: "a".repeat(64),
+            }
+          : { mode: "anonymous" },
+      ),
+    ),
+  );
+  const { startBrowserApplication } = await import("./browser-bootstrap");
+  const native = vi.fn();
+  const dispose = vi.fn();
+  const personal = vi.fn(async () => () => dispose);
+  stop = await startBrowserApplication(native, personal);
+  expect(native).not.toHaveBeenCalled();
+  expect(personal).toHaveBeenCalledOnce();
+  mode = "anonymous";
+  realWindow.dispatchEvent(new Event("pageshow"));
+  await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
 });

@@ -11,6 +11,7 @@ import type { WebSocket, WebSocketServer } from "ws";
 import type { ControlPlaneConfig } from "./config.js";
 import { verifyAdminPassword } from "./credentials.js";
 import { isUserAuthPath, type ControlPlaneUserAccess } from "./user-access.js";
+import { isPersonalBrowserUiPath } from "./browser-ui.js";
 
 export type ControlPlanePrincipal =
   | { kind: "admin"; login: string }
@@ -193,6 +194,41 @@ export function createControlPlaneAccess(
           path !== "/internal/hosts/enroll-key"
         )
           return next();
+        if (
+          users &&
+          !session(context) &&
+          isPersonalBrowserUiPath(path, context.req.method)
+        ) {
+          const identity = users.authenticate(context);
+          if (!identity) {
+            if (
+              path === "/control-plane/app" &&
+              context.req.method === "GET" &&
+              context.req.header("authorization") === undefined &&
+              context.req.header("accept")?.includes("text/html")
+            )
+              return context.redirect("/control-plane/user/login", 303);
+            return denied(context);
+          }
+          const origin = context.req.header("origin");
+          if (origin !== undefined && !safeOrigin(context))
+            return context.json({ error: "forbidden_origin" }, 403);
+          const expected = expectedBrowserIdentity(context);
+          const epoch = context.req.header("x-bb-client-session");
+          if (
+            (expected !== undefined &&
+              expected !== `user:${identity.user.id}`) ||
+            (epoch !== undefined &&
+              epoch !== tokenKey(`browser-cache:${identity.digest}`))
+          )
+            return context.json({ error: "identity_changed" }, 403);
+          context.header("cache-control", "no-store");
+          context.header("x-content-type-options", "nosniff");
+          return principals.run(
+            { kind: "user", userId: identity.user.id },
+            next,
+          );
+        }
         const value = session(context);
         if (!value) {
           if (
@@ -231,6 +267,7 @@ export function createControlPlaneAccess(
       app.use("/control-plane/*", async (context, next) => {
         context.header("cache-control", "no-store");
         context.header("x-content-type-options", "nosniff");
+        if (context.req.path === "/control-plane/app") return next();
         context.header(
           "content-security-policy",
           "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",

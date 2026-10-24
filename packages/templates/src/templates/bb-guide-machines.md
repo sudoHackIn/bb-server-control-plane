@@ -234,6 +234,9 @@ the empty sign-in form. The server derives the login from the verified CN;
 body identity overrides are rejected. The browser receives a 24-hour HttpOnly,
 Secure, SameSite=Strict cookie. No token is returned in the page or URL.
 `createControlPlaneClient(...).browserLoginUrl()` returns the same URL.
+Successful sign-in redirects to `/control-plane/app`: native sidebar navigation
+for personal projects and thread summaries, with paginated limited SDK reads.
+Timeline/composer/model controls are not integrated into this screen yet.
 Switching browser identities revokes the previous browser credential. Switching
 between administrator and personal sign-in retires the opposite browser session.
 PKCE-issued CLI/plugin credentials remain separate.
@@ -242,11 +245,12 @@ PKCE-issued CLI/plugin credentials remain separate.
 identity, capabilities and the first project/thread/profile navigation pages.
 Each page contains at most 50 records and an independent `nextCursor`; continue
 through the corresponding list command. Reads use current project/profile
-grants and thread ownership. The full native UI, raw BB API and WebSocket are
-not opened by this browser cookie yet. Browser writes require a matching Origin;
+grants and thread ownership. The personal screen can load compiled static assets;
+the full administrative UI, raw BB API and WebSocket remain closed. Browser
+writes require a matching Origin;
 invalid explicit Bearer credentials never fall back to a cookie. Sign-in/out
-responses request browser cache/storage clearing; native-app cache isolation
-remains a separate integration stage.
+responses request browser cache/storage clearing; approved plugin persistence
+and rendered personal chat remain separate integration stages.
 
 `bb server access browser-context --json` and the personal SDK's
 `browserContext()` read the current UI mode (`standalone`, `anonymous`, `admin`
@@ -262,7 +266,7 @@ are hidden until their identity is revalidated. Same-origin application requests
 assert their expected identity/session through `x-bb-client-identity` and
 `x-bb-client-session`; existing credentials
 still determine authority. Standalone BB keeps its preexisting local settings.
-Personal native UI and legacy plugin-owned persistence remain separate stages.
+Personal chat controls and legacy plugin-owned persistence remain separate stages.
 
 `bb server access profiles list [--limit <count>] [--cursor <id>]` lists your
 permitted agent profiles. `profiles get <profile-id> [--version <version-id>]`

@@ -4,6 +4,7 @@ import "./app.css";
 let dispose: (() => void) | undefined;
 void startBrowserApplication(
   async () => (await import("./native-main")).mountNativeApplication,
+  async () => (await import("./personal-main")).mountPersonalApplication,
 )
   .then((stop) => {
     dispose = stop;

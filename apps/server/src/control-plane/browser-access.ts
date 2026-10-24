@@ -88,7 +88,7 @@ export function createControlPlaneBrowserAccess({
           maxAge: lifetimeMs / 1000,
         });
         context.header("clear-site-data", '"cache", "storage"');
-        return context.redirect("/control-plane/user", 303);
+        return context.redirect("/control-plane/app", 303);
       });
     },
   };

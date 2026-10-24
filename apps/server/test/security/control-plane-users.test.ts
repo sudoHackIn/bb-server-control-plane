@@ -488,7 +488,7 @@ describe("control-plane personal authorization", () => {
           },
         });
         expect(webLogin.status).toBe(303);
-        expect(webLogin.headers.location).toBe("/control-plane/user");
+        expect(webLogin.headers.location).toBe("/control-plane/app");
         expect(webLogin.headers["clear-site-data"]).toBe('"cache", "storage"');
         const aliceCookie = cookie(webLogin, "bb_user_session");
         for (const attribute of [

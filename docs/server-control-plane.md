@@ -37,6 +37,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
 - [x] Gate native web initialization on verified browser context, namespace core caches/drafts/recordings by actor and session epoch, revalidate returning pages, and reject frontend requests bound to an old actor. Legacy plugin persistence and rendered personal UI remain pending.
 - [ ] Clear account-scoped browser caches and drafts when switching identities or signing out.
+- [x] Open a separate personal browser entry with native sidebar navigation, paginated own project/thread metadata and access-loss handling; leave administrative bootstrap and plugin frontends closed.
 - [ ] Use this fork's native UI for both roles. Keep projects/threads/composer/timeline/model controls for users; remove the right workspace panel and administrative controls in user mode.
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
@@ -734,3 +735,44 @@ and UID isolation checks. DOM tests cover portal/title hiding during history
 restore; this is not a production-browser rendering verification. Personal UI
 and legacy plugin persistence remain open. See
 `control-plane-phase-19-verification.json`.
+
+## Twentieth increment: personal native sidebar navigation
+
+Certificate browser sign-in now opens `/control-plane/app`. The existing web
+entry verifies identity/session epoch, lazily selects the separate personal
+application and verifies context again before mounting. It never loads the
+full administrative application for a user. Both modes retain the existing
+identity-change, history-restore and cleanup gate.
+
+The personal entry composes the native responsive Sidebar components, theme and
+frame geometry. Projects remain on the left with their owned thread summaries;
+there is no right workspace, terminal, settings page or plugin frontend boot.
+It reuses the personal SDK's bootstrap and source-filtered project/thread list
+and detail operations. Projects and threads have explicit pagination, and thread
+lists are queried for the selected project. Queries have a separate ephemeral
+client, abort on disposal and revalidate periodically. Late responses for a
+previous project cannot populate a different selection. A failed authentication,
+project or thread refresh hides the affected data instead of retaining stale
+private details. Sign-out uses the existing limited logout endpoint.
+
+The access boundary admits only the exact personal shell, compiled single-level
+asset paths and named application icons/manifest for an authenticated identity.
+Missing credentials, invalid explicit Bearer, cross-origin requests and stale
+actor/session assertions remain denied. This serves code assets without opening
+native APIs, raw WebSocket, plugin asset routes or arbitrary shell fallback
+paths. The identity JSON endpoint is unchanged. SDK and CLI readers remain the
+same paths used by this navigation; the existing browser-login URL now reaches
+this screen after certificate sign-in.
+
+This increment is navigation and metadata only. Native timeline, composer and
+model controls remain open work, as do approved plugin frontend persistence and
+production-browser rendering verification. The complete personal UI checklist
+is deliberately not checked off.
+
+Verification: 18 selected app tests and 10 server security tests pass. Strict
+app/server typechecks, changed-file lint and formatting checks pass. The full
+Docker deployment builds both native entries and fetches the compiled personal
+module over TLS using a certificate-issued browser cookie. It also
+verifies anonymous asset denial, personal API isolation and all previous
+Qwen/UID/HOME/approval/stream/restart checks. These are not production-browser
+rendering tests. See `control-plane-phase-20-verification.json`.
