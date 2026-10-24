@@ -1124,6 +1124,7 @@ export function createApp(
     sdkFetch,
     sdkWebsocket: privateRealtime?.websocket,
     closeWebSockets: () => {
+      controlPlane?.close();
       privateRealtime?.close();
       return closeWebSocketServer({
         forceCloseAfterMs: WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS,

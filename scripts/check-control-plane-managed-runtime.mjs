@@ -401,7 +401,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
           .get(threadId);
         if (row?.status === "error")
           throw new Error(
-            `Managed thread failed: ${JSON.stringify(db.prepare("SELECT data FROM events WHERE thread_id = ? ORDER BY seq DESC LIMIT 6").all(threadId))} ${log}`,
+            `Managed thread failed: ${JSON.stringify(db.prepare("SELECT data FROM events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 6").all(threadId))} ${log}`,
           );
         return row?.status === "idle";
       }, `Qwen ${user.login} turn`);
@@ -731,7 +731,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       daemonDescendantsExitAfterParentDeath: true,
       crashRecoveryRetainsIdentityAndThreads: true,
       userThreadApi: true,
-      userLiveTimelineStream: false,
+      userLiveTimelineStream: true,
     };
   } finally {
     if (child?.exitCode === null && child.signalCode === null) {

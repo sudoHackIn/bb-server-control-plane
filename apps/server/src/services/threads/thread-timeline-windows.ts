@@ -82,7 +82,20 @@ export function resolveThreadCompletedTurnDisplay(
   );
 }
 
+const windowsByHub = new WeakMap<
+  ThreadTimelineWindowDeps["hub"],
+  ThreadTimelineWindows
+>();
 export function createThreadTimelineWindows(
+  deps: ThreadTimelineWindowDeps,
+): ThreadTimelineWindows {
+  const existing = windowsByHub.get(deps.hub);
+  if (existing) return existing;
+  const windows = createThreadTimelineWindowsForHub(deps);
+  windowsByHub.set(deps.hub, windows);
+  return windows;
+}
+function createThreadTimelineWindowsForHub(
   deps: ThreadTimelineWindowDeps,
 ): ThreadTimelineWindows {
   const timelineCache = createThreadTimelineCache();

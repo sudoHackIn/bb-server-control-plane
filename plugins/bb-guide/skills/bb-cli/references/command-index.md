@@ -114,6 +114,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access threads send`
 - `bb server access threads stop`
 - `bb server access threads events`
+- `bb server access threads stream`
+- `bb server access threads timeline`
 - `bb server access threads result`
 - `bb server access threads interactions list`
 - `bb server access threads interactions approve`

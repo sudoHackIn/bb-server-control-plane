@@ -112,6 +112,7 @@ export function createControlPlaneUserAccess(
     return value ? { ...value, digest: digest(token) } : null;
   };
   return {
+    close: () => threads?.close(),
     authenticate,
     install(app: Hono) {
       installControlPlaneProfileRoutes(app, registry.db, authenticate);

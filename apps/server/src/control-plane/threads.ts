@@ -1,3 +1,5 @@
+import { createControlPlaneThreadStreams } from "./thread-stream.js";
+import { createThreadTimelineWindows } from "../services/threads/thread-timeline-windows.js";
 import {
   ControlPlaneThreadError,
   controlPlaneProfileVersions,
@@ -29,6 +31,51 @@ import {
 import { resolveThreadHostCommandEnvironment } from "../services/threads/thread-command-environment.js";
 
 export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
+  const streams = createControlPlaneThreadStreams(deps.hub);
+  const windows = createThreadTimelineWindows(deps);
+  function snapshot(userId: string, id: string) {
+    const { thread } = read(userId, id);
+    return {
+      type: "thread-timeline" as const,
+      target: {
+        kind: "thread-timeline" as const,
+        threadId: id,
+        segmentLimit: 20,
+        deferContent: true,
+      },
+      afterSequence: null,
+      timeline: windows.read(
+        thread,
+        {
+          deferContent: true,
+          includeNestedRows: false,
+          page: { kind: "latest", segmentLimit: 20 },
+          summaryOnly: false,
+        },
+        undefined,
+      ),
+    };
+  }
+  function events(
+    userId: string,
+    id: string,
+    options: { after: number; limit: number },
+  ) {
+    read(userId, id);
+    const rows = listThreadEventRows(deps.db, {
+      threadId: id,
+      afterSeq: options.after,
+      order: "asc",
+      limit: options.limit + 1,
+    });
+    const selected = rows.slice(0, options.limit);
+    return {
+      events: selected,
+      cursor: selected.at(-1)?.seq ?? options.after,
+      hasMore: rows.length > options.limit,
+      maxSequence: getLatestThreadSequence(deps.db, { threadId: id }),
+    };
+  }
   function read(userId: string, id: string) {
     const row = getControlPlaneThread(deps.db, userId, id);
     const thread = row ? getThread(deps.db, id) : null;
@@ -56,6 +103,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
     };
   }
   return {
+    close: () => streams.close(),
     get,
     list(
       userId: string,
@@ -158,25 +206,31 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       );
       return { ok: true as const };
     },
-    events(
+    events,
+    timeline(userId: string, id: string) {
+      return snapshot(userId, id).timeline;
+    },
+    stream(
       userId: string,
       id: string,
-      options: { after: number; limit: number },
+      options: {
+        after: number;
+        signal: AbortSignal;
+        authorized: () => boolean;
+      },
     ) {
       read(userId, id);
-      const rows = listThreadEventRows(deps.db, {
+      return streams.open({
+        userId,
         threadId: id,
-        afterSeq: options.after,
-        order: "asc",
-        limit: options.limit + 1,
+        ...options,
+        authorized: () => {
+          read(userId, id);
+          return options.authorized();
+        },
+        events: (after) => events(userId, id, { after, limit: 32 }),
+        snapshot: () => snapshot(userId, id),
       });
-      const selected = rows.slice(0, options.limit);
-      return {
-        events: selected,
-        cursor: selected.at(-1)?.seq ?? options.after,
-        hasMore: rows.length > options.limit,
-        maxSequence: getLatestThreadSequence(deps.db, { threadId: id }),
-      };
     },
     result(userId: string, id: string) {
       const thread = get(userId, id);

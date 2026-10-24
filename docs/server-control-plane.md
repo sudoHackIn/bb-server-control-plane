@@ -26,8 +26,9 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
-- [ ] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection. A user token never grants access to the full BB API.
+- [x] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection through approved profile versions. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
+- [x] Stream personal persisted events with exclusive cursor replay and native BB timeline snapshots/updates; recheck token/project authority on every frame and idle intervals, limit buffers/connections, and release subscriptions on cancellation. Global lists/search/bootstrap/user UI still require separate scoping.
 - [ ] Filter lists, search, bootstrap data and events at their data sources; verify subscription ownership and access revocation.
 - [x] Gate managed daemon plugin-tool invocations by current project/profile permissions, filter their contributed tool catalog and propagate the persisted user principal; deny unscoped private user SDK calls. The Qwen MCP bridge and scoped SDK adapter remain pending.
 - [ ] Carry verified user/run context through plugin calls and child creation. Plugin identity, parentThreadId and origin metadata are not authentication.
@@ -579,3 +580,46 @@ before side effects and same-Qwen-session continuation after BB restart. The
 backend is the local deterministic fixture with pinned stock Qwen CLI, not a
 verified corporate fork or external model. See
 `control-plane-phase-16-verification.json`.
+
+## Seventeenth increment: personal native timeline and live replay
+
+Personal clients can now open `/control-plane/user/threads/:id/stream` with an
+exclusive persisted event sequence. The authenticated SSE response replays
+canonical BB event rows, supplies a full native timeline snapshot, emits a
+`ready` marker after the initial replay, and forwards subsequent native BB
+changed/timeline frames. It subscribes only to that thread's detail and fixed
+20-segment deferred-content timeline targets. The same native timeline builder
+and hub power both roles; window instances are shared per hub so registering
+the personal facade does not install duplicate projection listeners.
+
+`createControlPlaneClient(...).threads.stream` is an async iterator; the CLI
+`bb server access threads stream --after ... --json` prints JSON lines and
+cancels its subscription on Ctrl-C/SIGTERM. Both also expose a latest-window
+`timeline` read. Live frames retain native BB shapes and are not durable replay
+records. Reconnection uses the last consumed canonical `event.seq` and receives
+a new full timeline snapshot. A mismatched native delta baseline is replaced
+with a full snapshot; no consumer must apply a delta to an assumed baseline.
+This does not implement exactly-once delivery, automatic reconnect, older
+window/content pagination, global subscriptions or the user UI.
+
+Every emitted frame checks current project ownership/access and token validity;
+an idle one-second check closes revoked, expired or disabled identities. Profile
+revocation preserves already-authorized history reads. Transport cancellation
+and authority loss unregister both native hub targets and release the slot.
+Limits are four streams per user and 64 per server, a 64 KiB stream high-water
+mark, at most 2 MiB of pending live frames and 16 MiB per frame. Slow clients are
+closed rather than accumulating unlimited data. Heartbeat comments keep idle
+connections alive. Bearer credentials never enter stream URLs. The full native
+BB WebSocket and private user SDK/realtime remain closed.
+
+Verification: 129 SDK tests, 166 selected server security/tool/runtime-config/
+dispatch-hook tests, 26 native timeline push/delta/scrollback tests and 12 CLI
+registration/JSON/error-output checks pass. Strict server/CLI/SDK/contract
+typechecks, changed-file lint/format and diff checks pass. The full fork Docker
+deployment verifies actual CLI replay, a live native Qwen turn and timeline
+update, cursor reconnect, repeated cancellation without exhausting stream slots,
+revocation-driven disconnect and closing an open stream during BB shutdown.
+The CLI now marks emitted JSON lines so a later transport failure cannot append
+a pretty-printed error envelope to the live output. The local deterministic
+model and pinned stock CLI remain the backend, not a verified corporate fork.
+See `control-plane-phase-17-verification.json`.

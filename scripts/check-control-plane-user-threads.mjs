@@ -311,10 +311,158 @@ export function createUserThreadFixture({ db, users }) {
         });
       }
       const [alice, bob] = created;
+      const openStream = async (user, threadId, after) => {
+        const child = launch(
+          [
+            ...cliBase,
+            "threads",
+            "stream",
+            threadId,
+            "--after",
+            String(after),
+            "--json",
+          ],
+          { env: sessions.get(user).env },
+        );
+        let text = "",
+          error = "",
+          invalid = "";
+        const records = [];
+        const done = once(child, "close", { signal }).then((result) => {
+          if (records.some((value) => value.kind === "ready"))
+            assert.equal(
+              invalid,
+              "",
+              "Active thread CLI stream must stay JSON lines",
+            );
+          return result;
+        });
+        child.stdout.on("data", (part) => {
+          text += part;
+          assert.ok(text.length < 8 * 1024 * 1024);
+          let newline;
+          while ((newline = text.indexOf("\n")) >= 0) {
+            const line = text.slice(0, newline);
+            text = text.slice(newline + 1);
+            if (!line) continue;
+            let value;
+            try {
+              value = JSON.parse(line);
+            } catch {
+              invalid = (invalid + line).slice(-4000);
+              error = (error + line).slice(-4000);
+              continue;
+            }
+
+            if (value.kind === "event") {
+              assert.equal(value.event.threadId, threadId);
+              assert.ok(value.event.seq > after);
+            }
+            if (value.kind === "realtime")
+              assert.equal(
+                value.message.type === "changed"
+                  ? value.message.id
+                  : value.message.target.threadId,
+                threadId,
+              );
+            assert.equal(line.includes(sessions.get(user).token), false);
+            records.push(value);
+          }
+        });
+        child.stderr.on(
+          "data",
+          (part) => (error = (error + part).slice(-4000)),
+        );
+        child.stdin.end();
+        await wait(() => {
+          assert.equal(child.exitCode, null, error);
+          return records.some((value) => value.kind === "ready");
+        }, "personal live stream ready");
+        assert.ok(
+          records.some(
+            (value) =>
+              value.kind === "realtime" &&
+              value.message.type === "thread-timeline" &&
+              value.message.afterSequence === null,
+          ),
+        );
+        return { child, done, records, error: () => error };
+      };
+      const initialSequence = db
+        .prepare(
+          "SELECT max(sequence) AS value FROM events WHERE thread_id = ?",
+        )
+        .get(alice.thread.id).value;
+      const live = await openStream(
+        "alice",
+        alice.thread.id,
+        initialSequence - 2,
+      );
+      assert.ok(live.records.some((value) => value.kind === "event"));
+      await command("alice", [
+        "threads",
+        "send",
+        alice.thread.id,
+        "--message",
+        "BB_PERSONAL_alice live",
+        "--json",
+      ]);
+      await wait(
+        () =>
+          live.records.some(
+            (value) =>
+              value.kind === "event" && value.event.seq > initialSequence,
+          ) &&
+          live.records.some(
+            (value) =>
+              value.kind === "realtime" &&
+              value.message.type === "thread-timeline" &&
+              value.message.timeline.maxSeq > initialSequence,
+          ),
+        "personal canonical and native timeline live updates",
+      );
+      live.child.kill("SIGTERM");
+      assert.equal((await live.done)[0], 0, live.error());
+      const replayAfter = Math.max(
+        ...live.records
+          .filter((value) => value.kind === "event")
+          .map((value) => value.event.seq),
+      );
+      await wait(
+        () =>
+          db
+            .prepare("SELECT status FROM threads WHERE id = ?")
+            .get(alice.thread.id)?.status === "idle",
+        "personal streamed turn completion",
+      );
+      const reconnected = await openStream(
+        "alice",
+        alice.thread.id,
+        replayAfter,
+      );
+      reconnected.child.kill("SIGTERM");
+      assert.equal((await reconnected.done)[0], 0, reconnected.error());
+
+      for (let index = 0; index < 4; index++) {
+        const released = await openStream(
+          "alice",
+          alice.thread.id,
+          replayAfter,
+        );
+        released.child.kill("SIGTERM");
+        assert.equal((await released.done)[0], 0, released.error());
+      }
       const aliceToken = sessions.get("alice").token,
         bobToken = sessions.get("bob").token;
       const base = "/control-plane/user/threads";
-      for (const suffix of ["", "/events", "/result", "/interactions"])
+      for (const suffix of [
+        "",
+        "/events",
+        "/result",
+        "/interactions",
+        "/stream",
+        "/timeline",
+      ])
         assert.equal(
           (
             await send(`${base}/${bob.thread.id}${suffix}`, {
@@ -533,18 +681,31 @@ export function createUserThreadFixture({ db, users }) {
         "--json",
       ]);
       assert.ok(list.threads.some((thread) => thread.id === alice.thread.id));
-      saved = { command, alice, wait };
+      const revokedStream = await openStream("bob", bob.thread.id, 0);
+      await command("bob", ["logout", "--json"]);
+      assert.notEqual((await revokedStream.done)[0], 0);
+      const shutdownStream = await openStream(
+        "alice",
+        alice.thread.id,
+        replayAfter,
+      );
+      saved = { command, alice, wait, shutdownStream };
       return {
         personalThreadCertificateCliAndFreshEnvironment: true,
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,
+        personalCanonicalReplayAndLiveNativeTimeline: true,
+        personalStreamCursorReconnect: true,
+        personalRealCliStreamCancellationReleasesSlots: true,
+        personalStreamClosedOnTokenRevocation: true,
         foreignThreadsAndApprovalsDenied: true,
         personalApprovalAndRevokedStop: true,
         revokedSendDeniedBeforeEvents: true,
       };
     },
     async afterRestart() {
-      const { command, alice, wait } = saved;
+      const { command, alice, wait, shutdownStream } = saved;
+      assert.notEqual((await shutdownStream.done)[0], 0);
       assert.equal(
         (await command("alice", ["threads", "get", alice.thread.id, "--json"]))
           .id,
@@ -574,6 +735,7 @@ export function createUserThreadFixture({ db, users }) {
       await command("alice", ["threads", "stop", alice.thread.id, "--json"]);
       return {
         personalTokenAndThreadSurviveRestart: true,
+        personalStreamsClosedOnServerShutdown: true,
         personalNativeQwenSessionResumedWithHistory: true,
       };
     },

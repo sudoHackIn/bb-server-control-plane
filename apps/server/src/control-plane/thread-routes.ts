@@ -26,7 +26,7 @@ export function isControlPlaneThreadPath(path: string, method: string) {
   if (path === "/control-plane/user/threads")
     return ["GET", "POST"].includes(method);
   if (
-    /^\/control-plane\/user\/threads\/[^/]+(?:\/(?:events|result|interactions))?$/u.test(
+    /^\/control-plane\/user\/threads\/[^/]+(?:\/(?:events|result|interactions|stream|timeline))?$/u.test(
       path,
     )
   )
@@ -107,6 +107,34 @@ export function installControlPlaneThreadRoutes(
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
       return context.json(service.events(userId, id, parsed.data));
+    }),
+  );
+  app.get(
+    `${base}/:id/stream`,
+    handled((context, userId) => {
+      const id = context.req.param("id") ?? "";
+      service.get(userId, id);
+      const parsed = z
+        .object({ after: z.coerce.number().int().nonnegative().default(0) })
+        .strict()
+        .safeParse(context.req.query());
+      if (!parsed.success)
+        return context.json({ error: "invalid_request" }, 400);
+      return service.stream(userId, id, {
+        after: parsed.data.after,
+        signal: context.req.raw.signal,
+        authorized: () => authenticate(context)?.user.id === userId,
+      });
+    }),
+  );
+  app.get(
+    `${base}/:id/timeline`,
+    handled((context, userId) => {
+      const id = context.req.param("id") ?? "";
+      service.get(userId, id);
+      if (Object.keys(context.req.query()).length)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(service.timeline(userId, id));
     }),
   );
   app.get(

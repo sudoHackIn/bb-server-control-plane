@@ -72,12 +72,12 @@ export function createControlPlaneClient(args: {
       "Control-plane clients require an HTTPS origin or HTTP loopback",
     );
   const fetcher = args.fetch ?? fetch;
-  const request = async (
+  const requestResponse = async (
     path: string,
     method: string,
     body?: object,
     signal?: AbortSignal,
-  ): Promise<unknown> => {
+  ): Promise<Response> => {
     const headers = new Headers();
     if (body) headers.set("content-type", "application/json");
     const token = args.token?.();
@@ -106,8 +106,15 @@ export function createControlPlaneClient(args: {
         `Control-plane request failed (${response.status})${detail ? `: ${detail}` : ""}`,
       );
     }
-    return response.json();
+    return response;
   };
+  const request = async (
+    path: string,
+    method: string,
+    body?: object,
+    signal?: AbortSignal,
+  ): Promise<unknown> =>
+    (await requestResponse(path, method, body, signal)).json();
   const profilePath = (base: string, id: string) =>
     `${base}/${encodeURIComponent(id)}`;
   const profileReader = (base: string) => ({
@@ -174,7 +181,7 @@ export function createControlPlaneClient(args: {
   const adminProfiles = "/control-plane/admin/profiles";
   const ok = z.object({ ok: z.literal(true) });
   return {
-    threads: createControlPlaneThreadClient(request),
+    threads: createControlPlaneThreadClient(request, requestResponse),
     profiles: profileReader("/control-plane/user/profiles"),
     admin: {
       profiles: {

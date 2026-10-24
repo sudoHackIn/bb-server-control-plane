@@ -1,3 +1,4 @@
+import { noteJsonPayloadWritten } from "../cli-error-output.js";
 import type { Command } from "commander";
 import type { createControlPlaneClient } from "@bb/sdk/node";
 import { z } from "zod";
@@ -83,7 +84,7 @@ export function registerServerThreadCommands(
           ),
       ),
     );
-  for (const method of ["get", "result", "stop"] as const)
+  for (const method of ["get", "result", "stop", "timeline"] as const)
     threads
       .command(`${method} <thread-id>`)
       .option("--json", "Print machine-readable JSON output")
@@ -124,6 +125,39 @@ export function registerServerThreadCommands(
           }),
         ),
       ),
+    );
+  threads
+    .command("stream <thread-id>")
+    .description(
+      "Stream native persisted events and live BB timeline updates as JSON lines",
+    )
+    .option("--json", "Print machine-readable JSON lines")
+    .option(
+      "--after <sequence>",
+      "Replay after this persisted event sequence",
+      "0",
+    )
+    .action(
+      action(async (id: string, options: { after: string }) => {
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        process.once("SIGINT", cancel);
+        process.once("SIGTERM", cancel);
+        try {
+          for await (const message of client().threads.stream(id, {
+            after: z.coerce.number().int().nonnegative().parse(options.after),
+            signal: controller.signal,
+          })) {
+            console.log(JSON.stringify(message));
+            noteJsonPayloadWritten();
+          }
+        } catch (error) {
+          if (!controller.signal.aborted) throw error;
+        } finally {
+          process.off("SIGINT", cancel);
+          process.off("SIGTERM", cancel);
+        }
+      }),
     );
   const interactions = threads
     .command("interactions")

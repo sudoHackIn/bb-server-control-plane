@@ -280,6 +280,24 @@ grant is revoked, while current project access is still required.
 `threads events <thread-id> [--after <sequence>] [--limit 1..200]` reads a page
 of persisted native events in sequence order, exclusive of `after` (default 0).
 Continue using `cursor` while `hasMore`; this command is not a live stream.
+`threads stream <thread-id> [--after <sequence>] [--json]` opens a personal
+live SSE subscription and prints JSON lines. It replays canonical persisted
+`event` rows after the exclusive cursor, sends the native BB `thread-timeline`
+snapshot and subsequent native `realtime` updates, then remains open. `ready`
+marks completion of the initial replay. Track the last consumed `event.seq`;
+after disconnect, invoke the command again with that `--after` value. A fresh
+native timeline snapshot accompanies reconnection; live frames are not durable
+sequence IDs. This is replay, not exactly-once delivery. Ctrl-C stops the local
+subscription without stopping the remote thread. `threads timeline <thread-id>`
+reads the native latest 20-segment snapshot with deferred content.
+
+The transport authenticates in the request header, never the URL. It checks
+current project access and token validity before every frame and at least once
+per second while idle. Profile revocation preserves authorized history reads.
+Per-user stream limits and bounded buffers close slow clients; reconnect from
+the last consumed persisted sequence. User access does not enable the raw BB
+WebSocket API, global subscriptions or terminal sessions.
+
 `threads result <thread-id>` returns current status and latest assistant text,
 not an immutable run snapshot. `threads interactions list <thread-id>` lists
 native interactions. `interactions approve|deny <thread-id> <interaction-id>`

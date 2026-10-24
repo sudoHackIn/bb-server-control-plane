@@ -88,6 +88,9 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
       bob = identities[1]!;
     const origin = "https://bb.example";
     harness.config.appUrl = origin;
+    const threadService = createControlPlaneThreadService({
+      deps: harness.deps,
+    });
     const server = createApp(harness.deps, {
       controlPlane: createControlPlaneAccess(
         {
@@ -104,7 +107,7 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
           origin,
           Date.now,
           undefined,
-          createControlPlaneThreadService({ deps: harness.deps }),
+          threadService,
         ),
       ),
     });
@@ -278,7 +281,102 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
       expect(last.hasMore).toBe(false);
       expect(last.cursor).toBeGreaterThan(first.cursor);
       expect(await api.interactions.list(alice.thread.id)).toEqual([]);
-      for (const suffix of ["", "/events", "/result", "/interactions"])
+      expect((await api.timeline(alice.thread.id)).maxSeq).toBe(last.cursor);
+      for (const path of [
+        `${base}/${alice.thread.id}/stream?token=forbidden`,
+        `${base}/${alice.thread.id}/timeline?environmentId=forbidden`,
+      ])
+        expect((await request(alice.token, path)).status).toBe(400);
+
+      const streamAbort = new AbortController();
+      const stream = api.stream(alice.thread.id, {
+        after: first.cursor,
+        signal: streamAbort.signal,
+      });
+      const replay = await stream.next();
+      expect(replay.value).toMatchObject({
+        kind: "event",
+        event: { seq: last.cursor, threadId: alice.thread.id },
+      });
+      expect((await stream.next()).value).toMatchObject({
+        kind: "realtime",
+        message: {
+          type: "thread-timeline",
+          target: { threadId: alice.thread.id },
+        },
+      });
+      expect((await stream.next()).value).toEqual({
+        kind: "ready",
+        cursor: last.cursor,
+      });
+      const liveRead = stream.next();
+      harness.hub.notifyThread(bob.thread.id, ["events-appended"]);
+      harness.hub.notifyThread(alice.thread.id, ["events-appended"]);
+      expect((await liveRead).value).toMatchObject({
+        kind: "realtime",
+        message: { type: "changed", id: alice.thread.id },
+      });
+      streamAbort.abort();
+      await stream.return();
+      expect(harness.hub.listWatchedTargets("thread-timeline")).toEqual([]);
+
+      const capped = await Promise.all(
+        Array.from({ length: 4 }, async () => {
+          const abort = new AbortController();
+          const stream = api.stream(alice.thread.id, {
+            after: last.cursor,
+            signal: abort.signal,
+          });
+          await stream.next();
+          return { abort, stream };
+        }),
+      );
+      await expect(api.stream(alice.thread.id).next()).rejects.toThrow("429");
+      for (const value of capped) {
+        value.abort.abort();
+        await value.stream.return();
+      }
+      const slow = api.stream(alice.thread.id, { after: last.cursor });
+      await slow.next();
+      await slow.next();
+      for (let index = 0; index < 40; index++)
+        harness.hub.notifyThread(alice.thread.id, ["events-appended"], {
+          projectId: "x".repeat(65536),
+        });
+      await expect(slow.next()).rejects.toThrow("consumer is too slow");
+      expect(harness.hub.listWatchedTargets("thread-timeline")).toEqual([]);
+      const expiringToken = `agt_${randomBytes(32).toString("base64url")}`;
+      const expiringDigest = createHash("sha256")
+        .update(expiringToken)
+        .digest("hex");
+      harness.db
+        .insert(controlPlaneUserSessions)
+        .values({
+          userId: alice.user.id,
+          digest: expiringDigest,
+          expiresAt: Date.now() + 60000,
+        })
+        .run();
+      const expiring = client(expiringToken).threads.stream(alice.thread.id, {
+        after: last.cursor,
+      });
+      await expiring.next();
+      await expiring.next();
+      harness.db
+        .update(controlPlaneUserSessions)
+        .set({ expiresAt: Date.now() - 1 })
+        .where(eq(controlPlaneUserSessions.digest, expiringDigest))
+        .run();
+      await expect(expiring.next()).rejects.toThrow("Thread stream closed");
+      expect(harness.hub.listWatchedTargets("thread-timeline")).toEqual([]);
+      for (const suffix of [
+        "",
+        "/events",
+        "/result",
+        "/interactions",
+        "/stream",
+        "/timeline",
+      ])
         expect(
           (await request(alice.token, `${base}/${bob.thread.id}${suffix}`))
             .status,
@@ -429,6 +527,11 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
         (await client(bob.token).threads.list({ projectId: alice.project.id }))
           .threads,
       ).toEqual([]);
+      const revokedProjectStream = api.stream(alice.thread.id, {
+        after: last.cursor,
+      });
+      await revokedProjectStream.next();
+      await revokedProjectStream.next();
       harness.db
         .delete(controlPlaneProjectAccess)
         .where(
@@ -438,6 +541,10 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
           ),
         )
         .run();
+      await expect(revokedProjectStream.next()).rejects.toThrow(
+        "Thread stream closed",
+      );
+      expect(harness.hub.listWatchedTargets("thread-timeline")).toEqual([]);
       sdkScope(() =>
         expect(
           dispatchControlPlaneEnvironmentRead(
@@ -456,6 +563,17 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
         .where(eq(controlPlaneUsers.id, alice.user.id))
         .run();
       expect((await request(alice.token, base)).status).toBe(401);
+      const onShutdown = client(bob.token).threads.stream(bob.thread.id, {
+        after: 3,
+      });
+      await onShutdown.next();
+      await onShutdown.next();
+      threadService.close();
+      await expect(onShutdown.next()).rejects.toThrow("Thread stream closed");
+      await expect(
+        client(bob.token).threads.stream(bob.thread.id).next(),
+      ).rejects.toThrow("503");
+      expect(harness.hub.listWatchedTargets("thread-timeline")).toEqual([]);
     } finally {
       await server.pluginService.stop();
       await server.closeWebSockets();

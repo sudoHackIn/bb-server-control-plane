@@ -1,3 +1,5 @@
+import { threadTimelineResponseSchema } from "@bb/server-contract";
+import { readControlPlaneThreadStream } from "./control-plane-thread-stream.js";
 import { z } from "zod";
 import {
   controlPlaneThreadStartSchema,
@@ -15,6 +17,12 @@ export function createControlPlaneThreadClient(
     body?: object,
     signal?: AbortSignal,
   ) => Promise<unknown>,
+  requestResponse: (
+    path: string,
+    method: string,
+    body?: object,
+    signal?: AbortSignal,
+  ) => Promise<Response>,
 ) {
   const base = "/control-plane/user/threads";
   const path = (id: string) => `${base}/${encodeURIComponent(id)}`;
@@ -110,6 +118,28 @@ export function createControlPlaneThreadClient(
             options.signal,
           ),
         );
+    },
+    async timeline(id: string, signal?: AbortSignal) {
+      return threadTimelineResponseSchema.parse(
+        await request(`${path(id)}/timeline`, "GET", undefined, signal),
+      );
+    },
+    async *stream(
+      id: string,
+      options: { after?: number; signal?: AbortSignal } = {},
+    ) {
+      const after = z
+        .number()
+        .int()
+        .nonnegative()
+        .parse(options.after ?? 0);
+      const response = await requestResponse(
+        `${path(id)}/stream?${new URLSearchParams({ after: String(after) })}`,
+        "GET",
+        undefined,
+        options.signal,
+      );
+      yield* readControlPlaneThreadStream(response, id, options.signal);
     },
     async result(id: string, signal?: AbortSignal) {
       return z

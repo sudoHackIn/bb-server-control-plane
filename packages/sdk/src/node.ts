@@ -122,3 +122,5 @@ export type {
 export type { BbHttpErrorArgs } from "./response.js";
 export type * from "./public-types.js";
 export { createControlPlaneClient } from "./control-plane.js";
+
+export type { ControlPlaneThreadStreamMessage } from "@bb/server-contract";

@@ -1323,3 +1323,13 @@ capacity accounting. That scope exists only during that exact hook callback,
 requires current thread/profile/project authority, and accepts no query options
 or mutations. Other hooks/plugins do not receive it. Neither internal scope
 changes the user's HTTP permissions or grants access to conversations/content.
+
+Personal `threads.stream(id, {after, signal})` now returns an async iterator of
+persisted events and live native BB realtime frames over authenticated SSE.
+`threads.timeline(id)` reads the same native latest-window projection (20
+segments, deferred content). The user CLI exposes `threads stream` as JSON lines
+and `threads timeline` as JSON. Reconnect explicitly from the last consumed
+persisted event sequence. Tokens belong only in authorization headers, never
+stream URLs. User streams are limited to four per user and 64 per server, use
+bounded queues, and release native hub subscriptions on cancellation, revocation
+or transport failure. Native BB WebSocket access remains administrative.

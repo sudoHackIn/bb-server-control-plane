@@ -85,6 +85,7 @@ export function createControlPlaneAccess(
     context.json({ error: "authentication_required" }, 401);
 
   return {
+    close: () => users?.close(),
     get publicOrigin() {
       return config.publicOrigin;
     },
