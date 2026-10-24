@@ -203,6 +203,17 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 
 ## Server access
 
+On a protected deployment of the server-control-plane fork, administrators sign
+in with `bb server access login --login <name> --password-stdin`, supplying the
+password from private stdin. `bb server access status` shows the current login;
+`bb server access logout` revokes it. Sessions are private files under
+`~/.bb/server-access`, bound to the server origin, and expire after one day or a
+server restart. Do not supply administrative sessions to agent processes.
+Shared deployments must set `BB_CONTROL_PLANE_REQUIRED=1`; a private
+`control-plane.json` in the server data directory configures the public HTTPS
+origin and administrator password hash. Without configuration and without the
+required flag, upstream single-user behavior is preserved.
+
 Set Machines → Server URL reachable by machines, or run `bb settings general
 machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
 Set Default machine access with

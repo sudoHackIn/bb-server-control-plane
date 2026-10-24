@@ -492,6 +492,7 @@ export function createPluginApi(options: {
   db: DbConnection;
   dataDir: string;
   getSdk: () => BbSdk | undefined;
+  getSdkFetch?: () => typeof fetch | undefined;
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
@@ -1447,6 +1448,7 @@ export function createPluginApi(options: {
         createPluginRpcCallerSdk({
           baseUrl: loopbackBaseUrl,
           token: rpcCaller.token,
+          fetch: options.getSdkFetch?.(),
         }),
       );
       return wrappedSdk;

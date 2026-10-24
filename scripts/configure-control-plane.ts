@@ -1,0 +1,64 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve, join } from "node:path";
+import { parseArgs } from "node:util";
+import { hashAdminPassword } from "../apps/server/src/control-plane/credentials.js";
+import { controlPlaneConfigSchema } from "../apps/server/src/control-plane/config.js";
+
+async function main() {
+  const { values } = parseArgs({
+    options: {
+      "data-dir": { type: "string" },
+      origin: { type: "string" },
+      login: { type: "string" },
+    },
+    strict: true,
+  });
+  if (
+    !values["data-dir"] ||
+    !values.origin ||
+    !values.login ||
+    process.stdin.isTTY
+  ) {
+    throw new Error(
+      "Use --data-dir, --origin and --login; supply the password on stdin from a private file",
+    );
+  }
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += value.length;
+    if (size > 4096) throw new Error("Password input is too large");
+    chunks.push(value);
+  }
+  const password = Buffer.concat(chunks)
+    .toString("utf8")
+    .replace(/\r?\n$/u, "");
+  const config = controlPlaneConfigSchema.parse({
+    version: 1,
+    publicOrigin: values.origin,
+    admin: {
+      login: values.login,
+      passwordHash: await hashAdminPassword(password),
+    },
+  });
+  const dataDir = resolve(values["data-dir"]);
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  await writeFile(
+    join(dataDir, "control-plane.json"),
+    JSON.stringify(config, null, 2) + "\n",
+    { mode: 0o600, flag: "wx" },
+  );
+  console.log(
+    "Administrative access configured. Set BB_CONTROL_PLANE_REQUIRED=1 when starting the shared server.",
+  );
+}
+
+main().catch((error) => {
+  console.error(
+    error instanceof Error && error.message.includes("EEXIST")
+      ? "Configuration already exists; it was not overwritten"
+      : "Could not configure administrative access; check arguments, password length and private file permissions",
+  );
+  process.exitCode = 1;
+});

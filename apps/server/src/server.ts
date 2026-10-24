@@ -1,4 +1,9 @@
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
+import {
+  createControlPlaneAccess,
+  type ControlPlaneAccess,
+} from "./control-plane/access.js";
+import { loadControlPlaneConfig } from "./control-plane/config.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
 import {
@@ -155,6 +160,7 @@ type WebSocketCloseError = Error | undefined;
 
 interface ServerApp {
   app: Hono;
+  sdkFetch: typeof fetch | undefined;
   closeWebSockets: CloseWebSockets;
   injectWebSocket: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
   pluginService: PluginService;
@@ -196,6 +202,7 @@ export interface ServerMoveAppOptions {
 }
 
 interface CreateAppOptions {
+  controlPlane?: ControlPlaneAccess;
   bbAppArtifactService?: BbAppArtifactService;
   serverMove?: ServerMoveAppOptions;
   slowApiRequestLogThresholdMs?: number;
@@ -470,9 +477,29 @@ export function createApp(
   options?: CreateAppOptions,
 ): ServerApp {
   const app = new Hono();
+  const accessConfig = options?.controlPlane
+    ? null
+    : loadControlPlaneConfig(deps.config.dataDir);
+  const controlPlane =
+    options?.controlPlane ??
+    (accessConfig ? createControlPlaneAccess(accessConfig) : null);
+  if (controlPlane) {
+    if (
+      deps.config.appUrl &&
+      new URL(deps.config.appUrl).origin !== controlPlane.publicOrigin
+    ) {
+      throw new Error("BB_APP_URL must match the control-plane public origin");
+    }
+    deps.config.appUrl = controlPlane.publicOrigin;
+  }
+  controlPlane?.install(app);
+  const sdkFetch: typeof fetch | undefined = controlPlane
+    ? (input, init) => controlPlane.dispatch(app, input, init)
+    : undefined;
   const { injectWebSocket, upgradeWebSocket, wss } = createNodeWebSocket({
     app,
   });
+  controlPlane?.attachSockets(wss);
   const tunnelIngressNow = options?.tunnelIngressNow ?? Date.now;
   const tunnelIngress = createTunnelIngressManager({
     app,
@@ -1067,6 +1094,7 @@ export function createApp(
 
   return {
     app,
+    sdkFetch,
     closeWebSockets: () =>
       closeWebSocketServer({
         forceCloseAfterMs: WEB_SOCKET_SHUTDOWN_FORCE_CLOSE_MS,

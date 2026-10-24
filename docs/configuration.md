@@ -1,5 +1,11 @@
 # Configuration
 
+## Shared-server administrative access (fork)
+
+This fork loads administrative access settings from a private `control-plane.json` in the server data directory. Set `BB_CONTROL_PLANE_REQUIRED=1` on shared deployments so a missing file prevents startup. Values other than `0` and `1` are rejected. Invalid or publicly readable configuration never falls back to anonymous access. Without the file and without the required flag, upstream single-user behavior is preserved. See [setup and feature status](server-control-plane.md).
+
+Configure the file with `pnpm exec tsx scripts/configure-control-plane.ts --data-dir <path> --origin <https-origin> --login <name>`, supplying the password through private stdin. The browser login is `/control-plane/login`. CLI administrators use `bb server access login --login <name> --password-stdin`, then normal commands. CLI sessions are stored per origin in private `~/.bb/server-access/*.json`; they last one day and are revoked by logout or server restart. They must never be supplied to tenant agents.
+
 The packaged `npx bb-app` flow stores persistent package settings under
 `~/.bb/config.json`, provider environment values under `~/.bb/env.json`, and
 client SSH target mappings under `~/.bb/client.json`.

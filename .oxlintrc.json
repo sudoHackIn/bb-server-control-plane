@@ -164,6 +164,15 @@
       }
     },
     {
+      "files": ["apps/server/src/control-plane/config.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          { "paths": ["@bb/host-workspace", "@bb/host-watcher"] }
+        ]
+      }
+    },
+    {
       "files": [
         "apps/server/src/**/__tests__/**",
         "apps/server/src/**/*.test.ts"

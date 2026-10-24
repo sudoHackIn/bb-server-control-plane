@@ -54,6 +54,7 @@ export function createPluginRpcCallerRegistry(): PluginRpcCallerRegistry {
 export function createPluginRpcCallerSdk(args: {
   baseUrl: string;
   token: string;
+  fetch?: typeof fetch;
 }): BbSdk {
   const timeoutFetch = createRequestTimeoutFetch({
     timeoutMs: DEFAULT_BB_REQUEST_TIMEOUT_MS,
@@ -63,7 +64,7 @@ export function createPluginRpcCallerSdk(args: {
     fetch: (input, init) => {
       const headers = new Headers(init?.headers);
       headers.set(PLUGIN_RPC_CALLER_HEADER, args.token);
-      return timeoutFetch(input, { ...init, headers });
+      return (args.fetch ?? timeoutFetch)(input, { ...init, headers });
     },
   });
 }

@@ -1,0 +1,39 @@
+{
+  "scope": "First increment: administrative HTTP/WS boundary, not full multi-user isolation",
+  "baseCommit": "5e1acd765039e874643f34c4d35409e58484e408",
+  "verifiedAt": "2026-10-24T09:34:22.108889+00:00",
+  "serverSecurityAndPluginSdkTests": 40,
+  "cliFocusedTests": 5,
+  "strictTypechecks": ["@bb/server", "@bb/cli"],
+  "builds": ["@bb/server", "@bb/cli"],
+  "privateConfigurationSetupSmoke": true,
+  "linuxAccessModuleSmoke": {
+    "passed": true,
+    "node": "v22.23.4",
+    "lowUid": 200001,
+    "lowUidHttpStatus": 401,
+    "anonymousHttpDenied": true,
+    "forgedIdentityDenied": true,
+    "administratorLogin": true,
+    "privateSdk": true,
+    "logoutRevokesSocket": true,
+    "expiryRevokesSocket": true
+  },
+  "administrativeForkDockerDeployment": {
+    "passed": true,
+    "image": "bb-control-plane:local",
+    "node": "v22.23.4",
+    "serverUser": "node",
+    "nativeUi": true,
+    "bundledPluginsPackaged": true,
+    "migratedSqlite": true,
+    "anonymousApiAndAssetsDenied": true,
+    "forgedIdentityDenied": true,
+    "realCliLoginProjectsLogout": true,
+    "logoutClosesSocket": true,
+    "restartRevokesSessions": true,
+    "userExecutionVerified": false
+  },
+  "userModeImplemented": false,
+  "fullRepositoryTestSuiteRun": false
+}

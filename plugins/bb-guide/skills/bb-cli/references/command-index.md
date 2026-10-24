@@ -102,6 +102,10 @@ This index lists every command path that the core CLI registers, including alias
 
 ## server
 
+- `bb server access login`
+- `bb server access status`
+- `bb server access logout`
+
 - `bb server`
 - `bb server move`
 - `bb server move status`

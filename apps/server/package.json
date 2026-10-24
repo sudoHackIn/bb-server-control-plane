@@ -11,6 +11,9 @@
     "generate:bb-official-marketplace": "node --conditions=source --import tsx scripts/generate-bb-official-marketplace.ts",
     "typecheck": "tsrs --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:control-plane-docker": "node ../../scripts/check-control-plane-docker.mjs",
+    "build:control-plane-image": "node ../../scripts/build-control-plane-image.mjs",
+    "test:control-plane-deployment": "node ../../scripts/test-control-plane-deployment.mjs",
     "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus"
   },
   "dependencies": {

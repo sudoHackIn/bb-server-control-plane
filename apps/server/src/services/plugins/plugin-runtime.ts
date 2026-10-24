@@ -435,6 +435,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const agentToolProblems = new Map<string, string>();
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
+  let boundFetch: typeof fetch | undefined;
   let boundLoopbackBaseUrl: string | undefined;
   const rpcCallers = createPluginRpcCallerRegistry();
   let loadHold: PluginLoadHold | null = null;
@@ -1619,6 +1620,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       db: deps.db,
       dataDir: deps.dataDir,
       getSdk: () => boundSdk,
+      getSdkFetch: () => boundFetch,
       getMachineEnrollments: () => {
         if (!context.machineEnrollments)
           throw new Error(
@@ -2075,8 +2077,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return { outcome: "found", value };
   }
 
-  function bindSdk(args: { baseUrl: string }): void {
-    boundSdk = createNodeBbSdk({ baseUrl: args.baseUrl });
+  function bindSdk(args: { baseUrl: string; fetch?: typeof fetch }): void {
+    boundFetch = args.fetch;
+    boundSdk = createNodeBbSdk({ baseUrl: args.baseUrl, fetch: args.fetch });
     boundLoopbackBaseUrl = args.baseUrl;
   }
 

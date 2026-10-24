@@ -3,6 +3,44 @@
   "globalEnv": ["BB_BUILD_TOOLCHAIN"],
   "globalPassThroughEnv": ["npm_config_store_dir", "pnpm_config_store_dir"],
   "tasks": {
+    "@bb/server#build:control-plane-image": {
+      "cache": false,
+      "dependsOn": [
+        "@bb/server#build",
+        "@bb/cli#build",
+        "@bb/app#build",
+        "@bb/bundled-plugins#build"
+      ],
+      "passThroughEnv": [
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CONFIG",
+        "DOCKER_TLS_VERIFY",
+        "DOCKER_CERT_PATH"
+      ]
+    },
+    "@bb/server#test:control-plane-deployment": {
+      "cache": false,
+      "dependsOn": ["@bb/server#build:control-plane-image"],
+      "passThroughEnv": [
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CONFIG",
+        "DOCKER_TLS_VERIFY",
+        "DOCKER_CERT_PATH"
+      ]
+    },
+    "@bb/server#test:control-plane-docker": {
+      "cache": false,
+      "dependsOn": ["topo"],
+      "passThroughEnv": [
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CONFIG",
+        "DOCKER_TLS_VERIFY",
+        "DOCKER_CERT_PATH"
+      ]
+    },
     "@bb/db#db:generate": { "cache": false },
     "@bb/desktop#smoke:browser-broker": {
       "cache": false,

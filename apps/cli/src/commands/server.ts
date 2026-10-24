@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { registerServerAccessCommands } from "./server-access.js";
 import { existsSync } from "node:fs";
 import { open, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
@@ -277,6 +278,7 @@ export function registerServerCommands(
   const server = program
     .command("server")
     .description("Move, export, and import the bb server");
+  registerServerAccessCommands(server, getUrl);
 
   const move = server
     .command("move")
