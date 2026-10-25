@@ -150,3 +150,14 @@ All operations use the same builtin controller and shared kernel as native
 management. Unknown/native RPC routes stay closed to personal credentials.
 The personal automation workspace and wider background admission/recovery audit
 remain subsequent work; managed script execution is still unavailable.
+
+## Personal browser
+
+The personal BB Automations section uses the same limited management API and
+SDK/CLI documented above. Create from an owned conversation, choose a once or
+cron/timezone schedule, edit with revision checks, pause/resume, run, stop a run,
+open its conversation or confirm source deletion. The editor retains rejected
+drafts; Reload saved automation explicitly loads the latest revision. Selection
+survives page reload and history refreshes every five seconds. Read failures
+hide content. Execution access is required for creates/edits/resume/manual runs;
+cleanup remains available to the owner. Native administrative RPC remains closed.

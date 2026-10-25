@@ -9,6 +9,7 @@ import { createControlPlaneClient } from "@bb/sdk/browser";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PersonalTimeline } from "./PersonalTimeline";
+import { PersonalAutomations } from "./PersonalAutomations";
 import { PersonalWorkflows } from "./PersonalWorkflows";
 import { PersonalConversationComposer } from "./PersonalConversationComposer";
 import {
@@ -68,8 +69,9 @@ function WorkspaceNavigation({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const workflowView =
-    new URLSearchParams(location.search).get("view") === "workflows";
+  const view = new URLSearchParams(location.search).get("view");
+  const workflowView = view === "workflows";
+  const automationView = view === "automations";
   const projectRoute = useMatch("/projects/:projectId");
   const threadRoute = useMatch("/projects/:projectId/threads/:threadId");
   const shortThreadRoute = useMatch("/threads/:threadId");
@@ -291,7 +293,7 @@ function WorkspaceNavigation({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+        <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-3 border-b px-3 py-2">
           <SidebarTrigger />
           <span className="truncate text-sm">
             {project.isError
@@ -325,6 +327,22 @@ function WorkspaceNavigation({
               {workflowView ? "Conversation" : "Workflows"}
             </Button>
           )}
+          {selectedProject && !project.isError && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={automationView}
+              onClick={() => {
+                navigate({
+                  pathname: location.pathname,
+                  search: automationView ? "" : "?view=automations",
+                });
+                closeSidebar();
+              }}
+            >
+              {automationView ? "Conversation" : "Automations"}
+            </Button>
+          )}
         </header>
         {project.isError ||
         (threadId !== null && detail.isError) ||
@@ -336,6 +354,19 @@ function WorkspaceNavigation({
               void threads.refetch();
               if (threadId) void detail.refetch();
             }}
+          />
+        ) : automationView && selectedProject ? (
+          <PersonalAutomations
+            key={`${selectedProject.projectId}:${selectedThread?.id ?? "project"}`}
+            client={client}
+            projectId={selectedProject.projectId}
+            originThreadId={
+              project.data?.canRun ? (selectedThread?.id ?? null) : null
+            }
+            canExecute={project.data?.canRun === true}
+            onOpenThread={(id) =>
+              navigate(getControlPlaneThreadPath(selectedProject.projectId, id))
+            }
           />
         ) : workflowView && selectedProject ? (
           <PersonalWorkflows
@@ -384,6 +415,7 @@ function WorkspaceNavigation({
         )}
         {selectedProject &&
           !workflowView &&
+          !automationView &&
           project.data &&
           !project.isError &&
           !mismatchedThread &&

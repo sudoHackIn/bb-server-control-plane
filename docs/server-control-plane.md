@@ -41,6 +41,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Expose lifecycle-scoped internal background authority only to builtin Workflows/Automations, derive owner/profile context server-side and verify registration/read/restart plus unapproved-plugin denial in Docker. Native plugin persistence/execution integration remains pending.
 - [x] Expose personal native workflow run start/list/status/result/history/stop and terminal replay through the limited API, SDK and CLI, reusing builtin persistence and owner authority. Automations and schedules remain pending.
 - [x] Manage personal agent automations through limited API/SDK/CLI: create/edit with revision CAS, pause/resume, idempotent run, durable individual stop and deletion. Personal UI and the composite background audit remain pending.
+- [x] Add the personal Automations workspace using the limited API: revision-protected editor, once/cron schedules, pause/resume, manual run, paginated history, individual cancellation, conversation links and confirmed deletion; verify both users in a real browser.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -1974,3 +1975,44 @@ avoid observing a PID before its proof file is written.
 `control-plane-phase-45-verification.json` records the deployment proof and
 limits. Browser acceptance was not rerun. Personal automation UI, managed
 scripts, legacy assignment and the remaining feature sequence stay open.
+
+## Forty-sixth increment: personal automation workspace
+
+The protected personal BB application now opens Automations alongside Workflows
+in the main workspace, retaining the native project/thread sidebar. Selection is
+stored in the URL and reloads through owner-scoped definition/history reads.
+Creation takes its approved agent profile from the current conversation. Once
+schedules use browser-local date/time input; recurring schedules store an
+explicit cron expression and timezone. The editor keeps its original revision
+and unsaved draft across polling and conflicts. Reloading saved automation is
+an explicit discard/rebase operation.
+
+The section supports pause/resume, idempotent manual dispatch, paginated history,
+individual stop, conversation navigation and confirmed deletion. Cleanup controls
+remain available without execution permission; creation, edits, resume and new
+runs do not. Access errors hide cached prompts, history and controls. Project
+changes abort mutation requests and fence late callbacks; unacknowledged manual
+run retries retain their idempotency key while the section remains mounted.
+
+This increment uses the phase-45 API/SDK/CLI without new native plugin APIs,
+central/native migrations or daemon protocol changes. Verification and limits
+are recorded in `control-plane-phase-46-verification.json`. Dedicated change
+subscriptions, managed scripts, legacy assignment and the broader background
+admission/recovery audit remain open.
+
+Verification passes 27 personal UI tests, strict app types (five Turbo tasks),
+changed-file lint/formatting and all 63 Docker/browser deployment tasks in
+8 minutes 57 seconds. Chrome 155 uses separate certificate contexts for both
+owners. Each creates and revises a schedule, pause-resumes, runs actual Qwen
+commands under the registered UID/HOME/cwd, reloads the selected definition,
+opens the worker conversation, stops an actual hanging command and confirms
+deletion. Foreign reads and mutations return 404. Existing administrative,
+workflow, logout, restart and actual crash-recovery cases also pass.
+
+The browser checks caught implicit labels including select-option text and a
+saved textarea value after reload; explicit useId/htmlFor associations fix both
+while retaining exact label checks. Reload now fetches fresh server state before
+replacing the draft. The wrapping toolbar passes a 390-pixel layout check; desktop
+and narrow screenshots were visually inspected. This is not a complete mobile
+interaction audit. No test watchdog was increased or workflow scenario skipped.
+The image personal bundle matches the locally built artifact byte for byte.

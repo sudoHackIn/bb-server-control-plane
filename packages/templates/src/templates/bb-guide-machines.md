@@ -877,5 +877,28 @@ their history; source-fenced workers cannot resume execution.
 
 All operations use the same builtin controller and shared kernel as native
 management. Unknown/native RPC routes stay closed to personal credentials.
-The personal automation workspace and wider background admission/recovery audit
-remain subsequent work; managed script execution is still unavailable.
+The personal automation workspace uses this limited API. The wider background
+admission/recovery audit remains open; managed script execution is unavailable.
+
+## Personal automation workspace
+
+In the personal BB browser, open a project/conversation and choose Automations.
+The native left navigation remains available. New automation uses the current
+conversation's approved profile. Set a one-time local date/time or choose
+Recurring and supply a cron expression with its explicit timezone. A paused
+source can be created with Enable automation unchecked.
+
+Select a definition to edit its name, prompt or schedule, pause/resume, run it
+manually, or inspect paginated run history. Open origin conversation and Open run
+conversation return to the owned native conversation. Automation selection is
+kept in the URL across reload. Progress refreshes every five seconds.
+
+Saving checks the loaded revision. Polling does not replace unsaved input;
+Reload saved automation explicitly discards the draft and loads the latest
+version. A failed save retains the draft. Stop run waits for server cleanup;
+when attachment or cleanup is pending, refresh and retry. Delete automation
+requires an inline confirmation and stops active jobs while retaining their
+conversations. Cleanup actions remain available after execution access is lost,
+while new runs, edits and resume require execution permission. Read denial hides
+cached definition content and history. The full administrative API and plugin
+frontends remain closed to this application.

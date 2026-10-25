@@ -320,3 +320,36 @@ it("opens workflows in the main workspace and keeps the conversation/sidebar nav
     true,
   );
 });
+
+it("opens the personal automation section from a deep link and returns to the same conversation without exposing native APIs", async () => {
+  const paths: string[] = [];
+  mount(async (input) => {
+    const url = new URL(input.toString());
+    paths.push(url.pathname);
+    if (url.pathname.endsWith("/bootstrap")) return Response.json(bootstrap);
+    if (url.pathname.endsWith("/projects/a"))
+      return Response.json(project("a"));
+    if (url.pathname.endsWith("/threads/one"))
+      return Response.json(thread("one", "a"));
+    if (url.pathname.endsWith("/threads"))
+      return Response.json({ threads: [thread("one", "a")], nextCursor: null });
+    if (url.pathname.endsWith("/automations"))
+      return Response.json({ automations: [], nextCursor: null });
+    if (url.pathname.endsWith("/profiles"))
+      return Response.json({ profiles: [], nextCursor: null });
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }, "/projects/a/threads/one?view=automations");
+  await screen.findByRole("heading", { name: "Automations" });
+  expect(
+    screen.queryByRole("textbox", { name: "Message your agent…" }),
+  ).toBeNull();
+  expect(document.querySelector('[data-sidebar="sidebar"]')).not.toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "New automation" }));
+  await screen.findByRole("form", { name: "Automation editor" });
+  fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+  await screen.findByRole("heading", { name: "Thread one" });
+  expect(screen.queryByRole("form", { name: "Automation editor" })).toBeNull();
+  expect(paths.every((path) => path.startsWith("/control-plane/user/"))).toBe(
+    true,
+  );
+});

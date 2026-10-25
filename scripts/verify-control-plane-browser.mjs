@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "playwright-core";
+import { verifyBrowserAutomations } from "./verify-control-plane-browser-automations.mjs";
 
 export async function verifyControlPlaneBrowser({ name, ready }) {
   assert.equal(ready.origin, "https://127.0.0.1:8080");
@@ -332,6 +333,20 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         .click();
       await visible(page.getByRole("textbox", { name: "Message your agent…" }));
     }
+    for (const [actor, user, foreign] of [
+      [alice, aliceUser, bob],
+      [bob, bobUser, alice],
+    ]) {
+      await verifyBrowserAutomations({
+        page: actor.page,
+        foreign,
+        user,
+        origin: ready.origin,
+        visible,
+        command,
+        container: name,
+      });
+    }
     for (const [actor, foreignId] of [
       [alice, browserWorkflowIds[1]],
       [bob, browserWorkflowIds[0]],
@@ -423,6 +438,13 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     assert.deepEqual(pageErrors, []);
     return {
       ...administration,
+      personalAutomationsCrudSchedulesAndRevisionEditor: true,
+      personalAutomationResponsiveToolbarVerified: true,
+      personalAutomationHistoryAndConversationLinks: true,
+      personalAutomationSelectionSurvivesReload: true,
+      personalAutomationBrowserQwenUidHomeCwdVerified: true,
+      personalAutomationBrowserCancellationReapsActualCommands: true,
+      personalAutomationBrowserForeignReadsAndMutationsDenied: true,
       productionBrowserRenderingVerified: true,
       browserVersion: browser.version(),
       separateCertificateBrowserContexts: true,
