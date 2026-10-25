@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setControlPlaneProfileAccess } from "@bb/db";
+import { seedControlPlaneJobSubjects } from "../helpers/control-plane-authority.js";
 import { describe, expect, it } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import {
@@ -108,5 +110,47 @@ describe("internal project attachment content", () => {
 
       expect(response.status).toBe(403);
     });
+  });
+});
+
+it("checks the current managed profile for each assigned owner's attachment download", async () => {
+  await withTestHarness(async (harness) => {
+    const subjects = seedControlPlaneJobSubjects(harness.db);
+    const { host, session } = seedHostSession(harness.deps, {
+      id: subjects.alice.environment.hostId,
+    });
+    for (const subject of Object.values(subjects)) {
+      const directory = join(
+        harness.config.dataDir,
+        "attachments",
+        subject.project.id,
+      );
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, "owned.txt"), subject.user.login);
+      const request = () =>
+        harness.app.request(
+          `/internal/session/project-attachment-content?sessionId=${session.id}&threadId=${subject.thread.id}&projectId=${subject.project.id}&path=owned.txt`,
+          { headers: internalAuthHeaders(harness, { hostId: host.id }) },
+        );
+      const allowed = await request();
+      expect(allowed.status).toBe(200);
+      expect(await allowed.text()).toBe(subject.user.login);
+      setControlPlaneProfileAccess(
+        harness.db,
+        subject.profile.profileId,
+        subject.user.id,
+        false,
+      );
+      const denied = await request();
+      expect(denied.status).toBe(403);
+      expect(await denied.text()).not.toBe(subject.user.login);
+      setControlPlaneProfileAccess(
+        harness.db,
+        subject.profile.profileId,
+        subject.user.id,
+        true,
+      );
+      expect((await request()).status).toBe(200);
+    }
   });
 });

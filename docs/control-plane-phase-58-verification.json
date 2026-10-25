@@ -1,0 +1,143 @@
+{
+  "scope": "Bound outgoing managed RPC targets, current-grant machine attachment reads, and managed server-authored event provenance",
+  "previousStageCommit": "4392b38ff",
+  "centralDatabaseMigration": null,
+  "hostDaemonProtocol": {
+    "version": 253,
+    "changed": false,
+    "compatibilityDeliberatelyPreserved": true,
+    "newWireFields": [],
+    "newEventRejectionReasons": [],
+    "omittedAcceptedIndexesAlreadySupportedForFilteredEvents": true
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "targetGuardBeforeHostWaitAndEveryActualAttempt": true,
+    "savedThreadEnvironmentHostProjectProviderAndCwdRequired": true,
+    "nativeSessionAndCompleteNestedResumeContextMatchSavedThread": true,
+    "unknownThreadCannotBorrowManagedEnvironment": true,
+    "managedExecutingCommandsRequireCurrentAuthority": true,
+    "interactionReceiptGuardRunsAtEveryAdmissionCheckpoint": true,
+    "exactSavedStartAndSubmitInputSourceGraphStillRequired": true,
+    "cleanupAllowedAfterRevocationAndClearedDestroyedCwd": true,
+    "cleanupCannotChangeSavedOwnerEnvironmentOrHost": true,
+    "providerOwnedPathReuseDeniedBeforeCreationAndDispatch": true,
+    "normalCentralProjectCheckoutWrapperForUnmanagedPathAllowed": true,
+    "managedAttachCannotRequestServiceAccountSetup": true,
+    "genericSetupAndTeardownInsideRegisteredHomeDeniedIncludingNormalizedParentSegments": true,
+    "assignedHostAndProjectRequiredForAttachments": true,
+    "managedAttachmentAuthorityCheckedBeforeReadAndBeforeResponse": true,
+    "oneOwnersRevocationDoesNotBlockOtherOwner": true,
+    "attachmentRegrantRestoresRead": true,
+    "managedCanonicalInputCannotBeReplacedThroughDaemonBatch": true,
+    "managedServerOperationsAndProvisioningCannotBeForgedThroughDaemonBatch": true,
+    "ordinaryProviderEventsStillAccepted": true,
+    "unmanagedSingleUserBehaviorPreserved": true,
+    "browserTokensNotSavedAsAuthority": true,
+    "coreEnforcementIndependentOfOptionalPolicyPlugin": true
+  },
+  "verification": {
+    "serverTests": 948,
+    "serverTestFiles": 104,
+    "newRpcTargetAndEventTests": 9,
+    "newManagedAttachmentTest": 1,
+    "realMigratedSqliteUsed": true,
+    "fullDatabaseTests": 658,
+    "databaseTestFiles": 59,
+    "typecheckTasks": 7,
+    "strictLintChangedCodePassed": true,
+    "formatChangedCodePassed": true,
+    "lintRuleExceptionsAdded": false,
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/internal test/security test/hosts test/threads test/environments test/services/plugins/plugin-background.test.ts test/services/plugins/plugin-tool-calls.test.ts",
+      "pnpm exec turbo run test --filter=@bb/db",
+      "pnpm exec turbo run typecheck --filter=@bb/server --filter=@bb/db",
+      "pnpm exec turbo run test:control-plane-deployment --filter=@bb/server"
+    ],
+    "docker": {
+      "status": "passed",
+      "budgetsChanged": false,
+      "initialFindings": [
+        {
+          "kind": "fixture",
+          "reason": "Root-created private attachment fixture was unreadable to service UID",
+          "fix": "Preserve 0700/0600 and assign attachment root, project directory and file to the service identity"
+        },
+        {
+          "kind": "implementation",
+          "reason": "Rejecting every environment provider ID incorrectly refused the normal project-checkout wrapper during cold personal provisioning",
+          "fix": "Use providerOwnsPath as the ownership criterion and retain path, host, current-grant and no-setup checks; add central wrapper regression coverage"
+        },
+        {
+          "kind": "supersededLiveRun",
+          "reason": "Stopped the exact disposable test container to add newly identified server-event provenance enforcement",
+          "replacement": "Full deployment rerun with forged-input tests for both live native users"
+        }
+      ],
+      "tasks": 63,
+      "cachedTasks": 59,
+      "duration": "8m7.59s",
+      "stageTimings": [
+        {
+          "controlPlaneStage": "message-sources-complete",
+          "elapsedMs": 8633
+        },
+        {
+          "controlPlaneStage": "native-dispatch-complete",
+          "elapsedMs": 8634
+        },
+        {
+          "controlPlaneStage": "personal-and-browser-complete",
+          "elapsedMs": 365191
+        },
+        {
+          "controlPlaneStage": "message-sources-restart-complete",
+          "elapsedMs": 400355
+        },
+        {
+          "controlPlaneStage": "restart-complete",
+          "elapsedMs": 401013
+        },
+        {
+          "controlPlaneStage": "crash-recovery-complete",
+          "elapsedMs": 426111
+        }
+      ],
+      "assertions": {
+        "managedDaemonCannotForgeCanonicalInput": true,
+        "managedMachineAttachmentCurrentGrantRechecked": true,
+        "managedProviderOwnedEnvironmentReuseDeniedBeforeEvents": true,
+        "nativeUidHomeTools": true,
+        "resumedThreadAfterRestart": true,
+        "revokedProfileResumeDeniedBeforeEvents": true,
+        "machineCredentialNotFullPublicApi": true,
+        "managedParentOwnershipEnforced": true,
+        "managedForeignNoticeDeniedAfterRestart": true,
+        "managedLegacyBackfillRetainedWithoutExecution": true,
+        "coreShutdownAdmissionRejectsCreateSendAndQueue": true,
+        "crashRecoveryRetainsIdentityAndThreads": true
+      },
+      "nativeTwoOwnerStartResumeAndColdProvisioningPassed": true,
+      "stockNativeQwenWithDeterministicLocalModelBackend": true,
+      "shutdownAndCrashRecoveryPassed": true
+    },
+    "imageHashes": {
+      "serverStartHostAndImage": "1b4370fb523a0993f5b8a26a15d14f1de1c7e60fde6c2bf44b4953a382c12ee8",
+      "daemonRequestsHostAndImage": "349a7b3ef4d9d239ec48d6e1c44fa61264f9cc90c9e1a95519a31691c54804ef",
+      "messageSourcesHostAndImage": "c1d9dd2896b6cc6177118ec58f642d6e2b335583e40b68442b7fe46e678a8b5e",
+      "sourceFixtureTs": "856a242d19167f4a5d69e8c4471dea2b433a4fc5bf5b9552d0205cc0699253f6",
+      "compiledImageFixture": "d190f9f3333d57e3c3ee15672bc6a22971e403389cc7de8c71e1b7c046a670a1",
+      "hostDaemonStartHostAndImage": "0dd5e419516004e101c064b1ac576c604f7e056e71f7cf4779de945a9a61acee"
+    }
+  },
+  "limitations": [
+    "The daemon and centrally installed plugins remain trusted for assigned runtimes; a compromised daemon/root is not isolated from them.",
+    "Daemon workspace/Git commands still use the service identity; this is a distinct remaining registered-UID execution requirement.",
+    "Host-local operator commands outside managed thread/registered HOME scope remain operator operations.",
+    "Current checks are not a filesystem jail or network boundary.",
+    "Stock native Qwen SDK/CLI with a deterministic local model backend does not verify the corporate certificate SDK contract.",
+    "No UI changes; real-browser baseline remains increment 51.",
+    "Composite background acceptance, profile translation, project MCP connections and reusable agent product requirements remain open."
+  ]
+}

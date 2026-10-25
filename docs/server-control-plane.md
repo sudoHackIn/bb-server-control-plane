@@ -54,6 +54,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Recheck saved cross-thread sender/requester authority for managed messages and queues, preserve retry/requester provenance through idle session continuation, and recheck the exact stored request before daemon transport. Verify retained source references and revoked delivery after restart. The complete queue/notification context audit remains pending.
 - [x] Persist server-only references for copied deferred input and exact workflow notification requests; check complete request/job ancestry at commit and transport, retain references across restart and refuse unmarked legacy managed requests. Parent/system-message and complete machine/action acceptance remain pending.
 - [x] Enforce same-owner parent mutations and typed system-notice subjects at queue, canonical commit and transport; retain unknown legacy deferred input without execution in shared-server startup. See [system notices](control-plane-system-notices.md). Complete machine/action and composite background acceptance remain pending.
+- [x] Bind outgoing managed thread RPC targets to registered host/environment/project/cwd and native resume identity at every admission checkpoint; reject provider-owned reuse and service-account hooks in user HOME, recheck managed attachment reads, and refuse daemon-authored canonical input/operations. See [machine boundaries](control-plane-machine-boundaries.md). Daemon workspace/Git execution under the registered UID remains pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -86,7 +87,9 @@ than treating a target increment number as acceptance.
    in 55. Deferred-prefix and exact notification-binding request references are
    implemented in 56. Parent/system-message subjects and unknown legacy backfill
    refusal are implemented in 57. The remaining machine/action and composite
-   recovery/source acceptance stay open.
+   recovery/source acceptance stay open. Increment 58 binds outgoing RPC targets
+   and attachment reads; daemon workspace/Git operations still need the registered
+   Unix identity, independently of Qwen execution.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -2581,3 +2584,72 @@ constraint; it was corrected without relaxing production policy or test budgets.
 Server bundle and QA script SHA-256 match the final image. No browser UI changed;
 this increment uses the browser baseline from 51. See
 [the verification record](control-plane-phase-57-verification.json).
+
+
+## Fifty-eighth increment: bound RPC targets and managed attachment reads
+
+The common host-RPC admission path now checks managed command targets before
+host waits/preparation and on every actual attempt. Thread/environment/project/
+host and registry cwd must match; provider identity and any supplied native
+session or nested resume context must match the same saved thread. Unknown
+threads cannot borrow managed environments. Current execution checks and exact
+saved input-source checks remain mandatory in core without an optional policy
+plugin. Interaction receipt validation now runs at each common checkpoint while
+preserving its dedicated error contract.
+
+Cleanup stays available after profile revocation, including a correctly bound
+stop/storage command whose destroyed environment no longer has a cwd. It cannot
+be redirected to another owner or host. Managed creation/reuse and dispatch
+reject provider-owned paths. A normal central `project-checkout` wrapper for an
+unmanaged directory remains supported. Attach commands cannot
+request service-account setup scripts, and generic setup/teardown refuses paths
+inside registered HOME directories. The existing registered-UID automation and
+workflow script mechanisms remain the supported tenant script execution paths.
+
+The internal attachment-content endpoint rechecks current managed authority
+before disk reads and before returning bytes, in addition to its existing
+project/thread and daemon-host assignment checks. Two-owner tests verify that
+revoking Alice does not revoke Bob and that regrant restores Alice's download.
+
+See [the machine boundary inventory](control-plane-machine-boundaries.md) for
+incoming routes, trust assumptions and evidence. The audit also found that
+`@bb/host-workspace` Git processes still inherit the daemon identity. Service ACL
+access and Qwen isolation do not satisfy registered-UID execution for this
+separate path. Native workspace/Git handling is the next required increment;
+overall machine/action and tenant workspace execution remain unchecked.
+
+This increment adds no wire fields, public SDK members, CLI flags or migration.
+Host daemon protocol remains 253 and Plugin SDK remains 0.6.80. No UI changes
+require a new browser baseline.
+
+
+Managed daemon batches also cannot append server-owned input, rejection,
+operation, manager-message or provisioning events. This prevents reuse of an
+existing canonical request ID to replace its body through the machine endpoint.
+All seven filtered types and an allowed provider event are tested together;
+accepted indexes retain the existing wire shape. Docker repeats canonical-input
+forgery against both users' live native Qwen threads.
+
+
+Verification passed: 948 selected server tests in 104 files, all 658 database
+tests in 59 files, seven typecheck tasks, and strict lint/formatting for all 11
+changed code files. The nine new target/event tests cover cross-owner target
+fields, complete nested resume identity, revoked/destroyed cleanup, central
+unmanaged checkout metadata, provider-owned refusal, setup/teardown, reconnect
+and all seven server-owned event types. The additional attachment test uses real
+files and migrated SQLite for both users and revoke/regrant.
+
+The final Docker deployment passed all 63 tasks in 8m7.59s. Actual machine HTTP
+requests cannot replace either live user's canonical input. Attachment download
+checks distinguish owners and deny/recover Alice on profile revoke/regrant.
+Native create/send rejects a controlled provider-owned path before adding threads
+or requests, then restores the fixture; ordinary cold personal provisioning and
+same-session continuation work. Existing background, restart, shutdown and crash
+recovery checks pass. Server, daemon and QA script SHA-256 match the final image.
+The initial attachment fixture had root-owned private files, fixed by assigning
+them to the service UID while retaining 0700/0600. The first implementation also
+rejected a normal `project-checkout` wrapper by ID; its regression was corrected
+to check actual path ownership without enabling service-account setup scripts.
+A superseded live run was stopped to add the event-forgery checks; final evidence
+comes from the complete replacement run. No test deadlines were extended.
+See [the verification record](control-plane-phase-58-verification.json).

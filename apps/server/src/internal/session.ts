@@ -1,5 +1,6 @@
 import {
   getAppSettings,
+  requireControlPlaneThreadDispatch,
   getLatestSessionForHost,
   getHost,
   listRetiredLoadedEnvironmentIdsOnHost,
@@ -270,11 +271,13 @@ export function registerInternalSessionRoutes(
         );
       }
 
+      requireControlPlaneThreadDispatch(deps.db, thread.id);
       const attachment = await readAttachment(
         deps.config.dataDir,
         query.projectId,
         query.path,
       );
+      requireControlPlaneThreadDispatch(deps.db, thread.id);
       return new Response(new Uint8Array(attachment.content), {
         status: 200,
         headers: {

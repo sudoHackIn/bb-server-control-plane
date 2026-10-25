@@ -5,6 +5,7 @@ import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
   getThread,
+  isControlPlaneThreadManaged,
   getLatestThreadSequence,
   listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
@@ -1016,6 +1017,16 @@ function summarizeRejectedDaemonEvents(
   };
 }
 
+const managedServerAuthoredEventTypes = new Set<ThreadEventType>([
+  "client/thread/start",
+  "client/turn/start",
+  "client/turn/requested",
+  "client/turn/rejected",
+  "system/manager/user_message",
+  "system/operation",
+  "system/thread-provisioning",
+]);
+
 function resolvePostableEventBatchEntries(
   deps: Pick<AppDeps, "db">,
   args: ResolvePostableEventBatchEntriesArgs,
@@ -1052,6 +1063,11 @@ function resolvePostableEventBatchEntries(
       });
       continue;
     }
+    if (
+      managedServerAuthoredEventTypes.has(entry.event.type) &&
+      isControlPlaneThreadManaged(deps.db, entry.threadId)
+    )
+      continue;
     const canonicalEnvironmentId =
       canonicalEnvironmentIdByThreadId.get(entry.threadId) ?? null;
     entries.push({

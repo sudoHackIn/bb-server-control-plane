@@ -1,3 +1,4 @@
+import { assertControlPlaneRpcTarget } from "../../control-plane/rpc-target-authority.js";
 import { assertControlPlaneTurnRequestSources } from "../../control-plane/message-source-authority.js";
 import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { assertControlPlaneInteractionResolution } from "../../control-plane/daemon-request-authority.js";
@@ -163,6 +164,12 @@ function assertRpcAdmission(
   deps: Pick<WorkSessionDeps, "db">,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): void {
+  if (args.command.type === "interactive.resolve")
+    assertControlPlaneInteractionResolution(deps.db, {
+      ...args.command,
+      hostId: args.hostId,
+    });
+  assertControlPlaneRpcTarget(deps.db, args.hostId, args.command);
   if (isCleanupRpc(deps, args)) return;
   switch (args.command.type) {
     case "thread.stop":
@@ -408,11 +415,6 @@ function requestHostOnlineRpcResponse(
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResponseMessage> {
   assertRpcAdmission(deps, args);
-  if (args.command.type === "interactive.resolve")
-    assertControlPlaneInteractionResolution(deps.db, {
-      ...args.command,
-      hostId: args.hostId,
-    });
   if (
     args.command.type === "thread.start" ||
     args.command.type === "turn.submit"

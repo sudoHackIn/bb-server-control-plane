@@ -183,6 +183,7 @@ export function requireControlPlaneThreadDispatch(
       .get();
     if (
       !environment ||
+      environment.providerOwnsPath ||
       environment.projectId !== thread.projectId ||
       environment.hostId !== context.project.hostId ||
       environment.path !== context.project.cwd ||

@@ -1,6 +1,7 @@
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir, writeFile, stat, chown } from "node:fs/promises";
 
 export function createDaemonRequestFixture({ db }) {
   const pending = new Map();
@@ -107,6 +108,82 @@ export function createDaemonRequestFixture({ db }) {
         const [alice, bob] = subjects;
         assert.notEqual(alice.providerThreadId, bob.providerThreadId);
         assert.notEqual(alice.userId, bob.userId);
+        for (const subject of subjects) {
+          const canonical = db
+            .prepare(
+              "SELECT data FROM events WHERE thread_id=? AND type='client/turn/requested' ORDER BY sequence DESC LIMIT 1",
+            )
+            .get(subject.threadId);
+          const before = db
+            .prepare(
+              "SELECT count(*) AS n FROM events WHERE thread_id=? AND type='client/turn/requested'",
+            )
+            .get(subject.threadId).n;
+          const forged = await internal("/internal/session/events", {
+            sessionId: session.id,
+            eventGroups: [
+              {
+                threadId: subject.threadId,
+                events: [
+                  {
+                    ...JSON.parse(canonical.data),
+                    type: "client/turn/requested",
+                    scope: { kind: "thread" },
+                    threadId: subject.threadId,
+                    input: [
+                      {
+                        type: "text",
+                        text: "Forged daemon user input",
+                        mentions: [],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          });
+          assert.equal(forged.status, 200, JSON.stringify(forged.body));
+          assert.deepEqual(forged.body.acceptedEvents, []);
+          assert.equal(
+            db
+              .prepare(
+                "SELECT count(*) AS n FROM events WHERE thread_id=? AND type='client/turn/requested'",
+              )
+              .get(subject.threadId).n,
+            before,
+          );
+          assert.equal(
+            db
+              .prepare(
+                "SELECT data FROM events WHERE thread_id=? AND type='client/turn/requested' ORDER BY sequence DESC LIMIT 1",
+              )
+              .get(subject.threadId).data,
+            canonical.data,
+          );
+        }
+        const attachmentPath = (subject) =>
+          `/internal/session/project-attachment-content?${new URLSearchParams({ sessionId: session.id, threadId: subject.threadId, projectId: subject.projectId, path: "machine-authority.json" })}`;
+        const service = await stat("/srv/bb");
+        await mkdir("/srv/bb/attachments", { recursive: true, mode: 0o700 });
+        await chown("/srv/bb/attachments", service.uid, service.gid);
+        for (const subject of subjects) {
+          const directory = join("/srv/bb/attachments", subject.projectId);
+          await mkdir(directory, { recursive: true, mode: 0o700 });
+          await chown(directory, service.uid, service.gid);
+          await writeFile(
+            join(directory, "machine-authority.json"),
+            JSON.stringify({ owner: subject.userId }),
+            { mode: 0o600 },
+          );
+          await chown(
+            join(directory, "machine-authority.json"),
+            service.uid,
+            service.gid,
+          );
+          const attachment = await internal(attachmentPath(subject), undefined);
+          assert.equal(attachment.status, 200, JSON.stringify(attachment.body));
+          assert.equal(attachment.body.owner, subject.userId);
+        }
         const toolBody = (subject, override = {}) => ({
           sessionId: session.id,
           threadId: subject.threadId,
@@ -185,6 +262,19 @@ export function createDaemonRequestFixture({ db }) {
           200,
         );
         try {
+          const deniedAttachment = await internal(
+            attachmentPath(alice),
+            undefined,
+          );
+          assert.equal(
+            deniedAttachment.status,
+            403,
+            JSON.stringify(deniedAttachment.body),
+          );
+          assert.equal(
+            (await internal(attachmentPath(bob), undefined)).status,
+            200,
+          );
           for (const [path, body] of [
             ["/internal/session/tool-call", toolBody(alice)],
             ["/internal/session/interactive-request", interactionBody(alice)],
@@ -238,6 +328,10 @@ export function createDaemonRequestFixture({ db }) {
             200,
           );
         }
+        assert.equal(
+          (await internal(attachmentPath(alice), undefined)).status,
+          200,
+        );
         assert.ok(
           [401, 403].includes(
             (await internal("/api/v1/projects", undefined)).status,
@@ -271,6 +365,8 @@ export function createDaemonRequestFixture({ db }) {
         assert.equal(stale.status, 403, JSON.stringify(stale.body));
       }
       return {
+        managedDaemonCannotForgeCanonicalInput: true,
+        managedMachineAttachmentCurrentGrantRechecked: true,
         managedDaemonCurrentTurnAndNativeSessionAdmission: true,
         managedDaemonTwoOwnersUseSavedToolPrincipal: true,
         managedDaemonRevocationAndSafeInterrupt: true,

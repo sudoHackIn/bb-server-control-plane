@@ -359,6 +359,57 @@ export function createMessageSourceFixture({ db, users }) {
         ]);
         return JSON.parse(result.stdout).threadId;
       }
+      const countBeforeUnsafeEnvironment = db
+        .prepare("SELECT count(*) AS n FROM threads")
+        .get().n;
+      const requestsBeforeUnsafeEnvironment = db
+        .prepare(
+          "SELECT count(*) AS n FROM events WHERE type='client/turn/requested'",
+        )
+        .get().n;
+      await setup("unsafe-environment");
+      try {
+        const deniedCreate = await send(
+          "/api/v1/threads",
+          created[0].threadInput,
+          token,
+        );
+        assert.equal(
+          deniedCreate.status,
+          404,
+          JSON.stringify(deniedCreate.body),
+        );
+        const deniedSend = await send(
+          `/api/v1/threads/${legacyId}/send`,
+          {
+            input: [
+              {
+                type: "text",
+                text: "BB_MESSAGE_SOURCE_UNSAFE_ENV",
+                mentions: [],
+              },
+            ],
+            mode: "start",
+          },
+          token,
+        );
+        assert.equal(deniedSend.status, 403, JSON.stringify(deniedSend.body));
+        assert.equal(
+          db.prepare("SELECT count(*) AS n FROM threads").get().n,
+          countBeforeUnsafeEnvironment,
+        );
+        assert.equal(
+          db
+            .prepare(
+              "SELECT count(*) AS n FROM events WHERE type='client/turn/requested'",
+            )
+            .get().n,
+          requestsBeforeUnsafeEnvironment,
+        );
+        assert.equal(calls.has("BB_MESSAGE_SOURCE_UNSAFE_ENV"), false);
+      } finally {
+        await setup("restore-environment");
+      }
       const backfillThreadId = await setup("legacy-backfill");
       const legacyRows = db
         .prepare(
@@ -401,6 +452,7 @@ export function createMessageSourceFixture({ db, users }) {
         inherited: { threadId: deferredThreadId, ...inherited[0] },
       };
       return {
+        managedProviderOwnedEnvironmentReuseDeniedBeforeEvents: true,
         managedParentOwnershipEnforced: true,
         managedForeignNoticeDenied: true,
         managedUnmarkedLegacyRetryDenied: true,

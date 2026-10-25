@@ -64,6 +64,7 @@ export function controlPlaneThreadOwnerForCreate(
       const existing = getEnvironment(db, environment.environmentId);
       if (
         !existing ||
+        existing.providerOwnsPath ||
         existing.projectId !== request.projectId ||
         existing.hostId !== context.project.hostId ||
         existing.path !== context.project.cwd
