@@ -54,6 +54,54 @@ described in [the script runtime](control-plane-script-runtime.md). Forced proce
 shutdown, explicit legacy ownership and the complete background/machine-RPC audit
 remain separate acceptance requirements.
 
-In particular, inbound daemon tool calls and interactive-request registration
-retain their existing machine/session and managed-thread checks. Their separate
-shutdown/current-turn audit is not closed by guarding outbound host RPC.
+## Managed daemon requests and approvals
+
+Inbound tool calls and provider interaction registration also use the core shutdown
+gate. For managed threads, core requires current saved owner/project/profile/source
+authority, an active or starting thread, the current uncompleted root turn, an owned
+stored provider session and an exact match to the native Qwen session bound by the
+private context resolver. Interaction provider IDs must match the thread. The
+machine/session/host check runs first; caller-supplied user/project arguments do not
+choose the tool principal.
+
+The pending-interaction lifecycle applies the same check before registration and
+resolution, including full SDK/API calls. Reusing a provider request identity for
+another thread or turn returns no existing interaction ID. A stale or revoked
+approval is refused before its pending row becomes resolving. Before each actual
+outbound resolution attempt, core resolves the turn from the saved interaction and
+checks its status, saved decision, provider/request identity, environment and host. This preserves
+the existing version-253 daemon payload, which does not contain a turn ID.
+
+An enrolled daemon remains trusted for its assigned host and can report that host's
+thread events. These checks do not claim to isolate tenants from a compromised host
+daemon or to authenticate a new end user from a machine credential. Unmanaged
+single-user provider semantics remain unchanged except for the global shutdown
+gate and exact pending-request identity reuse checks. Interrupting an existing
+interaction remains a host-scoped cleanup action after revocation or shutdown.
+
+The real-Qwen Docker scenario holds two owners' model requests active, exercises
+authorized tool calls with forged owner arguments, rejects stale/cross-session
+tool and interaction requests, revokes one profile while the other owner remains
+usable and interrupts the revoked owner's pending request. Completed-turn calls
+are refused. The shutdown barrier checks inbound tool/approval refusals against
+the current daemon session after a supervised daemon restart.
+
+The native approval revocation scenario now expects core 403 before dispatch and
+then explicitly stops the pending thread; its forbidden command must still leave
+no file. This proves the earlier core refusal. It does not turn that scenario into
+a new test of the provider's post-approval race after an already-delivered allow.
+
+## Trusted plugin schedules
+
+Plugin cron sweeps check both server shutdown and irreversible background
+quiescence at entry and before each claim. Clearing the ordinary reversible
+schedules-paused flag cannot reopen a quiesced runtime. A callback admitted before
+quiescence may finish; remaining due rows keep their deadlines and attempt state.
+This is trusted centrally installed plugin code, separate from personal automation
+definitions and their persisted user authority.
+
+Real-SQLite tests cover an in-flight callback for both stop boundaries. Docker
+uses the actual periodic sweep, two fixture-owned cron rows and a file barrier.
+Only those disposable rows' due timestamps are advanced by the test; callback
+dispatch and claim/settlement run through production code. After shutdown begins,
+the first callback settles and the second remains unclaimed.

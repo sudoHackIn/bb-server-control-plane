@@ -1,4 +1,5 @@
 import { assertExecutionAdmission } from "../system/execution-admission.js";
+import { assertControlPlaneInteractionResolution } from "../../control-plane/daemon-request-authority.js";
 import { hostCommandMayWake } from "./wake-policy.js";
 import { isHostCleanupAllowed } from "./cleanup-context.js";
 import { assertMachineLifecycleAdmission } from "../machines/lifecycle.js";
@@ -407,6 +408,11 @@ function requestHostOnlineRpcResponse(
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResponseMessage> {
   assertRpcAdmission(deps, args);
+  if (args.command.type === "interactive.resolve")
+    assertControlPlaneInteractionResolution(deps.db, {
+      ...args.command,
+      hostId: args.hostId,
+    });
   if (
     args.command.type === "thread.start" ||
     args.command.type === "turn.submit"

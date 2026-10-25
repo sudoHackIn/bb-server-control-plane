@@ -1,3 +1,4 @@
+import { createDaemonRequestFixture } from "./check-control-plane-daemon-requests.mjs";
 import assert from "node:assert/strict";
 import { createUserThreadFixture } from "./check-control-plane-user-threads.mjs";
 import { createApprovalFixture } from "./check-control-plane-approvals.mjs";
@@ -34,6 +35,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     .all();
   const approvals = createApprovalFixture({ db, users });
   const personal = createUserThreadFixture({ db, users });
+  const daemonRequests = createDaemonRequestFixture({ db });
+  let daemonRequestVerification;
   let personalVerification, personalRestartVerification;
   let approvalVerification;
   const toolCalls = new Map();
@@ -43,7 +46,12 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     let text = "";
     for await (const part of req) text += part;
     const body = JSON.parse(text);
-    if (approvals.handle(body, res) || personal.handle(body, res)) return;
+    if (
+      daemonRequests.handle(body, res) ||
+      approvals.handle(body, res) ||
+      personal.handle(body, res)
+    )
+      return;
     const marker = JSON.stringify(body.messages).includes("BB_MANAGED_ALICE")
       ? "alice"
       : "bob";
@@ -471,6 +479,12 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         profileVersionId: approved.body.version.id,
       });
     }
+    daemonRequestVerification = await daemonRequests.verify({
+      send,
+      wait,
+      token,
+      created,
+    });
     stage("native-dispatch-complete");
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
@@ -567,6 +581,30 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       return current && current.instance_id !== firstSession.instance_id;
     }, "supervised daemon restart");
     stage("personal-and-browser-complete");
+    const cronHold = "/srv/bb/shutdown-cron-hold";
+    const cronEntered = "/srv/bb/shutdown-cron-entered";
+    const cronPast = Date.now() - 60000;
+    await writeFile(cronHold, "hold", { mode: 0o644 });
+    const cronDb = new Database("/srv/bb/bb.db");
+    try {
+      for (const [name, at] of [
+        ["shutdown-first", cronPast - 1],
+        ["shutdown-second", cronPast],
+      ]) {
+        const changed = cronDb
+          .prepare(
+            "UPDATE plugin_schedules SET next_run_at=?,last_run_at=NULL,last_status=NULL,last_error=NULL WHERE plugin_id=? AND name=?",
+          )
+          .run(at, "control-plane-tool-fixture", name);
+        assert.equal(changed.changes, 1);
+      }
+    } finally {
+      cronDb.close();
+    }
+    await wait(
+      async () => (await readFile(cronEntered, "utf8")) === "entered",
+      "in-flight native plugin cron sweep",
+    );
     await personal.beforeRestart();
     const shutdownHold = "/srv/bb/shutdown-admission-hold";
     const shutdownReady = "/srv/bb/shutdown-admission-ready";
@@ -613,7 +651,31 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         before,
       );
       await personal.duringShutdown();
+      await daemonRequests.duringShutdown();
+      await unlink(cronHold);
+      await wait(
+        () =>
+          db
+            .prepare(
+              "SELECT last_status FROM plugin_schedules WHERE plugin_id=? AND name=?",
+            )
+            .get("control-plane-tool-fixture", "shutdown-first")
+            ?.last_status === "ok",
+        "admitted cron callback settles after shutdown",
+      );
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT next_run_at,last_run_at,last_status FROM plugin_schedules WHERE plugin_id=? AND name=?",
+          )
+          .get("control-plane-tool-fixture", "shutdown-second"),
+        { next_run_at: cronPast, last_run_at: null, last_status: null },
+      );
     } finally {
+      await unlink(cronHold).catch((error) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+      await unlink(cronEntered);
       await unlink(shutdownHold);
       await unlink(shutdownReady);
     }
@@ -822,6 +884,9 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       homeConfiguredBbMcpCannotOverrideBridge: true,
       nativeUidHomeTools: true,
       nativeTimeline: true,
+      ...daemonRequestVerification,
+      managedDaemonShutdownRefusesToolsAndApprovals: true,
+      quiescenceDoesNotClaimNextDuePluginSchedule: true,
       managedShutdown: true,
       coreShutdownAdmissionRejectsCreateSendAndQueue: true,
       trustedPluginSdkCannotAdmitExecutionDuringShutdown: true,

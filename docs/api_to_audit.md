@@ -3938,3 +3938,12 @@ attempts; cleanup exceptions and remaining source/machine audit are documented
 in `control-plane-execution-admission.md`. Cached SDK handles during individual
 plugin disposal retain their existing trusted cleanup lifetime; the server
 shutdown gate applies globally.
+
+Managed daemon tool calls and provider interactions now check the saved native
+Qwen session and current root turn in core, in addition to current execution
+authority. The pending-interaction lifecycle shares that check for SDK/API
+resolution; the outbound RPC sender rechecks the saved receipt and host/environment
+before transport. No Plugin SDK member is added. `createPluginRuntime` exposes an
+internal quiescence getter only to `createPluginService`, whose trusted cron sweep
+checks it before each claim, including after an awaiting callback. This does not
+expose centrally installed plugin schedules as personal automation definitions.

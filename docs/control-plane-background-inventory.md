@@ -118,3 +118,10 @@ actual daemon RPC shutdown admission, with checks after asynchronous preparation
 see [execution admission](control-plane-execution-admission.md). These increments
 do not by themselves close the full background source and machine-originated RPC
 audit above.
+
+Phase 54 gates managed incoming tool/interaction requests by current saved native
+session and root turn, validates pending resolution receipts before actual RPC
+transport and keeps cleanup interrupt available after revocation/shutdown. Trusted
+plugin cron sweeps stop claiming remaining due rows after quiescence, including an
+already-running sweep. The enrolled host remains trusted for its reported events;
+this does not close the complete machine action, artifact or source/recovery audit.

@@ -1,7 +1,9 @@
+import { stopExecutionAdmission } from "../../src/services/system/execution-admission.js";
 import { expect, it } from "vitest";
 import {
   ControlPlaneRegistry,
   controlPlaneUsers,
+  controlPlaneThreads,
   controlPlaneProjectAccess,
   environments,
   createControlPlaneProfile,
@@ -18,7 +20,11 @@ import { filterControlPlaneTools } from "../../src/control-plane/tool-authority.
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
 import { internalAuthHeaders } from "../helpers/commands.js";
-import { seedHostSession } from "../helpers/seed.js";
+import {
+  seedHostSession,
+  seedTurnStarted,
+  seedThreadIdentity,
+} from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 it("checks each managed daemon tool call against current grants and invokes only with the persisted user principal", async () => {
@@ -72,6 +78,22 @@ it("checks each managed daemon tool call against current grants and invokes only
       controlPlaneOwnerUserId: alice.id,
       controlPlaneProfileVersionId: profile.versionId,
     });
+    harness.db
+      .update(controlPlaneThreads)
+      .set({ qwenSessionId: "provider" })
+      .where(eq(controlPlaneThreads.threadId, thread.id))
+      .run();
+    seedThreadIdentity(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      providerThreadId: "provider",
+    });
+    seedTurnStarted(harness.deps, {
+      threadId: thread.id,
+      environmentId: environment.id,
+      providerThreadId: "provider",
+      turnId: "turn",
+    });
     let calls = 0;
     const record: PluginAgentToolRecord = {
       name: "approved_tool",
@@ -104,7 +126,10 @@ it("checks each managed daemon tool call against current grants and invokes only
         };
       },
     });
-    const invoke = (tool = "approved_tool") =>
+    const invoke = (
+      tool = "approved_tool",
+      override: { turnId?: string; providerThreadId?: string } = {},
+    ) =>
       harness.app.request("/internal/session/tool-call", {
         method: "POST",
         headers: internalAuthHeaders(harness),
@@ -115,6 +140,7 @@ it("checks each managed daemon tool call against current grants and invokes only
           turnId: "turn",
           callId: "call",
           tool,
+          ...override,
           arguments: {
             userId: bob.id,
             projectId: "foreign",
@@ -140,6 +166,13 @@ it("checks each managed daemon tool call against current grants and invokes only
       expect(ok.status).toBe(200);
       expect(await ok.json()).toMatchObject({ success: true });
       expect(calls).toBe(1);
+      for (const override of [
+        { turnId: "old-turn" },
+        { providerThreadId: "foreign-session" },
+      ]) {
+        expect((await invoke("approved_tool", override)).status).toBe(403);
+        expect(calls).toBe(1);
+      }
       for (const tool of [
         "foreign_tool",
         "update_environment_directory",
@@ -147,6 +180,20 @@ it("checks each managed daemon tool call against current grants and invokes only
       ])
         expect((await invoke(tool)).status).toBe(403);
       for (const change of [
+        {
+          revoke: () =>
+            harness.db
+              .update(controlPlaneThreads)
+              .set({ qwenSessionId: null })
+              .where(eq(controlPlaneThreads.threadId, thread.id))
+              .run(),
+          restore: () =>
+            harness.db
+              .update(controlPlaneThreads)
+              .set({ qwenSessionId: "provider" })
+              .where(eq(controlPlaneThreads.threadId, thread.id))
+              .run(),
+        },
         {
           revoke: () =>
             harness.db
@@ -242,6 +289,9 @@ it("checks each managed daemon tool call against current grants and invokes only
         change.restore();
       }
       expect((await invoke()).status).toBe(200);
+      expect(calls).toBe(2);
+      stopExecutionAdmission(harness.db);
+      expect((await invoke()).status).toBe(503);
       expect(calls).toBe(2);
       expect(currentControlPlanePrincipal()).toBeNull();
     } finally {

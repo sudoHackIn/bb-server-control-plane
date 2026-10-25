@@ -20,6 +20,7 @@ import {
 } from "../services/threads/thread-environment-directory.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
 import { withControlPlaneToolAuthority } from "../control-plane/tool-authority.js";
+import { assertControlPlaneDaemonRequest } from "../control-plane/daemon-request-authority.js";
 
 const textEncoder = new TextEncoder();
 
@@ -76,6 +77,7 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
         );
       }
 
+      assertControlPlaneDaemonRequest(deps.db, payload);
       return withControlPlaneToolAuthority(
         deps.db,
         thread.id,

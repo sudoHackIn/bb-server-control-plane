@@ -19,6 +19,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { stopExecutionAdmission } from "../../../src/services/system/execution-admission.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
@@ -828,6 +829,59 @@ describe("plugin schedules", () => {
     expect(row?.lastRunAt).toBe(now);
     expect(row?.lastError).toBeNull();
   });
+
+  it.each(["quiesce", "shutdown"] as const)(
+    "leaves remaining due schedules unclaimed when %s wins an in-flight sweep",
+    async (mode) => {
+      const entered = join(workDir, "schedule-entered");
+      const release = join(workDir, "schedule-release");
+      const root = await writePlugin(workDir, {
+        name: "bb-plugin-schedule-admission",
+        serverSource: `
+        import {existsSync,writeFileSync} from "node:fs";
+        import type {BbPluginApi} from "@get-bb/plugin-sdk";
+        export default function plugin(bb:BbPluginApi){
+          const db=bb.storage.database();db.exec("CREATE TABLE IF NOT EXISTS admitted(name TEXT)");
+          bb.background.schedule("first","* * * * *",async()=>{
+            db.prepare("INSERT INTO admitted VALUES(?)").run("first");
+            writeFileSync(${JSON.stringify(entered)},"entered");
+            while(!existsSync(${JSON.stringify(release)}))await new Promise(resolve=>setTimeout(resolve,5));
+          });
+          bb.background.schedule("second","* * * * *",()=>{db.prepare("INSERT INTO admitted VALUES(?)").run("second");});
+        }
+      `,
+      });
+      await service.installPath(root);
+      const storage = service.getApi("schedule-admission")?.storage.database();
+      if (!storage) throw new Error("Missing schedule storage");
+      const past = Date.now() - 60000;
+      setNextRunAt(db, "schedule-admission", "first", past - 1);
+      setNextRunAt(db, "schedule-admission", "second", past);
+      const pending = service.sweepDueSchedules(Date.now());
+      try {
+        await expect
+          .poll(async () => await readFile(entered, "utf8"))
+          .toBe("entered");
+        if (mode === "quiesce") await service.quiesceBackgroundServices();
+        else stopExecutionAdmission(db);
+        service.setSchedulesPaused(false);
+        await writeFile(release, "release");
+        await pending;
+        await service.sweepDueSchedules(Date.now());
+        expect(storage.prepare("SELECT name FROM admitted").all()).toEqual([
+          { name: "first" },
+        ]);
+        expect(
+          listPluginSchedules(db, "schedule-admission").find(
+            (row) => row.name === "second",
+          ),
+        ).toMatchObject({ nextRunAt: past, lastRunAt: null, lastStatus: null });
+      } finally {
+        await writeFile(release, "release");
+        await pending;
+      }
+    },
+  );
 
   it("leaves due schedules unclaimed while schedules are paused", async () => {
     await installTicker();

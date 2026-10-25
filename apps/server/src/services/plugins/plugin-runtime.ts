@@ -2144,6 +2144,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     checkPluginSdkRange,
     disposeAll,
     quiesceBackgroundServices,
+    isBackgroundQuiesced: () => backgroundServicesQuiesced,
     disposeOne,
     buildQueuedMessageEventEmitter,
     emitThreadEvent,

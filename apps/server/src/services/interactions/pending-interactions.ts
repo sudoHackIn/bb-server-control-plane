@@ -66,6 +66,7 @@ import {
 } from "./pending-interaction-validation.js";
 import { emitPluginInteractionPending } from "../plugins/plugin-thread-events.js";
 import { requireConnectedHostSession } from "../lib/entity-lookup.js";
+import { assertControlPlaneDaemonRequest } from "../../control-plane/daemon-request-authority.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
   isServerMoveFrozen,
@@ -398,12 +399,6 @@ export class PendingInteractionLifecycle {
     return interaction;
   }
 
-  /**
-   * Whether a pending interaction holds this thread's turn. A provider's
-   * question or approval does: the provider is blocked on it, so nothing
-   * else can be sent until it settles. A plugin's card has no turn and never
-   * blocks a send; whatever answers it later steers or starts a turn.
-   */
   hasTurnBoundPendingThreadInteraction(threadId: string): boolean {
     return hasTurnBoundActivePendingInteractionForThread(
       this.deps.db,
@@ -415,6 +410,7 @@ export class PendingInteractionLifecycle {
     args: RegisterPendingInteractionArgs,
   ): RegisterPendingInteractionResult {
     const { interaction } = args;
+    assertControlPlaneDaemonRequest(this.deps.db, interaction);
     const thread = getThread(this.deps.db, interaction.threadId);
     if (!thread || thread.deletedAt !== null) {
       return {
@@ -447,6 +443,15 @@ export class PendingInteractionLifecycle {
         providerRequestId: interaction.providerRequestId,
       });
       if (existing) {
+        if (
+          existing.threadId !== interaction.threadId ||
+          existing.turnId !== interaction.turnId
+        ) {
+          return {
+            outcome: "rejected" as const,
+            reason: "Provider request belongs to a different thread or turn",
+          };
+        }
         if (existing.status !== "pending" && existing.status !== "resolving") {
           return {
             outcome: "rejected" as const,
@@ -892,6 +897,8 @@ export class PendingInteractionLifecycle {
   private queueInteractionResolutionCommand(
     args: QueueInteractionResolutionCommandArgs,
   ): PendingInteractionRow | null {
+    if (!isPluginPendingInteraction(args.interaction))
+      assertControlPlaneDaemonRequest(this.deps.db, args.interaction);
     const thread = getThread(this.deps.db, args.interaction.threadId);
     if (!thread?.environmentId) {
       throwThreadEnvironmentUnavailable(

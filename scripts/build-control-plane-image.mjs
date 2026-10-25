@@ -17,6 +17,10 @@ try {
     { recursive: true },
   );
   for (const [source, target] of [
+    [
+      "scripts/check-control-plane-daemon-requests.mjs",
+      "check-control-plane-daemon-requests.mjs",
+    ],
     ["apps/server/dist", "server"],
     [
       "scripts/check-control-plane-script-automations.mjs",

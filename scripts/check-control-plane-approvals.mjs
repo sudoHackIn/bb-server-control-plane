@@ -212,7 +212,31 @@ export function createApprovalFixture({ db, users }) {
               resolution,
               token,
             );
-            assert.equal(resolved.status, 200, JSON.stringify(resolved.body));
+            assert.equal(
+              resolved.status,
+              marker === "revoke" ? 403 : 200,
+              JSON.stringify({ marker, ...resolved.body }),
+            );
+            if (marker === "revoke") {
+              assert.equal(resolved.body.code, "daemon_request_not_authorized");
+              assert.equal(
+                db
+                  .prepare("SELECT status FROM pending_interactions WHERE id=?")
+                  .get(interaction.id).status,
+                "pending",
+              );
+              assert.equal(
+                (
+                  await send(
+                    `/api/v1/threads/${id}/stop`,
+                    undefined,
+                    token,
+                    "POST",
+                  )
+                ).status,
+                200,
+              );
+            }
           }
         }
         await complete();
@@ -241,7 +265,7 @@ export function createApprovalFixture({ db, users }) {
       }
       return {
         nativeApprovalAllowDenyAndStop: true,
-        grantRecheckedAfterApproval: true,
+        revokedApprovalRejectedBeforeDispatch: true,
         workspaceEditsAutoApproved: true,
         nativeAutoModeWorkspaceEdit: true,
         nativeAutoClassifierFailureRequiresApproval: true,

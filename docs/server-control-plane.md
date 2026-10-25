@@ -50,6 +50,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Expose personal script create/edit/definition and exact-run output through limited API/SDK/CLI and the personal editor, with strict descriptors, source CAS, output budgets and owner/access checks.
 - [x] Fence managed Automations and private background execution during quiescence/disposal, await in-flight attachment and active script cleanup, and retain plugin storage/artifacts across a hung service stop until teardown completes. Universal HTTP/SDK/queue admission remains pending.
 - [x] Close core thread/turn/queue/background execution admission at server shutdown, repeat checks after asynchronous preparation and before each daemon RPC attempt, preserve queued input and retry budgets, and keep explicit cleanup available. See [shutdown admission](control-plane-execution-admission.md); the full machine/source audit remains pending.
+- [x] Bind managed daemon tool/approval requests to the current turn and saved native Qwen session, recheck approval authority and exact receipt/environment/host before dispatch, and stop further plugin cron claims after quiescence. The complete machine/source audit remains pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -65,20 +66,20 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
 - [ ] Package and verify this fork in the Docker lab, including direct API/CLI bypass attempts from a user's UID, certificate login and user-to-user denials.
 
-## Remaining delivery packages after increment 53
+## Remaining delivery packages after increment 54
 
 Increment numbers describe verified implementation slices, not a fixed count of
 product features. As a planning estimate, the remaining scope including project
-MCP connections and the reusable agent experience needs approximately 7–11
-additional implementation increments after 53, putting the expected final number
+MCP connections and the reusable agent experience needs approximately 6–10
+additional implementation increments after 54, putting the expected final number
 around 60–65. This is not a completion guarantee or a time estimate. Integration
 findings may split packages; close the existing requirements by evidence rather
 than treating a target increment number as acceptance.
 
 1. Complete current user/project/profile/source authorization across machine RPC,
    queues and retries. Core thread/turn shutdown admission is implemented in 53;
-   inbound daemon tool/interactive requests, current-turn binding and the broader
-   per-tenant machine/action audit remain open.
+   managed inbound tool/interaction current-turn/session checks are implemented
+   in 54. The remaining machine/action and recovery/source audit stays open.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -94,7 +95,7 @@ than treating a target increment number as acceptance.
    API/CLI/RPC bypass attempts, revocation and recovery.
 
 Packages overlap and do not replace the unchecked requirements below. Project
-MCP and agent product work can follow 53 without waiting for every audit package;
+MCP and agent product work can follow 54 without waiting for every audit package;
 new execution paths must enforce authority from their first implementation.
 
 ## Project MCP connections
@@ -2346,3 +2347,44 @@ scripts and trusted probe plugin match the final image by SHA-256. Deployment
 watchdogs and existing restart/crash assertions are unchanged. The UI is unchanged;
 browser acceptance remains the increment 51 baseline. The complete proof and
 remaining scope are recorded in `control-plane-phase-53-verification.json`.
+
+## Fifty-fourth increment: managed daemon request authority and quiescent cron
+
+Managed incoming tool and interaction requests require current execution grants,
+the current uncompleted root turn, owned provider-session history and the exact
+native Qwen session bound by the private context resolver. The existing machine/
+session/host authentication remains required. Forged user/project tool arguments
+cannot select the callback principal. Shutdown closes these entrances as well.
+
+The pending-interaction lifecycle repeats these checks before registration and
+resolution through core/full SDK/API. Reusing a provider request identity across
+threads or turns never returns another interaction ID. Actual outbound resolution
+attempts recheck the saved pending receipt and decision, provider identity, current turn,
+environment/host and grants after asynchronous transport preparation. The turn
+comes from the saved row, preserving the existing version-253 wire contract.
+
+Trusted plugin cron sweeps also check shutdown and irreversible runtime quiescence
+before every claim, including after an admitted callback finishes. Remaining due
+rows retain their deadlines and unclaimed state; ordinary pause/unpause cannot
+reopen a quiesced runtime. Native personal Automations keep their separate saved
+user authority/controller path.
+
+Docker holds two real owned Qwen turns, rejects substituted session/turn/provider
+requests, verifies saved tool principals, profile revocation and cleanup interrupt,
+then checks completed-turn and shutdown refusals. Its revoked-approval scenario
+now expects core 403 before dispatch and explicit stop, with the forbidden file
+still absent. A periodic cron sweep is held across shutdown and must leave its
+second due row unclaimed. No migrations, public SDK or UI surface changes. The
+full machine/action/source audit and composite background requirements remain open;
+see [execution admission](control-plane-execution-admission.md) for exact limits.
+
+Verification passes 885 selected server internal/security/host/thread/plugin
+tests in 96 files, with migrated SQLite for database contracts, six typecheck tasks,
+changed-file lint/format and all 63 final
+Docker tasks in 8 minutes 3.788 seconds. The compiled server, three changed runtime
+QA scripts and probe plugin match the image by SHA-256. The cron barrier runs
+before short offline schedules are prepared, preserving the existing zero-before-
+restart/single-fire assertions. Watchdogs are unchanged. The UI is unchanged;
+the increment 51 browser baseline remains. `control-plane-phase-54-verification.json`
+records proof, fixture corrections, the changed early-revocation contract and
+remaining acceptance.

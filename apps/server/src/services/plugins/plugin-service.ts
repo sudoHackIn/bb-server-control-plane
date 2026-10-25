@@ -1,3 +1,4 @@
+import { isExecutionStopping } from "../system/execution-admission.js";
 import { withControlPlaneService } from "../../control-plane/access.js";
 import { rpcResponseTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import type {
@@ -627,6 +628,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     checkPluginSdkRange,
     disposeAll,
     quiesceBackgroundServices,
+    isBackgroundQuiesced,
     disposeOne,
     buildQueuedMessageEventEmitter,
     emitThreadEvent,
@@ -2681,12 +2683,24 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     async sweepDueSchedules(now) {
-      if (schedulesPaused || loaded.size === 0) return;
+      if (
+        schedulesPaused ||
+        isBackgroundQuiesced() ||
+        isExecutionStopping(deps.db) ||
+        loaded.size === 0
+      )
+        return;
       const due = listDuePluginSchedules(deps.db, {
         now,
         limit: SCHEDULE_SWEEP_BATCH_SIZE,
       });
       for (const row of due) {
+        if (
+          schedulesPaused ||
+          isBackgroundQuiesced() ||
+          isExecutionStopping(deps.db)
+        )
+          return;
         const schedule = loaded
           .get(row.pluginId)
           ?.handle.schedules.find((record) => record.name === row.name);

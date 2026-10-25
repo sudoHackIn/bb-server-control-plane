@@ -25,6 +25,7 @@ import {
 } from "../services/lib/entity-lookup.js";
 import { queueChildThreadNeedsAttentionNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
+import { assertControlPlaneDaemonRequest } from "../control-plane/daemon-request-authority.js";
 
 interface RequestChildThreadNeedsAttentionNotificationArgs {
   blockerSummary: string | null;
@@ -166,6 +167,8 @@ export function registerInternalInteractiveRequestRoutes(
           "Thread does not belong to the session host",
         );
       }
+
+      assertControlPlaneDaemonRequest(deps.db, payload.interaction);
 
       const turnStarted = hasStoredTurnStarted(deps.db, {
         threadId: payload.interaction.threadId,

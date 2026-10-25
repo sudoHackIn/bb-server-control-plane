@@ -3,6 +3,14 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { z } from "zod";
 
 export default function plugin(bb: BbPluginApi) {
+  bb.background.schedule("shutdown-first", "* * * * *", async () => {
+    const gate = "/srv/bb/shutdown-cron-hold";
+    if (!existsSync(gate)) return;
+    writeFileSync("/srv/bb/shutdown-cron-entered", "entered");
+    while (existsSync(gate))
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  });
+  bb.background.schedule("shutdown-second", "* * * * *", () => {});
   bb.background.service("shutdown-admission-probe", {
     async start(signal) {
       if (!signal.aborted)

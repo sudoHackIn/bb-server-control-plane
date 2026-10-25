@@ -117,6 +117,45 @@ function registerInteractiveRequest(
 }
 
 describe("internal interactive request lifecycle", () => {
+  it("does not return another thread or turn's pending request when a provider request identity is reused", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, environment, thread } = seedThreadFixture(harness);
+      const body = buildCommandApprovalInteractiveRequest({
+        sessionId: session.id,
+        threadId: thread.id,
+        suffix: "identity-reuse",
+      });
+      expect((await registerInteractiveRequest({ harness, body })).status).toBe(
+        200,
+      );
+      const other = seedThread(harness.deps, {
+        projectId: thread.projectId,
+        environmentId: environment.id,
+      });
+      for (const changed of [
+        { threadId: other.id },
+        { turnId: "other-turn" },
+      ]) {
+        const response = await registerInteractiveRequest({
+          harness,
+          body: { ...body, interaction: { ...body.interaction, ...changed } },
+        });
+        expect(response.status).toBe(200);
+        const result = await readJson(response);
+        expect(result).toMatchObject({
+          outcome: "rejected",
+          reason: "Provider request belongs to a different thread or turn",
+        });
+        expect(result).not.toHaveProperty("interactionId");
+      }
+      expect(
+        listPendingInteractionsByThread(harness.db, { threadId: other.id }),
+      ).toHaveLength(0);
+      expect(
+        listPendingInteractionsByThread(harness.db, { threadId: thread.id }),
+      ).toHaveLength(1);
+    });
+  });
   it("persists an interactive request and delivers a later resolution through a command", async () => {
     await withTestHarness(async (harness) => {
       const { session, environment, thread } = seedThreadFixture(harness, {
