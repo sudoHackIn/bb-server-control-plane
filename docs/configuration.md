@@ -1525,3 +1525,11 @@ cannot admit a new corrective/user message or queue entry using an earlier
 approval. Workflow cancellation and profile revocation during external backoff
 prevent another worker attempt; transient exhaustion remains bounded to two
 external retries. Stock harness retry delays are independent.
+
+Managed workflow completion notices use the saved run owner and origin with
+current execution grants. Native agent-only messages and central acceptance
+receipts commit atomically. A retry after a lost plugin acknowledgement does not
+append a second request; this is acceptance deduplication, not exactly-once model
+or tool execution. Revoked/cancelled authority abandons the notice. Transient
+preparation failures keep the plugin's persisted notification backoff. This
+internal integration adds no public administration endpoint or configuration.

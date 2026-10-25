@@ -8,7 +8,7 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { expect, it, vi } from "vitest";
-import { createRun, migrations, settleRun } from "./data.js";
+import { createRun, getRunRequired, migrations, settleRun } from "./data.js";
 import { createWorkflowService } from "./service.js";
 import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 
@@ -83,6 +83,9 @@ function fixture() {
     async getWorker() {
       throw new Error("Test workers not configured");
     },
+    async notifyOrigin() {
+      return "accepted";
+    },
     async sendWorker() {
       throw new Error("Test workers not configured");
     },
@@ -117,6 +120,7 @@ function fixture() {
   };
   return {
     owner,
+    bb,
     authority,
     profileVersionId,
     bindings,
@@ -280,6 +284,93 @@ it("discovers paginated workers and cleans them without retained run history", a
     expect(test.spawn).not.toHaveBeenCalled();
     expect(test.send).not.toHaveBeenCalled();
     expect(test.originLookup).not.toHaveBeenCalled();
+  } finally {
+    controller.abort();
+    await worker;
+    await test.harness.dispose();
+  }
+});
+
+it.each(["accepted", "denied", "unavailable"] as const)(
+  "uses only the scoped notification adapter for a managed %s outcome",
+  async (outcome) => {
+    const test = fixture();
+    const controller = new AbortController();
+    let worker: Promise<void> | undefined;
+    const notify = vi.fn(async () => outcome);
+    test.authority.notifyOrigin = notify;
+    try {
+      const run = await test.service.start(test.input);
+      settleRun(test.db, {
+        id: run.id,
+        status: "succeeded",
+        result: { value: 42 },
+        error: null,
+      });
+      worker = test.service.runWorker(controller.signal);
+      await vi.waitFor(() =>
+        expect(getRunRequired(test.db, run.id).notificationSent).toBe(true),
+      );
+      expect(getRunRequired(test.db, run.id).notificationOutcome).toBe(
+        outcome === "accepted" ? "delivered" : "abandoned",
+      );
+      expect(notify).toHaveBeenCalledWith(
+        run.authorityBindingId,
+        expect.stringContaining(run.id),
+      );
+      expect(test.originLookup).not.toHaveBeenCalled();
+      expect(test.send).not.toHaveBeenCalled();
+    } finally {
+      controller.abort();
+      await worker;
+      await test.harness.dispose();
+    }
+  },
+);
+
+it("retries a transient scoped notification failure after service restart", async () => {
+  const test = fixture();
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  test.authority.notifyOrigin = async () => {
+    throw new Error("host offline");
+  };
+  try {
+    const run = await test.service.start(test.input);
+    settleRun(test.db, {
+      id: run.id,
+      status: "succeeded",
+      result: null,
+      error: null,
+    });
+    worker = test.service.runWorker(controller.signal);
+    await vi.waitFor(() =>
+      expect(getRunRequired(test.db, run.id).notificationAttemptCount).toBe(1),
+    );
+    controller.abort();
+    await worker;
+    expect(getRunRequired(test.db, run.id).notificationOutcome).toBe("pending");
+    expect(test.originLookup).not.toHaveBeenCalled();
+    expect(test.send).not.toHaveBeenCalled();
+    test.db
+      .prepare(
+        "UPDATE workflow_runs SET notification_next_attempt_at = 0 WHERE id = ?",
+      )
+      .run(run.id);
+    test.authority.notifyOrigin = async () => "accepted";
+    const next = new AbortController();
+    const restarted = createWorkflowService(test.bb, test.db);
+    const running = restarted.runWorker(next.signal);
+    try {
+      await vi.waitFor(() =>
+        expect(getRunRequired(test.db, run.id).notificationOutcome).toBe(
+          "delivered",
+        ),
+      );
+    } finally {
+      next.abort();
+      await running;
+    }
   } finally {
     controller.abort();
     await worker;

@@ -19,7 +19,7 @@ import {
 } from "@bb/db";
 
 const mode = z
-  .enum(["create", "verify", "orphan", "access"])
+  .enum(["create", "verify", "orphan", "access", "notification-retry"])
   .parse(process.argv[2]);
 const db = createConnection("/srv/bb/bb.db");
 const statePath = "/srv/bb/workflow-worker-proof.json";
@@ -36,7 +36,43 @@ const savedSchema = z
   )
   .length(2);
 try {
-  if (mode === "access") {
+  if (mode === "notification-retry") {
+    const runIds = z
+      .array(z.string())
+      .length(2)
+      .parse(JSON.parse(process.argv[3] ?? ""));
+    const storage = new Database("/srv/bb/plugins/workflows/data.db");
+    try {
+      for (const id of runIds) {
+        const row = storage
+          .prepare(
+            "SELECT authority_binding_id,notification_outcome FROM workflow_runs WHERE id = ?",
+          )
+          .get(id);
+        const parsed = z
+          .object({
+            authority_binding_id: z.string(),
+            notification_outcome: z.literal("delivered"),
+          })
+          .parse(row);
+        assert.ok(
+          db.$client
+            .prepare(
+              "SELECT binding_id FROM control_plane_job_notifications WHERE binding_id = ?",
+            )
+            .get(parsed.authority_binding_id),
+        );
+        storage
+          .prepare(
+            "UPDATE workflow_runs SET notification_sent = 0, notification_outcome = 'pending', notification_error = 'Injected lost acknowledgement', notification_next_attempt_at = 0 WHERE id = ?",
+          )
+          .run(id);
+      }
+      process.stdout.write(JSON.stringify({ pending: runIds }) + "\n");
+    } finally {
+      storage.close();
+    }
+  } else if (mode === "access") {
     const input = z
       .object({
         profileId: z.string().uuid(),

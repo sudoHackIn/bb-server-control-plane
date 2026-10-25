@@ -2008,6 +2008,10 @@ export interface InternalDoNotUseBackgroundJobs {
     error: string | null;
     idleSequence: number | null;
   }>;
+  notifyOrigin(
+    id: string,
+    message: string,
+  ): Promise<"accepted" | "unavailable" | "denied">;
   sendWorker(id: string, threadId: string, message: string): Promise<void>;
   stopWorker(id: string, threadId: string): Promise<void>;
   archiveWorker(id: string, threadId: string): Promise<void>;

@@ -310,6 +310,118 @@ describe("createAgentRuntime process lifecycle", () => {
     await manager.shutdown();
   });
 
+  it("does not retire a bridge while another hash is still initializing", async () => {
+    const bridge = join(tmpDir, "initializing-provider.cjs");
+    const ready = join(tmpDir, "initializing.ready");
+    const release = join(tmpDir, "initializing.release");
+    writeFileSync(
+      bridge,
+      `const fs=require("fs");require("readline").createInterface({input:process.stdin}).once("line",line=>{fs.writeFileSync(${JSON.stringify(ready)},"");const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(release)})){clearInterval(timer);console.log(JSON.stringify({jsonrpc:"2.0",id:JSON.parse(line).id,result:{protocolVersion:2,capabilities:{grammarVersions:[3,3]}}}));}},10);});`,
+    );
+    let starts = 0;
+    const manager = createProviderProcessManager({
+      createAdapter: () =>
+        createManagerAdapter(starts++ === 0 ? { rawScriptPath: bridge } : {}),
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+    const first = { ...MANAGER_PROVIDER, processKey: "initializing" };
+    const pending = manager.ensureProvider(first);
+    try {
+      await waitForRuntimeState({
+        label: "first bridge waits on initialize",
+        predicate: () => existsSync(ready),
+      });
+      await manager.ensureProvider({
+        ...MANAGER_PROVIDER,
+        processKey: "new-hash",
+      });
+      expect(manager.requireProviderProcess(first).child.killed).toBe(false);
+      writeFileSync(release, "release");
+      await pending;
+      expect(manager.requireProviderProcess(first).child.killed).toBe(false);
+    } finally {
+      writeFileSync(release, "release");
+      await pending;
+      await manager.shutdown();
+    }
+  });
+
+  it("retains a ready bridge through construction until its last reservation releases", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+    const first = { ...MANAGER_PROVIDER, processKey: "constructing" };
+    const releaseOne = manager.retainProviderProcess(first.processKey);
+    const releaseTwo = manager.retainProviderProcess(first.processKey);
+    try {
+      await manager.ensureProvider(first);
+      const proc = manager.requireProviderProcess(first);
+      await manager.ensureProvider({
+        ...MANAGER_PROVIDER,
+        processKey: "new-hash",
+      });
+      expect(proc.child.killed).toBe(false);
+      await releaseOne();
+      await releaseOne();
+      expect(manager.requireProviderProcess(first)).toBe(proc);
+      await releaseTwo();
+      expect(() => manager.requireProviderProcess(first)).toThrow();
+      expect(
+        manager.requireProviderProcess({
+          ...MANAGER_PROVIDER,
+          processKey: "new-hash",
+        }).child.killed,
+      ).toBe(false);
+    } finally {
+      await releaseOne();
+      await releaseTwo();
+      await manager.shutdown();
+    }
+  });
+
+  it("rechecks a new construction reservation after awaiting another stale process shutdown", async () => {
+    const manager = createProviderProcessManager({
+      onProcessExit: vi.fn(),
+      workspacePath: tmpDir,
+    });
+    const first = { ...MANAGER_PROVIDER, processKey: "old-one" };
+    const second = { ...MANAGER_PROVIDER, processKey: "old-two" };
+    await manager.ensureProvider(first);
+    const one = manager.requireProviderProcess(first);
+    one.identity.threadIds.add("keep-one");
+    await manager.ensureProvider(second);
+    const two = manager.requireProviderProcess(second);
+    two.identity.threadIds.add("keep-two");
+    one.identity.threadIds.clear();
+    two.identity.threadIds.clear();
+    let release: (() => Promise<void>) | undefined;
+    const shutdown = manager.shutdownProvider.bind(manager);
+    const spy = vi
+      .spyOn(manager, "shutdownProvider")
+      .mockImplementation(async (args) => {
+        await shutdown(args);
+        if (args.processKey === first.processKey)
+          release = manager.retainProviderProcess(second.processKey);
+      });
+    try {
+      await manager.ensureProvider({
+        ...MANAGER_PROVIDER,
+        processKey: "new-hash",
+      });
+      expect(one.child.killed).toBe(true);
+      expect(manager.requireProviderProcess(second)).toBe(two);
+      expect(two.child.killed).toBe(false);
+      await release?.();
+      expect(() => manager.requireProviderProcess(second)).toThrow();
+    } finally {
+      spy.mockRestore();
+      await release?.();
+      await manager.shutdown();
+    }
+  });
+
   it("waits for provider retirement before starting a same-key replacement", async () => {
     const manager = createProviderProcessManager({
       onProcessExit: vi.fn(),

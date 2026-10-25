@@ -49,6 +49,7 @@ export function createControlPlaneBackgroundJobs(
     | "startWorker"
     | "getWorker"
     | "sendWorker"
+    | "notifyOrigin"
     | "stopWorker"
     | "archiveWorker"
     | "listWorkers"
@@ -215,6 +216,15 @@ export function createControlPlaneBackgroundJobs(
     getWorker(id, threadId) {
       if (required(id).kind !== "workflow-run" || !workers) return denied();
       return workers.getWorker(id, threadId);
+    },
+    notifyOrigin(id, message) {
+      if (
+        pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID ||
+        required(id).kind !== "workflow-run" ||
+        !workers
+      )
+        return denied();
+      return workers.notifyOrigin(id, message);
     },
     sendWorker(id, threadId, message) {
       if (required(id).kind !== "workflow-run" || !workers) return denied();

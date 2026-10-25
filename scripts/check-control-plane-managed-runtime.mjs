@@ -764,6 +764,15 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       userThreadApi: true,
       userLiveTimelineStream: true,
     };
+  } catch (error) {
+    const daemonLog = await readFile(
+      "/srv/bb/logs/host-daemon.1.log",
+      "utf8",
+    ).catch(() => "unavailable");
+    throw new Error(
+      `Managed runtime check failed: ${error instanceof Error ? error.message : String(error)}\nServer log: ${log}\nDaemon log: ${daemonLog.slice(-24000)}`,
+      { cause: error },
+    );
   } finally {
     if (child?.exitCode === null && child.signalCode === null) {
       child.kill("SIGTERM");

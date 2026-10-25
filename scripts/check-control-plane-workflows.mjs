@@ -119,6 +119,30 @@ export async function verifyNativeWorkflows({
         assert.equal(row.error, null);
         assert.equal(row.phase, "computed");
         assert.deepEqual(JSON.parse(row.result_json), { value: 42 });
+        assert.equal(row.notification_outcome, "delivered");
+        assert.equal(row.notification_sent, 1);
+        const receipt = db
+          .prepare(
+            "SELECT * FROM control_plane_job_notifications WHERE binding_id = ?",
+          )
+          .get(binding.id);
+        assert.equal(receipt?.thread_id, subject.thread.id);
+        const notices = db
+          .prepare(
+            "SELECT thread_id,data FROM events WHERE type = 'client/turn/requested' AND data LIKE ?",
+          )
+          .all(`%[BB workflow finished · ${id}]%`);
+        assert.equal(notices.length, 1);
+        assert.equal(notices[0].thread_id, subject.thread.id);
+        const content = JSON.parse(notices[0].data).input;
+        assert.ok(
+          content.some(
+            (item) =>
+              item.type === "text" &&
+              item.visibility === "agent-only" &&
+              item.text.includes(id),
+          ),
+        );
       }
     } finally {
       storage.close();
@@ -535,6 +559,31 @@ export async function verifyNativeWorkflows({
                 .get(run.runId)?.status ===
               (action === "cancel" ? "cancelled" : "failed"),
             `retry ${action} settled`,
+          );
+          await wait(
+            () =>
+              agentStorage
+                .prepare(
+                  "SELECT notification_outcome FROM workflow_runs WHERE id = ?",
+                )
+                .get(run.runId)?.notification_outcome === "abandoned",
+            `retry ${action} unauthorized notification settled`,
+          );
+          assert.equal(
+            db
+              .prepare(
+                "SELECT count(*) AS count FROM control_plane_job_notifications WHERE binding_id = ?",
+              )
+              .get(bindingId).count,
+            0,
+          );
+          assert.equal(
+            db
+              .prepare(
+                "SELECT count(*) AS count FROM events WHERE type = 'client/turn/requested' AND data LIKE ?",
+              )
+              .get(`%[BB workflow finished · ${run.runId}]%`).count,
+            0,
           );
           if (action === "revoke")
             assert.match(
@@ -1106,11 +1155,18 @@ export async function verifyNativeWorkflows({
     },
     async afterShutdown() {
       orphanWorkers = await workerFixture("orphan");
+      await workerFixture(
+        "notification-retry",
+        runs.map((run) => run.id),
+      );
     },
     verification: {
       ...processProof,
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
+      nativeWorkflowNotificationAcceptedForEachOwner: true,
+      nativeWorkflowNotificationAgentOnlyAndNoForeignThread: true,
+      nativeRevokedAndCancelledNotificationAbandonedWithoutEvents: true,
       nativeEvaluatorAgentToQwenRoundTrip: true,
       nativeTransientProviderFailureUsesNewWorkerAttempt: true,
       nativeCancelDuringSecondBackoffPreventsNextAttempt: true,
@@ -1148,6 +1204,14 @@ export async function verifyNativeWorkflows({
       nativeWorkflowEvaluatorIdentityAndCredentialIsolation: true,
     },
     async afterRestart() {
+      await wait(() => {
+        try {
+          verify();
+          return true;
+        } catch {
+          return false;
+        }
+      }, "notification acknowledgement replay without duplicate native requests");
       verify();
       const workerRestart = await workerFixture("verify");
       const recoveredStorage = new Database(
@@ -1259,6 +1323,7 @@ export async function verifyNativeWorkflows({
         successfulPrefixRecoveredWithoutDuplicateWorker: true,
         missingRunOrphansDiscoveredAndArchivedAfterRestart: true,
         nativeWorkflowOwnerBindingSurvivesRestart: true,
+        nativeNotificationAcknowledgementLossDoesNotDuplicateAfterRestart: true,
         isolatedAgentPrefixReplaySurvivesRestartWithoutNewWorker: true,
       };
     },

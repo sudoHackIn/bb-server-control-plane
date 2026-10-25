@@ -86,6 +86,7 @@ interface RestartThreadBridgeArgs {
 }
 
 interface RunThreadOperationArgs<TResult> {
+  processKey?: string;
   threadId: string;
   work: () => Promise<TResult>;
 }
@@ -789,10 +790,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     args: RunThreadOperationArgs<TResult>,
   ): Promise<TResult> {
     beginThreadOperation(args.threadId);
+    const releaseProvider = args.processKey
+      ? providerProcesses.retainProviderProcess(args.processKey)
+      : null;
     try {
       return await args.work();
     } finally {
       finishThreadOperation(args.threadId);
+      await releaseProvider?.();
     }
   }
 
@@ -1528,6 +1533,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       fork,
     }) {
       return runThreadOperation({
+        processKey: resolveProviderProcessKey({
+          bridgeLaunch,
+          providerId,
+          skillRoots: sessionSkillRoots,
+        }),
         threadId,
         work: async () => {
           const processKey = resolveProviderProcessKey({
@@ -1692,6 +1702,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       }
 
       const preparation = runThreadOperation({
+        processKey: resolveProviderProcessKey({
+          bridgeLaunch,
+          providerId,
+          skillRoots: sessionSkillRoots,
+        }),
         threadId,
         work: async () => {
           const processKey = resolveProviderProcessKey({
@@ -1855,6 +1870,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       instructionMode = "append",
     }) {
       return runThreadOperation({
+        processKey: resolveProviderProcessKey({
+          bridgeLaunch,
+          providerId,
+          skillRoots: sessionSkillRoots,
+        }),
         threadId,
         work: async () => {
           const processKey = resolveProviderProcessKey({

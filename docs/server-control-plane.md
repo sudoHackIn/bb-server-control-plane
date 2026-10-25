@@ -1515,3 +1515,50 @@ and `ESRCH` as a vanished process while preserving all other error checks. Touch
 core files had pre-existing comments forbidden by the repository lint rule;
 these were removed. A TypeScript syntax-tree comparison verifies that the only
 semantic edits are the intended guards and the exported canonical test boundary.
+
+## Thirty-seventh increment: scoped workflow completion notifications
+
+Managed Workflows use a first-party `notifyOrigin` adapter instead of discarding
+all completion notices. Core derives the origin from the saved run binding,
+checks current job/source and origin-profile authority, adopts the owner and
+uses the canonical native message submission. No target thread, UID, HOME or
+profile override is accepted. The native message remains agent-only.
+
+Generated migration 0155 adds one central acceptance receipt per run binding.
+It commits in the same transaction as the native client request. An append
+failure rolls it back; a repeated call after lost acknowledgement returns the
+existing acceptance without another event. Checks occur before acceptance and
+again in the write transaction. Receipt retention is independent of plugin run
+history. This guarantees request acceptance deduplication, not exactly-once
+provider execution or external side effects.
+
+The plugin marks unauthorized/unavailable notices abandoned. Transient
+preparation failures retain its persisted retry/backoff behavior; managed errors
+do not fall through to unrestricted SDK thread access. Cancellation disables
+authority and prevents a late notification from starting an origin turn.
+
+Verification includes real-SQLite rollback/deduplication/authority contracts,
+managed adapter outcomes and transient restart tests, strict typechecks, SDK and
+Plugin Guide suites. Docker checks Alice/Bob ownership and agent-only notices,
+revoked/cancelled delivery rejection and replay after an offline injection of a
+lost plugin acknowledgement. See `control-plane-phase-37-verification.json` for
+completed checks. Personal background APIs/UI, automation/scheduler integration,
+legacy assignment and the remaining recovery/ownership audit stay open.
+
+The first real deployment exposed a native bridge lifecycle race: while a worker
+bridge was initializing without a registered session, an origin-notification
+resume with a different bridge/skill hash retired it as idle and sent SIGTERM.
+The runtime now retains each bridge key throughout start, resume and staged
+rewind construction. Stale cleanup skips both initialization and construction
+reservations, releasing obsolete idle processes after the last reservation.
+Three real-process tests cover blocked initialization, reference-counted
+idempotent release and a reservation acquired while stale cleanup awaits
+another process; the existing process/recovery/lifecycle
+regression suites remain required. No daemon wire fields change.
+
+Final verification passes 30 server security/plugin-lifecycle, 272 Workflows,
+402 Plugin SDK, 75 Plugin Guide and 89 runtime process/recovery/lifecycle tests
+(868 total). Strict typechecks, changed-file lint/format and diff checks pass.
+The final source builds and deploys in Docker with all 63 tasks successful in
+5 minutes 35 seconds, including both users' notices, cancellation/revocation
+rejection, crash recovery and the injected acknowledgement-loss replay.

@@ -3779,3 +3779,20 @@ The existing scoped worker `sendWorker` uses this path, so structured correction
 gain the same commit-time current-grant guarantee as core/UI/CLI/SDK sends.
 No public or internal SDK member is added. Real database contract tests cover the
 append/outbound boundary and both queue-creation surfaces.
+
+### Managed workflow origin notifications
+
+`InternalDoNotUseBackgroundJobs.notifyOrigin(bindingId, message)` is first-party
+plumbing used only by the builtin Workflows service. It accepts no target thread,
+owner or execution overrides. Core resolves the saved run's origin, checks the
+job lineage and current origin profile, adopts the registered owner, and uses
+`sendThreadMessage`, the same native implementation as ordinary UI/CLI/SDK sends.
+The facade remains lifecycle-bound and restricted to the builtin Workflows host.
+
+A central `control_plane_job_notifications` receipt is inserted in the canonical
+request transaction. A failed append rolls the receipt back; duplicate calls
+return acceptance without another request. Authority is checked again inside
+that transaction, before the receipt or event. This records acceptance into BB's
+native timeline, not provider execution or exactly-once external effects. Missing
+or revoked authority and unavailable origins are permanently abandoned by the
+plugin; transient preparation failures retain its persisted retry/backoff state.

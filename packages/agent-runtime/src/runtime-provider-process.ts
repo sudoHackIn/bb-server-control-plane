@@ -142,10 +142,35 @@ export class RuntimeProviderProcessManager {
   private readonly providerStarting = new Map<string, Promise<void>>();
   private readonly providerRetiring = new Map<string, Promise<void>>();
   private readonly currentProcessKeyByProviderId = new Map<string, string>();
+  private readonly processRetentions = new Map<string, number>();
   private shuttingDown = false;
 
   constructor(args: RuntimeProviderProcessManagerArgs) {
     this.args = args;
+  }
+
+  retainProviderProcess(processKey: string): () => Promise<void> {
+    this.processRetentions.set(
+      processKey,
+      (this.processRetentions.get(processKey) ?? 0) + 1,
+    );
+    let released = false;
+    return async () => {
+      if (released) return;
+      released = true;
+      const count = this.processRetentions.get(processKey) ?? 0;
+      if (count > 1) this.processRetentions.set(processKey, count - 1);
+      else this.processRetentions.delete(processKey);
+      const process = this.processes.get(processKey);
+      const currentKey = process
+        ? this.currentProcessKeyByProviderId.get(process.providerId)
+        : undefined;
+      if (process && currentKey)
+        await this.retireStaleBridgeProcesses({
+          processKey: currentKey,
+          providerId: process.providerId,
+        });
+    };
   }
 
   async ensureProvider(args: EnsureRuntimeProviderArgs): Promise<void> {
@@ -254,7 +279,7 @@ export class RuntimeProviderProcessManager {
   }
 
   private async retireStaleBridgeProcesses(
-    args: EnsureRuntimeProviderArgs,
+    args: Pick<EnsureRuntimeProviderArgs, "processKey" | "providerId">,
   ): Promise<void> {
     this.currentProcessKeyByProviderId.set(args.providerId, args.processKey);
     const staleKeys = [...this.processes.entries()]
@@ -262,11 +287,21 @@ export class RuntimeProviderProcessManager {
         ([processKey, providerProcess]) =>
           processKey !== args.processKey &&
           providerProcess.providerId === args.providerId &&
-          providerProcess.identity.threadIds.size === 0,
+          providerProcess.identity.threadIds.size === 0 &&
+          !this.providerStarting.has(processKey) &&
+          !this.processRetentions.has(processKey),
       )
       .map(([processKey]) => processKey);
 
     for (const processKey of staleKeys) {
+      const current = this.processes.get(processKey);
+      if (
+        !current ||
+        current.identity.threadIds.size > 0 ||
+        this.providerStarting.has(processKey) ||
+        this.processRetentions.has(processKey)
+      )
+        continue;
       await this.shutdownProvider({ processKey, providerId: args.providerId });
     }
   }

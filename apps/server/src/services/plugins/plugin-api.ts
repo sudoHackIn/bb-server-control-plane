@@ -1107,6 +1107,10 @@ export function createPluginApi(options: {
         assertLive();
         return source.getWorker(id, threadId);
       },
+      notifyOrigin(id, message) {
+        assertLive();
+        return source.notifyOrigin(id, message);
+      },
       sendWorker(id, threadId, message) {
         assertLive();
         return source.sendWorker(id, threadId, message);

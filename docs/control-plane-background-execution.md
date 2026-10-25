@@ -349,3 +349,43 @@ verify denial after an earlier admission, including atomic rollback of a
 preflight revocation. The existing native correction pipeline remains exercised
 in Docker; the precise commit-time race is verified at the core boundary rather
 than by relying on wall-clock ordering of model responses.
+
+## Scoped workflow origin notifications
+
+Managed Workflows now notify the saved origin through a narrow builtin adapter,
+instead of abandoning every notice or using the unrestricted SDK. The core
+checks current run/source authority and the origin's own immutable profile,
+uses the registered owner and submits an agent-only native message with
+`steer-if-active`. Ordinary UI/CLI/SDK messages use the same implementation.
+The caller cannot substitute a thread, UID, HOME or execution profile.
+
+Migration 0155 adds one durable acceptance receipt per central run binding. The
+receipt and native client request commit together; a failed append rolls both
+back. A repeated attempt after a lost plugin acknowledgement observes that
+receipt and does not append another request. Receipts survive run-history
+pruning and service restart. They record BB acceptance, not successful provider
+execution. Native replay may repeat external side effects; no exactly-once
+execution guarantee is added.
+
+Missing/deleted/disabled bindings, revoked user/project/profile/source grants and
+unavailable origins abandon the notice. Transient preparation failures use the
+existing persisted notification backoff, including after service restart.
+Notifications are not sent through an unrestricted fallback. In particular,
+cancelled runs with disabled bindings cannot inject an additional origin turn.
+
+The real-SQLite contract tests exercise receipt/event rollback, duplicate
+acknowledgements, foreign callers, substituted origins and revoked/disabled
+execution. Plugin tests exercise accepted/denied/unavailable outcomes and
+transient failure followed by restart without unrestricted thread lookups or
+sends. Docker verifies two owners and an offline injection of the lost-plugin-
+acknowledgement window; it does not claim to kill the server at a precisely timed
+instruction between the two database writes.
+
+Live notification delivery also exposed a bridge-retirement race. A bridge with
+no attached session can still be initializing or constructing a worker. The
+native runtime now reserves its process key through start/resume/staged-rewind
+construction; stale-hash cleanup skips initializing/reserved processes and
+retries cleanup when the last reservation releases. Real-process regression
+checks cover both the handshake and the ready-but-not-attached interval. Explicit
+shutdown remains available; this does not serialize user threads or expand
+execution permissions.

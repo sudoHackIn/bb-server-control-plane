@@ -1436,17 +1436,34 @@ export function createWorkflowService(
   async function notify(run: WorkflowRunRow): Promise<void> {
     const latest = getRunRequired(db, run.id);
     if (latest.notificationSent) return;
-    if (backgroundJobs) {
-      settleNotificationUndeliverable(
-        db,
-        latest.id,
-        "Managed workflow notifications await scoped runtime integration",
-      );
-      return;
-    }
     const settings = settingsForRun(latest);
     if (!beginNotificationAttempt(db, run.id)) return;
     try {
+      if (backgroundJobs) {
+        const binding = bindingFor(latest);
+        if (!binding || !binding.enabled || binding.deletedAt !== null) {
+          settleNotificationUndeliverable(
+            db,
+            latest.id,
+            "Workflow notification is not authorized",
+          );
+          return;
+        }
+        const outcome = await backgroundJobs.notifyOrigin(
+          binding.id,
+          formatWorkflowNotification(latest, settings.maxNotificationBytes),
+        );
+        if (outcome === "accepted") markNotificationSent(db, latest.id);
+        else
+          settleNotificationUndeliverable(
+            db,
+            latest.id,
+            outcome === "denied"
+              ? "Workflow notification is not authorized"
+              : "Origin thread is unavailable",
+          );
+        return;
+      }
       if (await originUnavailable(latest.originThreadId)) {
         await onOriginUnavailable(latest.originThreadId);
         return;
@@ -1470,7 +1487,7 @@ export function createWorkflowService(
     } catch (error) {
       const detail = message(error);
       let unavailable = isMissingThread(error);
-      if (!unavailable) {
+      if (!unavailable && !backgroundJobs) {
         try {
           unavailable = await originUnavailable(latest.originThreadId);
         } catch {

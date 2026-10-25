@@ -35,6 +35,8 @@ import { withControlPlaneJobAuthority } from "./job-authority.js";
 import { stopThreadForCurrentState } from "../services/threads/thread-lifecycle.js";
 import { resolveThreadHostCommandEnvironment } from "../services/threads/thread-command-environment.js";
 
+import { notifyControlPlaneWorkflowOrigin } from "./workflow-notifications.js";
+
 const inputSchema = z
   .object({
     callId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/u),
@@ -368,6 +370,9 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
         status: record.thread.status,
         output: getLastThreadOutput(deps.db, threadId),
       };
+    },
+    notifyOrigin(id: string, message: string) {
+      return notifyControlPlaneWorkflowOrigin(deps, id, message);
     },
     async sendWorker(parentId: string, threadId: string, message: string) {
       read(parentId, threadId);

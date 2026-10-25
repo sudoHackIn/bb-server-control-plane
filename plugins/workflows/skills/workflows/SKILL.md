@@ -137,3 +137,11 @@ qualifying failure. Authorization/configuration errors are not retried. A
 structured result may receive at most two corrective turns in the same worker;
 exhaustion fails the call. Harness-internal retries are separate from workflow
 worker retries, and interrupted side effects may be repeated.
+
+Managed completion notices are agent-only messages in the saved originating
+thread. The core rechecks current run/source and origin-profile authority; revoked
+or cancelled authority abandons delivery. Transient preparation failures use the
+persisted notification retry loop. A central receipt prevents another native
+request after a lost plugin acknowledgement or restart. A delivered notification
+means BB accepted the request, not that the provider completed its next turn.
+This does not give the personal token access to the unrestricted BB API.

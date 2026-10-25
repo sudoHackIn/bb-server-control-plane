@@ -379,6 +379,17 @@ export const controlPlaneJobBindings = sqliteTable(
   ],
 );
 
+export const controlPlaneJobNotifications = sqliteTable(
+  "control_plane_job_notifications",
+  {
+    bindingId: text("binding_id")
+      .primaryKey()
+      .references(() => controlPlaneJobBindings.id),
+    threadId: text("thread_id").notNull(),
+    acceptedAt: integer("accepted_at").notNull(),
+  },
+);
+
 export const projectExecutionDefaults = sqliteTable(
   "project_execution_defaults",
   {
