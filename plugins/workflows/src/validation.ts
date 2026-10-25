@@ -10,6 +10,7 @@ import type {
 
 export const MAX_WORKFLOW_SOURCE_BYTES = 512 * 1024;
 export const AGENT_OPTION_KEYS = new Set([
+  "profileVersionId",
   "provider",
   "model",
   "reasoningLevel",
@@ -129,6 +130,7 @@ const jsonSchemaValueSchema = z.union([
 
 const storedAgentOptionsSchema = z
   .object({
+    profileVersionId: z.string().uuid().optional(),
     selection: z
       .object({
         provider: z.string().min(1),
@@ -380,6 +382,8 @@ export function parseAgentOptions(
       throw new Error(`Unknown agent option ${JSON.stringify(key)}`);
   }
 
+  const profileVersionId = optionalNonEmptyString(value, "profileVersionId");
+  if (profileVersionId !== null) z.string().uuid().parse(profileVersionId);
   const provider = optionalNonEmptyString(value, "provider");
   const model = optionalNonEmptyString(value, "model");
   const reasoningLevel = optionalNonEmptyString(value, "reasoningLevel");
@@ -422,6 +426,7 @@ export function parseAgentOptions(
   }
 
   return {
+    ...(profileVersionId !== null ? { profileVersionId } : {}),
     selection:
       provider !== null && model !== null && reasoningLevel !== null
         ? { provider, model, reasoningLevel }

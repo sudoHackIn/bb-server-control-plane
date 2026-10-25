@@ -188,6 +188,107 @@ export async function verifyNativeWorkflows({
         "controlled worker retirement archive",
       );
     }
+    const alice = subjects[0];
+    const newer = db
+      .prepare(
+        "SELECT id FROM control_plane_profile_versions WHERE profile_id = ? ORDER BY version DESC LIMIT 1",
+      )
+      .get(alice.profile.body.profile.id);
+    assert.notEqual(newer.id, alice.profile.body.version.id);
+    const selectedScript = `export const meta = {name: "approved-worker-profile", description: "Explicit immutable profile"}; return await agent("BB_PERSONAL_workflow-profile-alice", {profileVersionId: "${newer.id}"});`;
+    const selected = await cli(
+      ["workflows", "run", "--script", selectedScript, "--json"],
+      alice,
+    );
+    await waitAgent(selected.runId);
+    const selectedCall = agentStorage
+      .prepare("SELECT * FROM workflow_calls WHERE run_id = ?")
+      .get(selected.runId);
+    assert.equal(
+      db
+        .prepare(
+          "SELECT profile_version_id FROM control_plane_threads WHERE thread_id = ?",
+        )
+        .get(selectedCall.child_thread_id).profile_version_id,
+      newer.id,
+    );
+    async function deniedSelection(script, resume = null) {
+      const count = db
+        .prepare("SELECT count(*) AS count FROM threads")
+        .get().count;
+      const run = await cli(
+        [
+          "workflows",
+          "run",
+          "--script",
+          script,
+          ...(resume ? ["--resume", resume] : []),
+          "--json",
+        ],
+        alice,
+      );
+      await wait(
+        () =>
+          agentStorage
+            .prepare("SELECT status FROM workflow_runs WHERE id = ?")
+            .get(run.runId)?.status === "failed",
+        "denied worker profile",
+      );
+      assert.equal(
+        db.prepare("SELECT count(*) AS count FROM threads").get().count,
+        count,
+      );
+    }
+    const beforeSelectedReplay = db
+      .prepare("SELECT count(*) AS count FROM threads")
+      .get().count;
+    const selectedReplay = await cli(
+      [
+        "workflows",
+        "run",
+        "--script",
+        selectedScript,
+        "--resume",
+        selected.runId,
+        "--json",
+      ],
+      alice,
+    );
+    await waitAgent(selectedReplay.runId);
+    assert.equal(
+      db.prepare("SELECT count(*) AS count FROM threads").get().count,
+      beforeSelectedReplay,
+    );
+    await cli([
+      "server",
+      "access",
+      "profiles",
+      "disable",
+      alice.profile.body.profile.id,
+      "--version",
+      newer.id,
+      "--json",
+    ]);
+    try {
+      await deniedSelection(selectedScript, selected.runId);
+    } finally {
+      await cli([
+        "server",
+        "access",
+        "profiles",
+        "enable",
+        alice.profile.body.profile.id,
+        "--version",
+        newer.id,
+        "--json",
+      ]);
+    }
+    await deniedSelection(
+      selectedScript.replace(newer.id, subjects[1].profile.body.version.id),
+    );
+    await deniedSelection(
+      `export const meta = {name:"conflicting-profile-model", description:"Runtime profile admission"}; const options = {profileVersionId:"${newer.id}", provider:"qwen-server", model:"unapproved-model", reasoningLevel:"none"}; return await agent("must-not-run", options);`,
+    );
     const beforeReplay = db
       .prepare("SELECT count(*) AS count FROM threads")
       .get().count;
@@ -524,6 +625,10 @@ export async function verifyNativeWorkflows({
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
       nativeEvaluatorAgentToQwenRoundTrip: true,
+      explicitWorkerProfileAppliedToNativeQwenTools: true,
+      explicitWorkerProfilePrefixReplay: true,
+      revokedSelectedProfileDeniedBeforeReplayOrWorker: true,
+      foreignWorkerProfileAndModelTupleDenied: true,
       actualWorkerCreationThroughScopedFacade: true,
       twoUserAgentUidHomeCwdAndProfileVerified: true,
       completedAgentPrefixReplayAvoidsNewThread: true,

@@ -1457,8 +1457,11 @@ history. Its native readers and resume/stop operations scope user access; old
 unassigned history remains administrative. This does not open personal workflow
 APIs. Managed pure computation workflows now use a fixed evaluator process under
 the registered UID/HOME/cwd. Managed `agent()` now dispatches controlled BB worker
-threads with the originating approved immutable profile. Explicit model/provider/
-reasoning overrides must match that profile. Nested `workflow()` remains
+threads with the originating approved immutable profile, or an explicitly
+selected approved version via `agent(prompt, {profileVersionId: "<uuid>"})`.
+Explicit model/provider/reasoning overrides must match the selected profile.
+The server rechecks current parent/profile authority before replay and dispatch;
+standalone servers reject the profile option. Nested `workflow()` remains
 unavailable; standalone Workflows execution is unchanged. See
 [background execution integration](control-plane-background-execution.md).
 

@@ -2066,3 +2066,26 @@ describe("provider retry classification", () => {
     expect(isRetryableProviderFailure("Result schema is invalid")).toBe(false);
   });
 });
+
+it("rejects a managed profile option on standalone before spawning a worker", async () => {
+  const test = setup();
+  const run = await test.start(
+    source(
+      'return await agent("review", {profileVersionId:"9f9b0f2e-e681-431c-af34-2b55201b6cca"});',
+    ),
+  );
+  const controller = new AbortController();
+  const worker = test.service.runWorker(controller.signal);
+  try {
+    await eventually(() => {
+      expect(getRunRequired(test.db, run.id).status).toBe("failed");
+      expect(getRunRequired(test.db, run.id).error).toContain(
+        "requires a shared control-plane server",
+      );
+    });
+    expect(test.childCount()).toBe(0);
+  } finally {
+    controller.abort();
+    await worker;
+  }
+});

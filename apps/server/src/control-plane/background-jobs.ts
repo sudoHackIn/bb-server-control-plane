@@ -15,6 +15,7 @@ import {
   getControlPlaneProjectOwner,
   getControlPlaneProject,
   requireControlPlaneThreadDispatch,
+  requireControlPlaneThreadOwner,
   listControlPlaneJobBindings,
   setControlPlaneJobEnabled,
   deleteControlPlaneJobBinding,
@@ -175,6 +176,28 @@ export function createControlPlaneBackgroundJobs(
           : null,
         id,
       );
+    },
+    resolveWorkerProfile(id, profileVersionId) {
+      if (required(id).kind !== "workflow-run") return denied();
+      const versionId = z.string().uuid().nullable().parse(profileVersionId);
+      return withControlPlaneJobAuthority(db, id, (parent) => {
+        const context = requireControlPlaneThreadOwner(db, {
+          projectId: parent.binding.projectId,
+          ownerUserId: parent.user.id,
+          profileVersionId: versionId ?? parent.binding.profileVersionId,
+          providerId: "qwen-server",
+          relatedThreadIds: [parent.binding.originThreadId],
+        });
+        if (!context) return denied();
+        const definition = context.profileVersion.definition;
+        return {
+          profileVersionId: context.profileVersion.id,
+          providerId: definition.providerId,
+          model: definition.model,
+          reasoningLevel: definition.reasoningLevel,
+          permissionMode: definition.permissionMode,
+        };
+      });
     },
     startWorker(id, input, signal) {
       if (required(id).kind !== "workflow-run" || !workers) return denied();

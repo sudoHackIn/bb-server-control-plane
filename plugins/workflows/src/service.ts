@@ -831,23 +831,31 @@ export function createWorkflowService(
     if (backgroundJobs) {
       const binding = bindingFor(run);
       if (!binding) throw new Error("Workflow binding is unavailable");
-      backgroundJobs.withAuthority(binding.id, () => null);
+      const approved = backgroundJobs.resolveWorkerProfile(
+        binding.id,
+        options.profileVersionId ?? null,
+      );
       throwIfCancelled(signal);
       if (
-        requested.provider !== run.originProvider ||
-        requested.model !== run.originModel ||
-        requested.reasoningLevel !== run.originReasoningLevel
+        options.selection !== null &&
+        (requested.provider !== approved.providerId ||
+          requested.model !== approved.model ||
+          requested.reasoningLevel !== approved.reasoningLevel)
       )
         throw new Error(
           "Managed workflow model overrides require an approved profile selection",
         );
       return selectedExecutionSchema.parse({
-        providerId: run.originProvider,
-        model: run.originModel,
-        reasoningLevel: run.originReasoningLevel,
-        permissionMode: run.originPermissionMode,
+        providerId: approved.providerId,
+        model: approved.model,
+        reasoningLevel: approved.reasoningLevel,
+        permissionMode: approved.permissionMode,
       });
     }
+    if (options.profileVersionId !== undefined)
+      throw new Error(
+        "agent profileVersionId requires a shared control-plane server",
+      );
     const providers = await bb.sdk.providers.list({
       environmentId: run.environmentId,
     });
@@ -980,6 +988,11 @@ export function createWorkflowService(
       const resolvedIdentity = await identity;
       const cacheKey = resolvedIdentity.cacheKey;
       selection = resolvedIdentity.selection;
+      if (backgroundJobs && run.authorityBindingId)
+        backgroundJobs.resolveWorkerProfile(
+          run.authorityBindingId,
+          options.profileVersionId ?? null,
+        );
       const sameRunCall = getCall(db, run.id, callIndex);
       if (replay.prefix) {
         if (sameRunCall !== null) {
@@ -1070,7 +1083,7 @@ export function createWorkflowService(
                     callId: call.id,
                     prompt: childPrompt(run, prompt, options),
                     title: options.title ?? `${run.name} · ${callIndex + 1}`,
-                    profileVersionId: null,
+                    profileVersionId: options.profileVersionId ?? null,
                   },
                   signal,
                 )
@@ -1582,7 +1595,11 @@ export function createWorkflowService(
               resultProtocolVersion: RESULT_PROTOCOL_VERSION,
               maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
               ...(managedBinding
-                ? { profileVersionId: managedBinding.profileVersionId }
+                ? {
+                    profileVersionId:
+                      options.profileVersionId ??
+                      managedBinding.profileVersionId,
+                  }
                 : {}),
             },
           });

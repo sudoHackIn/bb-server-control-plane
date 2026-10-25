@@ -71,6 +71,9 @@ function fixture() {
       return binding;
     },
     remove: retire,
+    resolveWorkerProfile() {
+      return { ...origin, profileVersionId };
+    },
     async startWorker() {
       throw new Error("Test workers not configured");
     },

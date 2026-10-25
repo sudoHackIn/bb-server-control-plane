@@ -217,3 +217,17 @@ describe("workflow agent option validation", () => {
     ).toThrow("stored agent outputSchema.pattern");
   });
 });
+
+it("preserves an immutable profile choice and rejects malformed profile IDs", () => {
+  const profileVersionId = "9f9b0f2e-e681-431c-af34-2b55201b6cca";
+  expect(
+    parseStoredAgentOptions(parseAgentOptions({ profileVersionId })),
+  ).toMatchObject({ profileVersionId });
+  expect(() => parseAgentOptions({ profileVersionId: "latest" })).toThrow();
+  expect(() =>
+    parseStoredAgentOptions({
+      ...parseAgentOptions(undefined),
+      profileVersionId: "latest",
+    }),
+  ).toThrow();
+});

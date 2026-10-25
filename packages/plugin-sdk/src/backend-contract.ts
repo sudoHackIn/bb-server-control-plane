@@ -1964,6 +1964,16 @@ export interface InternalDoNotUseBackgroundJobs {
     id: string,
     run: (binding: InternalDoNotUseBackgroundJobBinding) => T,
   ): T;
+  resolveWorkerProfile(
+    id: string,
+    profileVersionId: string | null,
+  ): {
+    profileVersionId: string;
+    providerId: string;
+    model: string;
+    reasoningLevel: string;
+    permissionMode: string;
+  };
   startWorker(
     id: string,
     input: {

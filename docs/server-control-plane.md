@@ -1276,3 +1276,43 @@ Scoped orphan discovery, controller recovery and retries, notifications,
 per-agent profile selection, nested workflows, personal job APIs, automations
 and schedules remain open. This is an agent-dispatch increment, not completion
 of the background stage or the overall goal.
+
+## Thirty-first increment: approved per-agent profiles
+
+Managed workflow source now accepts `agent(prompt, {profileVersionId: "<uuid>"})`.
+The version is immutable and must currently be approved for the run's owner.
+Omitting the option keeps the originating profile. The selected version supplies
+prompt, provider/model/reasoning, permissions, tools and MCP through the existing
+canonical worker creation and Qwen policy paths. An explicit model tuple must
+match the selected profile. Arbitrary tool/MCP/environment overrides remain
+unsupported; standalone workflows reject the managed profile option.
+
+The builtin-only `resolveWorkerProfile` method adopts the saved workflow-run
+principal and uses native thread-owner/profile admission. Both parent authority
+and selected-profile access are required. Workflows checks selection when
+computing cache identity and again after awaiting the preceding replay decision,
+before consuming stored results. The selected immutable version contributes to
+the managed call cache key and is passed unchanged to worker creation, which
+rechecks all grants. The option persists in native call history and traverses the
+same isolated JSON bridge as other normalized agent options.
+
+Verification: 260 Workflows tests, 402 Plugin SDK tests, 75 Plugin Guide tests and
+29 selected server tests pass. Real-database tests cover foreign parent/profile
+IDs, granting and revoking a second profile, and parent-grant loss while the
+selected profile remains available. Parser/storage validation rejects malformed
+version IDs. Standalone execution rejects the option before spawning a worker.
+Strict server/SDK/Workflows/guide typechecks, portable SDK declarations and
+changed-file lint/format/diff checks pass.
+
+The actual Docker deployment selects a newer approved profile with an additional
+native Qwen tool; the model fixture observes that tool and the native worker is
+bound to the exact version. Completed-call replay creates no new thread. The
+real administrative CLI disables that selected version; resuming then fails
+before replay or worker creation. Re-enabling restores availability. Foreign
+versions and conflicting model tuples are denied without creating threads. The
+full build/deployment passes all 63 tasks. See
+`control-plane-phase-31-verification.json`.
+
+Nested workflows, scoped orphan discovery/recovery, notifications, personal job
+APIs, automation/scheduler integration and the other unchecked stages remain
+required. This increment does not complete the overall background stage.

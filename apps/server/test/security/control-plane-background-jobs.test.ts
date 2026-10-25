@@ -311,3 +311,63 @@ it("an explicit administrative request can bind a registered project owner while
     db.$client.close();
   }
 });
+
+it("resolves worker profiles under current parent and profile grants", async () => {
+  const db = createMigratedConnection();
+  try {
+    const { alice, bob } = seedControlPlaneJobSubjects(db);
+    const jobs = createControlPlaneBackgroundJobs(db, "workflows", true);
+    const parent = await withControlPlaneUser(alice.user.id, () =>
+      jobs.bind(alice.input),
+    );
+    withControlPlaneUser(bob.user.id, () => {
+      expect(() => jobs.resolveWorkerProfile(parent.id, null)).toThrow(
+        "not authorized",
+      );
+    });
+    withControlPlaneUser(alice.user.id, () => {
+      expect(jobs.resolveWorkerProfile(parent.id, null)).toMatchObject({
+        profileVersionId: alice.profile.versionId,
+        model: "qwen-test",
+      });
+      expect(() =>
+        jobs.resolveWorkerProfile(parent.id, bob.profile.versionId),
+      ).toThrow("not authorized");
+      setControlPlaneProfileAccess(
+        db,
+        bob.profile.profileId,
+        alice.user.id,
+        true,
+      );
+      expect(
+        jobs.resolveWorkerProfile(parent.id, bob.profile.versionId),
+      ).toMatchObject({ profileVersionId: bob.profile.versionId });
+      setControlPlaneProfileAccess(
+        db,
+        bob.profile.profileId,
+        alice.user.id,
+        false,
+      );
+      expect(() =>
+        jobs.resolveWorkerProfile(parent.id, bob.profile.versionId),
+      ).toThrow("not authorized");
+      setControlPlaneProfileAccess(
+        db,
+        bob.profile.profileId,
+        alice.user.id,
+        true,
+      );
+      setControlPlaneProfileAccess(
+        db,
+        alice.profile.profileId,
+        alice.user.id,
+        false,
+      );
+      expect(() =>
+        jobs.resolveWorkerProfile(parent.id, bob.profile.versionId),
+      ).toThrow("not authorized");
+    });
+  } finally {
+    db.$client.close();
+  }
+});

@@ -21,6 +21,11 @@ export function createUserThreadFixture({ db, users }) {
     )
       return false;
     assert.equal(body.model, "qwen-job-test");
+    if (marker === "workflow-profile-alice")
+      assert.equal(
+        body.tools.some((tool) => tool.function?.name === "read_file"),
+        true,
+      );
     if (JSON.stringify(body.messages).includes("BB_PERSONAL_alice continue"))
       resumed = JSON.stringify(body.messages).includes(
         "BB_PERSONAL_alice first",
@@ -298,6 +303,7 @@ export function createUserThreadFixture({ db, users }) {
             definition: {
               ...profile.body.version.definition,
               prompt: "Newer profile version for future conversations",
+              tools: ["run_shell_command", "read_file"],
             },
           },
           adminToken,

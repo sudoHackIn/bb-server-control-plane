@@ -106,11 +106,14 @@ prompts and results.
 
 ## Shared-server control-plane fork
 
-Managed workflows use the originating thread's approved immutable profile.
-`agent()` runs a controlled child thread with that profile's model, tools, MCP
-and permissions. Explicit provider/model/reasoning must match the bound profile;
-a different tuple requires approved profile selection, which is not yet exposed
-in the DSL. Catalog availability alone does not grant permission. Completed-call
+Managed workflows inherit the originating thread's approved immutable profile.
+Use `agent(prompt, {profileVersionId: "<approved-version-uuid>"})` to select
+another immutable profile available to the user. Obtain version IDs from the
+personal profile catalog (`bb server access profiles list/get`). The child uses
+that profile's model, tools, MCP and permissions. Explicit provider/model/reasoning
+must match the selected profile. Rights to both the parent and selected profile
+are checked before replay and native execution. This option requires a shared
+control-plane server; standalone runs reject it. Catalog availability alone does not grant permission. Completed-call
 replay is also tied to the immutable profile version.
 
 The managed evaluator supports `agent()`, JSON results, phase/log and normal

@@ -1091,6 +1091,10 @@ export function createPluginApi(options: {
         assertLive();
         return source.withAuthority(id, run);
       },
+      resolveWorkerProfile(id, profileVersionId) {
+        assertLive();
+        return source.resolveWorkerProfile(id, profileVersionId);
+      },
       startWorker(id, input, signal) {
         assertLive();
         return source.startWorker(id, input, signal);

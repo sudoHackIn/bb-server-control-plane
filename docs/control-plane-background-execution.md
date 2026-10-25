@@ -219,8 +219,10 @@ Managed evaluation forwards normalized agent options over bounded JSON frames;
 request IDs/order, total calls, concurrent calls and reply sizes are checked.
 The server invokes the controller under saved user authority, and the controller
 uses scoped worker start/status/send/stop/archive operations. Model selection
-currently inherits the bound immutable profile; a different explicit tuple is
-rejected. Arbitrary tool/MCP/environment options are not accepted by this channel.
+inherits the bound immutable profile by default. `agent()` may select an
+approved immutable version through `profileVersionId`; current parent and
+selected-profile authority are required even for replay. A conflicting explicit
+model tuple is rejected. Arbitrary tool/MCP/environment options are not accepted by this channel.
 
 A pending reservation subscribes to the per-call abort signal before native
 creation. Abort disables its authority immediately, so provisioning or a late
@@ -239,5 +241,5 @@ structured replies, no new thread for completed-prefix replay, and cancellation
 through the VM/RPC/worker chain. A second replay after server restart uses durable
 call results without creating a new worker. Worker archival and the reservation
 cancellation race also have direct evidence. These checks do not finish nested
-workflows, per-agent profile selection, all retry/recovery cases, notifications,
+workflows, all retry/recovery cases, notifications,
 personal job APIs, automations or schedules.

@@ -3737,3 +3737,12 @@ Before any public stabilization, complete native plugin persistence, source
 filtering, controlled child creation, recovery of registered-UID evaluation, retries,
 replay, notifications, scheduling, revocation and restart acceptance tests.
 Keep it internal while that integration is incomplete.
+
+The background facade's `resolveWorkerProfile` is restricted to builtin Workflows
+workflow-run bindings. It adopts current saved authority and uses the same
+canonical thread-owner/profile admission guard as native worker creation. It
+returns only immutable execution selection metadata, accepting an approved
+version UUID or null for inheritance. Workflows calls it before cache/replay
+decisions and passes the exact version through canonical worker creation.
+Foreign, revoked and disabled profiles cannot authorize cached results. The
+Plugin Guide inventory includes this internal method.

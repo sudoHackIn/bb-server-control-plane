@@ -163,3 +163,16 @@ tool exactly once at the end of its response with `{ value: ... }` to provide
 the structured output. BB validates the value with Ajv. The initial invalid
 attempt gets at most two corrective retries; a third invalid submission fails
 the call. There is no hidden normalization-agent pass.
+
+## Approved worker profiles on shared servers
+
+In this control-plane fork, use `agent(prompt, {profileVersionId: "<uuid>"})`
+to select an immutable approved profile version. Omit it to inherit the origin
+profile. Use the personal profile catalog through `bb server access profiles`
+to discover permitted versions. This option is available through the same
+workflow source in the native agent tool and `bb workflows run --script/--file`.
+The server checks both parent and selected-profile authority before replay and
+worker creation. Profile changes do not alter pinned versions. Tools, MCP and
+permissions come from the selected profile; individual tool or environment
+overrides are not accepted. An explicit provider/model/reasoning tuple must
+match that profile. Standalone servers reject `profileVersionId`.
