@@ -47,7 +47,12 @@ export function createUserThreadFixture({ db, users }) {
             },
           ],
         }
-      : { role: "assistant", content: `Personal ${marker} completed` };
+      : {
+          role: "assistant",
+          content: marker.startsWith("workflow-json")
+            ? JSON.stringify({ value: 42 })
+            : `Personal ${marker} completed`,
+        };
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.end(
       `data: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: first ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,

@@ -12,6 +12,7 @@ import {
   hasWorker,
   ownWorker,
   workerOrigins,
+  workerRunId,
   isWorkerRetired,
   retiredWorkers,
   recordWorkerCleanup,
@@ -473,6 +474,10 @@ export function createWorkflowService(
 
   async function originUnavailable(threadId: string): Promise<boolean> {
     try {
+      if (backgroundJobs) {
+        backgroundJobs.readOrigin(threadId);
+        return false;
+      }
       const origin = await bb.sdk.threads.get({ threadId });
       return origin.archivedAt != null;
     } catch (error) {
@@ -499,6 +504,7 @@ export function createWorkflowService(
   }
 
   async function reconcileOrigins(): Promise<void> {
+    if (backgroundJobs) return;
     for (const threadId of workerOrigins(db, Date.now())) {
       try {
         if (await originUnavailable(threadId))
@@ -519,6 +525,7 @@ export function createWorkflowService(
   });
 
   async function discoverWorkers(): Promise<void> {
+    if (backgroundJobs) return;
     let offset = 0;
     while (true) {
       const threads = await bb.sdk.threads.list({
@@ -573,8 +580,16 @@ export function createWorkflowService(
   async function stopChild(threadId: string): Promise<void> {
     const pending = childStops.get(threadId);
     if (pending !== undefined) return pending;
-    const stopping = bb.sdk.threads
-      .stop({ threadId })
+    const call = backgroundJobs ? getCallByChildThread(db, threadId) : null;
+    const runId = call?.runId ?? workerRunId(db, threadId);
+    const parent = runId ? getRun(db, runId)?.authorityBindingId : null;
+    const stopping = (
+      backgroundJobs
+        ? parent
+          ? backgroundJobs.stopWorker(parent, threadId)
+          : Promise.reject(new Error("Worker parent authority is unavailable"))
+        : bb.sdk.threads.stop({ threadId })
+    )
       .then(() => undefined)
       .catch((error) => {
         if (!isMissingThread(error)) {
@@ -813,6 +828,26 @@ export function createWorkflowService(
       model: run.originModel,
       reasoningLevel: run.originReasoningLevel,
     };
+    if (backgroundJobs) {
+      const binding = bindingFor(run);
+      if (!binding) throw new Error("Workflow binding is unavailable");
+      backgroundJobs.withAuthority(binding.id, () => null);
+      throwIfCancelled(signal);
+      if (
+        requested.provider !== run.originProvider ||
+        requested.model !== run.originModel ||
+        requested.reasoningLevel !== run.originReasoningLevel
+      )
+        throw new Error(
+          "Managed workflow model overrides require an approved profile selection",
+        );
+      return selectedExecutionSchema.parse({
+        providerId: run.originProvider,
+        model: run.originModel,
+        reasoningLevel: run.originReasoningLevel,
+        permissionMode: run.originPermissionMode,
+      });
+    }
     const providers = await bb.sdk.providers.list({
       environmentId: run.environmentId,
     });
@@ -1026,24 +1061,41 @@ export function createWorkflowService(
         }
         throwIfCancelled(signal);
         spawningCalls.add(call.id);
-        const child = await bb.sdk.threads.spawn({
-          lifecycleOwnerThreadId: run.originThreadId,
-          pluginMetadata: {
-            workflowWorker: 1,
-            runId: run.id,
-            callId: call.id,
-            originThreadId: run.originThreadId,
-          },
-          projectId: run.projectId,
-          environment: { type: "reuse", environmentId: run.environmentId },
-          prompt: childPrompt(run, prompt, options),
-          title: options.title ?? `${run.name} · ${callIndex + 1}`,
-          providerId: selection.providerId,
-          model: selection.model,
-          reasoningLevel: selection.reasoningLevel,
-          permissionMode: selection.permissionMode,
-          visibility: "hidden",
-        });
+        const child =
+          backgroundJobs && run.authorityBindingId
+            ? await backgroundJobs
+                .startWorker(
+                  run.authorityBindingId,
+                  {
+                    callId: call.id,
+                    prompt: childPrompt(run, prompt, options),
+                    title: options.title ?? `${run.name} · ${callIndex + 1}`,
+                    profileVersionId: null,
+                  },
+                  signal,
+                )
+                .then((worker) => ({ id: worker.threadId }))
+            : await bb.sdk.threads.spawn({
+                lifecycleOwnerThreadId: run.originThreadId,
+                pluginMetadata: {
+                  workflowWorker: 1,
+                  runId: run.id,
+                  callId: call.id,
+                  originThreadId: run.originThreadId,
+                },
+                projectId: run.projectId,
+                environment: {
+                  type: "reuse",
+                  environmentId: run.environmentId,
+                },
+                prompt: childPrompt(run, prompt, options),
+                title: options.title ?? `${run.name} · ${callIndex + 1}`,
+                providerId: selection.providerId,
+                model: selection.model,
+                reasoningLevel: selection.reasoningLevel,
+                permissionMode: selection.permissionMode,
+                visibility: "hidden",
+              });
         ownWorker(db, child.id, run.id, call.id, run.originThreadId);
         if (signal.aborted) {
           await stopChild(child.id);
@@ -1058,6 +1110,34 @@ export function createWorkflowService(
         spawningCalls.delete(call.id);
         const stopOnAbort = () => void stopChild(child.id);
         signal.addEventListener("abort", stopOnAbort, { once: true });
+        if (backgroundJobs && run.authorityBindingId) {
+          try {
+            while (true) {
+              throwIfCancelled(signal);
+              backgroundJobs.withAuthority(run.authorityBindingId, () => null);
+              const current = await backgroundJobs.getWorker(
+                run.authorityBindingId,
+                child.id,
+              );
+              if (current.status === "idle") {
+                onThreadIdle(child.id, current.output);
+                await idleHandlerTasks.get(call.id);
+              } else if (current.status === "error")
+                failThreadCall(child.id, "Workflow worker failed");
+              const stored = getCall(db, run.id, callIndex);
+              if (
+                stored?.status === "succeeded" ||
+                stored?.status === "failed" ||
+                stored?.status === "cancelled"
+              )
+                return await waitForCall(call, signal);
+              await sleep(100, signal);
+            }
+          } finally {
+            signal.removeEventListener("abort", stopOnAbort);
+            await stopChild(child.id);
+          }
+        }
         try {
           const current = await bb.sdk.threads.get({ threadId: child.id });
           throwIfCancelled(signal);
@@ -1204,17 +1284,25 @@ export function createWorkflowService(
       }
 
       try {
-        await bb.sdk.threads.send({
-          threadId,
-          mode: "auto",
-          input: [
-            {
-              type: "text",
-              text: `Structured result missing or invalid (${detail}). Call bb_workflow_result with one value matching the required schema. Corrective turn ${attempts} of ${MAX_REPAIR_ATTEMPTS}.`,
-              mentions: [],
-            },
-          ],
-        });
+        const correction = `Structured result missing or invalid (${detail}). Return one JSON value matching the required schema. Corrective turn ${attempts} of ${MAX_REPAIR_ATTEMPTS}.`;
+        if (backgroundJobs) {
+          const parent = getRun(db, call.runId)?.authorityBindingId;
+          if (!parent)
+            throw new Error("Worker parent authority is unavailable");
+          await backgroundJobs.sendWorker(parent, threadId, correction);
+        } else {
+          await bb.sdk.threads.send({
+            threadId,
+            mode: "auto",
+            input: [
+              {
+                type: "text",
+                text: `Structured result missing or invalid (${detail}). Call bb_workflow_result with one value matching the required schema. Corrective turn ${attempts} of ${MAX_REPAIR_ATTEMPTS}.`,
+                mentions: [],
+              },
+            ],
+          });
+        }
         return;
       } catch (error) {
         const correctionError = `Could not request structured-output correction: ${message(error)}`;
@@ -1457,61 +1545,16 @@ export function createWorkflowService(
     run: WorkflowRunRow,
     signal: AbortSignal,
   ): Promise<void> {
-    if (backgroundJobs) {
-      try {
-        const binding = bindingFor(run);
-        if (!binding)
-          throw new Error(
-            "Workflow owner is unassigned; administrative migration is required",
-          );
-        const parsed = parseWorkflowSource(run.source);
-        const settings = settingsForRun(run);
-        const result = await backgroundJobs.evaluateWorkflow(
-          binding.id,
-          {
-            body: parsed.body,
-            args: parseJson(run.argsJson, "workflow args"),
-            maxAgentCalls: settings.maxAgentCalls,
-            maxConcurrentAgents: settings.maxConcurrentAgents,
-            timeoutMs: settings.totalRunTimeoutMs,
-          },
-          signal,
-          (event) => {
-            if (event.type === "phase") {
-              updateRunPhase(db, run.id, event.value);
-              publishRunsChanged(run.originThreadId);
-            } else bb.log.info(`[${run.id}] ${event.value}`);
-          },
-        );
-        if (shuttingDown && signal.aborted) return;
-        if (parsed.metadata.outputSchema !== null) {
-          const validation = validateValue(
-            parsed.metadata.outputSchema,
-            result,
-          );
-          if (!validation.valid)
-            throw new Error(`Workflow result is invalid: ${validation.error}`);
-        }
-        await settleRunAndStopOutstanding({
-          id: run.id,
-          status: "succeeded",
-          result,
-          error: null,
-        });
-      } catch (error) {
-        const latest = getRunRequired(db, run.id);
-        if (shuttingDown && signal.aborted && latest.status === "running")
-          return;
-        if (latest.status !== "cancelled")
-          await settleRunAndStopOutstanding({
-            id: run.id,
-            status: signal.aborted ? "cancelled" : "failed",
-            result: null,
-            error: message(error),
-          });
-      } finally {
-        controllers.delete(run.id);
-      }
+    const managedBinding = backgroundJobs ? bindingFor(run) : null;
+    if (backgroundJobs && !managedBinding) {
+      await settleRunAndStopOutstanding({
+        id: run.id,
+        status: "failed",
+        result: null,
+        error:
+          "Workflow owner is unassigned; administrative migration is required",
+      });
+      controllers.delete(run.id);
       return;
     }
     const parsed = parseWorkflowSource(run.source);
@@ -1538,6 +1581,9 @@ export function createWorkflowService(
               workerPromptVersion: WORKER_PROMPT_VERSION,
               resultProtocolVersion: RESULT_PROTOCOL_VERSION,
               maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
+              ...(managedBinding
+                ? { profileVersionId: managedBinding.profileVersionId }
+                : {}),
             },
           });
           return { cacheKey, selection };
@@ -1643,21 +1689,47 @@ export function createWorkflowService(
       },
     };
     try {
-      if (await waitForOrigin(run.originThreadId, signal)) {
+      if (
+        !backgroundJobs &&
+        (await waitForOrigin(run.originThreadId, signal))
+      ) {
         await onOriginUnavailable(run.originThreadId);
         return;
       }
       throwIfCancelled(signal);
-      const result = await executeWorkflowScript({
-        args: parseJson(run.argsJson, "workflow args"),
-        body: parsed.body,
-        signal,
-        capabilities,
-        limits: {
-          maxAgentCalls: runSettings.maxAgentCalls,
-          maxConcurrentAgents: runSettings.maxConcurrentAgents,
-        },
-      });
+      const result =
+        backgroundJobs && managedBinding
+          ? await backgroundJobs.evaluateWorkflow(
+              managedBinding.id,
+              {
+                body: parsed.body,
+                args: parseJson(run.argsJson, "workflow args"),
+                maxAgentCalls: runSettings.maxAgentCalls,
+                maxConcurrentAgents: runSettings.maxConcurrentAgents,
+                timeoutMs: runSettings.totalRunTimeoutMs,
+              },
+              signal,
+              (event) => {
+                if (event.type === "phase") capabilities.phase(event.value);
+                else capabilities.log(event.value);
+              },
+              (prompt, options, callSignal) =>
+                capabilities.agent(
+                  prompt,
+                  parseStoredAgentOptions(options),
+                  callSignal,
+                ),
+            )
+          : await executeWorkflowScript({
+              args: parseJson(run.argsJson, "workflow args"),
+              body: parsed.body,
+              signal,
+              capabilities,
+              limits: {
+                maxAgentCalls: runSettings.maxAgentCalls,
+                maxConcurrentAgents: runSettings.maxConcurrentAgents,
+              },
+            });
       if (shuttingDown && signal.aborted) return;
       if (parsed.metadata.outputSchema !== null) {
         const validation = validateValue(parsed.metadata.outputSchema, result);
@@ -1700,6 +1772,20 @@ export function createWorkflowService(
     for (const call of listRunningCalls(db)) {
       const threadId = call.childThreadId!;
       try {
+        if (backgroundJobs) {
+          const parent = getRun(db, call.runId)?.authorityBindingId;
+          if (!parent) {
+            failThreadCall(threadId, "Worker parent authority is unassigned");
+            continue;
+          }
+          const thread = await backgroundJobs.getWorker(parent, threadId);
+          if (thread.status === "idle") {
+            onThreadIdle(threadId, thread.output);
+            await idleHandlerTasks.get(call.id);
+          } else if (thread.status === "error")
+            failThreadCall(threadId, "Workflow worker is in an error state");
+          continue;
+        }
         const thread = await bb.sdk.threads.get({ threadId });
         if (thread.archivedAt != null) {
           failThreadCall(threadId, "Workflow worker was archived");
@@ -1737,6 +1823,15 @@ export function createWorkflowService(
 
   async function archiveRetiredWorker(threadId: string): Promise<boolean> {
     try {
+      if (backgroundJobs) {
+        const runId =
+          getCallByChildThread(db, threadId)?.runId ??
+          workerRunId(db, threadId);
+        const parent = runId ? getRun(db, runId)?.authorityBindingId : null;
+        if (!parent) return false;
+        await backgroundJobs.archiveWorker(parent, threadId);
+        return true;
+      }
       await bb.sdk.threads.stop({ threadId });
       await bb.sdk.threads.archive({ threadId });
       return true;

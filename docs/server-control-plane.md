@@ -1229,3 +1229,50 @@ next integration step. `agent()` and nested workflow bridges still fail
 explicitly. Their bidirectional protocol, profile-aware replay, controller
 recovery/notifications, personal job APIs, automations and schedules remain open.
 No completion of the background stage or overall goal is claimed here.
+
+## Thirtieth increment: isolated workflow agents and durable result replay
+
+Managed `agent()` calls now cross a bounded bidirectional JSON protocol from the
+UID-isolated evaluator into the existing durable Workflows call controller. The
+controller creates actual native Qwen workers through the scoped background-job
+facade, polls their results and uses scoped send/stop/archive operations. Normal
+standalone Workflows keep their existing SDK path. No tenant-controlled native
+SDK callback or executable/environment override is exposed. Nested workflows
+still fail explicitly in the managed evaluator.
+
+Protocol admission validates ordered request IDs, total and concurrent call
+budgets, frame/result sizes, evaluator identity and current owner authority.
+Deadlines, cancellation and transport closure abort pending calls and await
+cleanup. An initial handshake timeout detects stale evaluator artifacts. Worker
+creation subscribes to cancellation immediately after reserving authority; abort
+disables that reservation before a delayed host response can admit execution.
+Independent worker ownership retains the parent even when cancellation wins
+attachment. Finished workers use the existing core single-thread archive
+lifecycle after scoped stop and a second parent/worker check.
+
+Managed calls inherit the immutable approved origin profile. Explicit model
+selection must match that profile; per-agent profile selection is not exposed
+yet. Managed cache identity includes the profile version, so identical model
+tuples with different tool/permission policies cannot share a replay identity.
+The existing unchanged-prefix replay and structured-result validation are reused.
+
+Verification: 258 Workflows tests, 402 Plugin SDK tests, 75 Plugin Guide tests and
+28 selected server security/lifecycle tests pass. A real-database race test
+pauses native creation, cancels the request, verifies that authority is disabled
+before releasing creation, and admits no new thread. Strict server/SDK/Workflows/
+guide typechecks and portable SDK declarations pass, with changed-file lint,
+formatting and diff checks.
+
+The actual Docker deployment runs `agent()` through the installed native
+Workflows plugin and real Qwen workers for two users. Shell probes verify UID,
+HOME and cwd; database checks verify worker ancestry and pinned profile. It
+checks structured replies, native cancellation and scoped worker retirement.
+Resuming a completed prefix creates no new worker, including after BB restart.
+The restart check waits for the builtin plugin to register before invoking its
+CLI command. All 63 build/deployment tasks pass. See
+`control-plane-phase-30-verification.json`.
+
+Scoped orphan discovery, controller recovery and retries, notifications,
+per-agent profile selection, nested workflows, personal job APIs, automations
+and schedules remain open. This is an agent-dispatch increment, not completion
+of the background stage or the overall goal.

@@ -992,3 +992,17 @@ export function abandonOriginNotifications(
     notification_error = 'Origin thread is archived or deleted'
     WHERE origin_thread_id = ? AND notification_sent = 0`).run(originThreadId);
 }
+
+export function workerRunId(db: Db, threadId: string): string | null {
+  const row: unknown = db
+    .prepare("SELECT run_id AS runId FROM workflow_workers WHERE thread_id = ?")
+    .get(threadId);
+  if (
+    row !== null &&
+    typeof row === "object" &&
+    "runId" in row &&
+    typeof row.runId === "string"
+  )
+    return row.runId;
+  return null;
+}

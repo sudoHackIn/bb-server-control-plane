@@ -7,6 +7,7 @@ import {
   retiredWorkers,
   recordWorkerCleanup,
   workerOrigins,
+  workerRunId,
   ownWorker,
   cancelRun,
   countCallsForRun,
@@ -249,6 +250,8 @@ describe("workflow durable data", () => {
     });
     cancelRun(db, run.id);
     expect(attachCallThread(db, call.id, "unattached-worker")).toBe(false);
+    expect(getCall(db, run.id, 0)?.childThreadId).toBeNull();
+    expect(workerRunId(db, "unattached-worker")).toBe(run.id);
     expect(retiredWorkers(db, Date.now())).toEqual([
       { threadId: "unattached-worker", callId: call.id },
     ]);

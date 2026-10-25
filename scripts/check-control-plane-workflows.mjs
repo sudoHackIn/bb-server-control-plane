@@ -126,12 +126,154 @@ export async function verifyNativeWorkflows({
     }
   }, "native workflow ownership and isolated result");
   verify();
+  const agentStorage = new Database("/srv/bb/plugins/workflows/data.db", {
+    readonly: true,
+  });
+  const agentRuns = [];
+  async function waitAgent(runId) {
+    await wait(() => {
+      const row = agentStorage
+        .prepare("SELECT status, error FROM workflow_runs WHERE id = ?")
+        .get(runId);
+      if (row?.status === "failed") throw new Error(row.error);
+      return row?.status === "succeeded";
+    }, "native isolated agent workflow");
+    return agentStorage
+      .prepare("SELECT * FROM workflow_runs WHERE id = ?")
+      .get(runId);
+  }
+  try {
+    for (const subject of subjects) {
+      const script = `export const meta = {name: "isolated-agent", description: "Real controlled Qwen worker"}; return await agent("BB_PERSONAL_workflow-agent-${subject.user.login}");`;
+      const run = await cli(
+        ["workflows", "run", "--script", script, "--json"],
+        subject,
+      );
+      const row = await waitAgent(run.runId);
+      assert.equal(
+        JSON.parse(row.result_json),
+        `Personal workflow-agent-${subject.user.login} completed`,
+      );
+      const call = agentStorage
+        .prepare("SELECT * FROM workflow_calls WHERE run_id = ?")
+        .get(run.runId);
+      assert.equal(call.status, "succeeded");
+      const owner = db
+        .prepare("SELECT * FROM control_plane_threads WHERE thread_id = ?")
+        .get(call.child_thread_id);
+      const binding = db
+        .prepare("SELECT * FROM control_plane_job_bindings WHERE id = ?")
+        .get(owner.job_binding_id);
+      assert.equal(owner.owner_user_id, subject.user.id);
+      assert.equal(binding.source_binding_id, row.authority_binding_id);
+      assert.equal(binding.kind, "workflow-worker");
+      assert.equal(owner.profile_version_id, subject.profile.body.version.id);
+      const proof = JSON.parse(
+        await readFile(
+          `${subject.user.home}/bb-personal-workflow-agent-${subject.user.login}.json`,
+          "utf8",
+        ),
+      );
+      assert.deepEqual(proof, {
+        uid: subject.user.uid,
+        home: subject.user.home,
+        cwd: subject.project.cwd,
+      });
+      agentRuns.push({ subject, script, runId: run.runId });
+      await wait(
+        () =>
+          db
+            .prepare("SELECT archived_at FROM threads WHERE id = ?")
+            .get(call.child_thread_id)?.archived_at > 0,
+        "controlled worker retirement archive",
+      );
+    }
+    const beforeReplay = db
+      .prepare("SELECT count(*) AS count FROM threads")
+      .get().count;
+    const resumed = await cli(
+      [
+        "workflows",
+        "run",
+        "--script",
+        agentRuns[0].script,
+        "--resume",
+        agentRuns[0].runId,
+        "--json",
+      ],
+      agentRuns[0].subject,
+    );
+    await waitAgent(resumed.runId);
+    assert.equal(
+      db.prepare("SELECT count(*) AS count FROM threads").get().count,
+      beforeReplay,
+    );
+    const replayed = agentStorage
+      .prepare("SELECT replay_source FROM workflow_calls WHERE run_id = ?")
+      .get(resumed.runId);
+    assert.equal(replayed.replay_source, "resumed-run");
+    const structured = await cli(
+      [
+        "workflows",
+        "run",
+        "--script",
+        'export const meta = {name: "isolated-json", description: "Structured worker result"}; return await agent("BB_PERSONAL_workflow-json-alice", {schema:{type:"object",properties:{value:{type:"number"}},required:["value"]}});',
+        "--json",
+      ],
+      subjects[0],
+    );
+    assert.deepEqual(
+      JSON.parse((await waitAgent(structured.runId)).result_json),
+      { value: 42 },
+    );
+    const pending = await cli(
+      [
+        "workflows",
+        "run",
+        "--script",
+        'export const meta = {name: "isolated-agent-cancel", description: "RPC and worker cancellation"}; return await agent("BB_PERSONAL_worker-hang-agent-alice");',
+        "--json",
+      ],
+      subjects[0],
+    );
+    await wait(async () => {
+      try {
+        await readFile(
+          `${subjects[0].user.home}/bb-personal-worker-hang-agent-alice.json`,
+        );
+        return true;
+      } catch (error) {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      }
+    }, "running native agent before cancellation");
+    const pendingCall = agentStorage
+      .prepare("SELECT child_thread_id FROM workflow_calls WHERE run_id = ?")
+      .get(pending.runId);
+    assert.ok(pendingCall.child_thread_id);
+    await cli(["workflows", "stop", pending.runId, "--json"], subjects[0]);
+    await wait(
+      () =>
+        db
+          .prepare("SELECT status FROM threads WHERE id = ?")
+          .get(pendingCall.child_thread_id)?.status === "idle",
+      "cancelled RPC worker stopped",
+    );
+    assert.equal(
+      agentStorage
+        .prepare("SELECT status FROM workflow_calls WHERE run_id = ?")
+        .get(pending.runId).status,
+      "cancelled",
+    );
+  } finally {
+    agentStorage.close();
+  }
   const first = subjects[0];
   const negativeRuns = [];
   for (const [body, reason] of [
     [
-      'return await agent("must not spawn an unrestricted worker");',
-      /scoped worker integration/u,
+      'return await workflow("must-not-run-in-service");',
+      /workflow\(\) is unavailable/u,
     ],
     ['return "x";', /Workflow result is invalid/u],
   ]) {
@@ -381,13 +523,20 @@ export async function verifyNativeWorkflows({
       ...processProof,
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
+      nativeEvaluatorAgentToQwenRoundTrip: true,
+      actualWorkerCreationThroughScopedFacade: true,
+      twoUserAgentUidHomeCwdAndProfileVerified: true,
+      completedAgentPrefixReplayAvoidsNewThread: true,
+      structuredAgentResultThroughProcessProtocol: true,
+      nativeAgentRpcAndWorkerCancellation: true,
+      completedWorkerRetirementUsesScopedArchive: true,
       actualBoundQwenWorkersUseOwnerUidHomeAndCwd: true,
       parentWorkflowCancellationStopsMappedWorker: true,
       otherUsersWorkerSurvivesUnrelatedCancellation: true,
       cancelledWorkerResumeDeniedBeforeEvents: true,
       foreignOwnedWorkerReadDenied: true,
       nativeWorkflowCancellationAndAuthorityDisable: true,
-      nativeWorkflowAgentFallbackDenied: true,
+      nativeWorkflowNestedFallbackDenied: true,
       nativeWorkflowOutputSchemaEnforced: true,
       nativeWorkflowIsolatedEvaluatorCompleted: true,
       nativeWorkflowEvaluatorIdentityAndCredentialIsolation: true,
@@ -395,9 +544,70 @@ export async function verifyNativeWorkflows({
     async afterRestart() {
       verify();
       const workerRestart = await workerFixture("verify");
+      await cli(
+        [
+          "server",
+          "access",
+          "login",
+          "--login",
+          "operator",
+          "--password-stdin",
+          "--json",
+        ],
+        null,
+        password,
+      );
+      await wait(async () => {
+        const { plugins } = await cli(["plugin", "list", "--json"]);
+        const plugin = plugins.find((entry) => entry.id === "workflows");
+        assert.notEqual(plugin?.status, "error", plugin?.statusDetail);
+        return plugin?.status === "running";
+      }, "workflow plugin registration after restart");
+      const before = db
+        .prepare("SELECT count(*) AS count FROM threads")
+        .get().count;
+      const resumed = await cli(
+        [
+          "workflows",
+          "run",
+          "--script",
+          agentRuns[0].script,
+          "--resume",
+          agentRuns[0].runId,
+          "--json",
+        ],
+        agentRuns[0].subject,
+      );
+      const storage = new Database("/srv/bb/plugins/workflows/data.db", {
+        readonly: true,
+      });
+      try {
+        await wait(() => {
+          const row = storage
+            .prepare("SELECT status,error FROM workflow_runs WHERE id = ?")
+            .get(resumed.runId);
+          if (row?.status === "failed") throw new Error(row.error);
+          return row?.status === "succeeded";
+        }, "agent prefix replay after server restart");
+        assert.equal(
+          storage
+            .prepare(
+              "SELECT replay_source FROM workflow_calls WHERE run_id = ?",
+            )
+            .get(resumed.runId).replay_source,
+          "resumed-run",
+        );
+        assert.equal(
+          db.prepare("SELECT count(*) AS count FROM threads").get().count,
+          before,
+        );
+      } finally {
+        storage.close();
+      }
       return {
         ...workerRestart,
         nativeWorkflowOwnerBindingSurvivesRestart: true,
+        isolatedAgentPrefixReplaySurvivesRestartWithoutNewWorker: true,
       };
     },
   };

@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   createControlPlaneJobBinding,
   createThread,
+  getThread,
   controlPlaneJobBindings,
   controlPlaneUsers,
+  threads,
   setControlPlaneProfileAccess,
 } from "@bb/db";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -69,6 +71,22 @@ it("scopes worker metadata and actions to the owning parent and denies unapprove
           jobs.stopWorker(b.id, child.id),
         ),
       ).rejects.toThrow("not authorized");
+      const aborted = new AbortController();
+      aborted.abort();
+      await expect(
+        withControlPlaneUser(alice.user.id, () =>
+          jobs.startWorker(
+            a.id,
+            {
+              callId: "cancelled",
+              prompt: "Must not create",
+              title: null,
+              profileVersionId: null,
+            },
+            aborted.signal,
+          ),
+        ),
+      ).rejects.toThrow("cancelled before");
       const before = harness.db
         .select()
         .from(controlPlaneJobBindings)
@@ -135,6 +153,8 @@ it("scopes worker metadata and actions to the owning parent and denies unapprove
         threadId: child.id,
       });
       await jobs.stopWorker(a.id, child.id);
+      await jobs.archiveWorker(a.id, child.id);
+      expect(getThread(harness.db, child.id)?.archivedAt).not.toBeNull();
       await expect(
         jobs.sendWorker(a.id, child.id, "Must not execute for a disabled user"),
       ).rejects.toThrow("not authorized");
@@ -146,6 +166,79 @@ it("scopes worker metadata and actions to the owning parent and denies unapprove
           .get()?.enabled,
       ).toBe(false);
     } finally {
+      await workers.close();
+    }
+  });
+});
+
+it("fences a worker reservation when cancellation arrives during native creation", async () => {
+  await withTestHarness(async (harness) => {
+    const { alice } = seedControlPlaneJobSubjects(harness.db);
+    const workers = createControlPlaneWorkflowWorkers(harness.deps);
+    const jobs = createControlPlaneBackgroundJobs(
+      harness.db,
+      "workflows",
+      true,
+      workers,
+    );
+    let release = () => {};
+    const registrations = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const waitForRegistrations = vi
+      .spyOn(harness.deps.providerRegistry, "whenRegistrationsSettled")
+      .mockReturnValue(registrations);
+    const controller = new AbortController();
+    try {
+      const parent = await withControlPlaneUser(alice.user.id, () =>
+        jobs.bind(alice.input),
+      );
+      const before = harness.db.select().from(threads).all().length;
+      const pending = withControlPlaneUser(alice.user.id, () =>
+        jobs.startWorker(
+          parent.id,
+          {
+            callId: "race",
+            prompt: "Must not launch",
+            title: null,
+            profileVersionId: null,
+          },
+          controller.signal,
+        ),
+      );
+      const outcome = pending.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      await vi.waitFor(() => expect(waitForRegistrations).toHaveBeenCalled());
+      const binding = harness.db
+        .select()
+        .from(controlPlaneJobBindings)
+        .where(eq(controlPlaneJobBindings.sourceBindingId, parent.id))
+        .get();
+      expect(binding?.enabled).toBe(true);
+      controller.abort();
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneJobBindings)
+          .where(eq(controlPlaneJobBindings.sourceBindingId, parent.id))
+          .get()?.enabled,
+      ).toBe(false);
+      release();
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(harness.db.select().from(threads).all().length).toBe(before);
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneJobBindings)
+          .where(eq(controlPlaneJobBindings.sourceBindingId, parent.id))
+          .get()?.deletedAt,
+      ).not.toBeNull();
+    } finally {
+      controller.abort();
+      release();
+      waitForRegistrations.mockRestore();
       await workers.close();
     }
   });

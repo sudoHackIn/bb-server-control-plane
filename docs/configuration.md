@@ -1456,8 +1456,10 @@ managed run's owner and immutable authority binding in its existing SQLite
 history. Its native readers and resume/stop operations scope user access; old
 unassigned history remains administrative. This does not open personal workflow
 APIs. Managed pure computation workflows now use a fixed evaluator process under
-the registered UID/HOME/cwd. Agent calls and nested workflows still fail explicitly
-until controlled dispatch is connected; standalone Workflows execution is unchanged. See
+the registered UID/HOME/cwd. Managed `agent()` now dispatches controlled BB worker
+threads with the originating approved immutable profile. Explicit model/provider/
+reasoning overrides must match that profile. Nested `workflow()` remains
+unavailable; standalone Workflows execution is unchanged. See
 [background execution integration](control-plane-background-execution.md).
 
 The Docker image installs the workflow evaluator automatically. For a Linux host
@@ -1476,5 +1478,8 @@ shared database. Both the worker's approved profile and the source workflow's
 current grants must permit execution. Cancelling the source prevents subsequent
 sends/resumes and stops pending or running mapped workers through a service-scoped
 monitor. These references are assigned internally; the personal thread API does
-not accept binding/UID/HOME/environment overrides. The isolated evaluator's
-`agent()` bridge and personal workflow controls remain unfinished.
+not accept binding/UID/HOME/environment overrides. Personal workflow controls and the isolated evaluator's nested-workflow bridge
+remain unfinished. The
+managed `agent()` bridge now uses the scoped worker adapter, persists native calls
+and results, and fences cancellation during worker creation. Completed-call
+replay includes the immutable profile version.

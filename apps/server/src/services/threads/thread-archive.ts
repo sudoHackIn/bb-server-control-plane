@@ -51,7 +51,7 @@ interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
 }
 
-function archiveThreadWithLifecycleEffects(
+export function archiveThreadWithLifecycleEffects(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {

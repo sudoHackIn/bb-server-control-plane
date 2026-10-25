@@ -10,9 +10,11 @@ import {
   deleteControlPlaneJobBinding,
   setControlPlaneJobEnabled,
   getThread,
+  getEnvironment,
   requireControlPlaneThreadDispatch,
 } from "@bb/db";
 import type { AppDeps } from "../types.js";
+import { archiveThreadWithLifecycleEffects } from "../services/threads/thread-archive.js";
 import { ApiError } from "../errors.js";
 import { getLastThreadOutput } from "../services/threads/thread-data.js";
 import { createControlPlaneThreadService } from "./threads.js";
@@ -89,6 +91,18 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
     });
     await stopThreadForCurrentState(deps, thread, environment);
   }
+  async function stopWorker(parentId: string, threadId: string) {
+    const record = read(parentId, threadId);
+    setControlPlaneJobEnabled(
+      deps.db,
+      currentControlPlanePrincipal()?.kind === "user"
+        ? record.owner.ownerUserId
+        : null,
+      record.binding.id,
+      false,
+    );
+    await withControlPlaneUser(record.owner.ownerUserId, () => stop(threadId));
+  }
   const timer = withControlPlaneService(() =>
     setInterval(() => {
       if (closed || sweep) return;
@@ -144,9 +158,12 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
     async startWorker(
       parentId: string,
       input: Parameters<InternalDoNotUseBackgroundJobs["startWorker"]>[1],
+      signal?: AbortSignal,
     ) {
       if (closed) return denied();
       const parsed = inputSchema.parse(input);
+      if (signal?.aborted)
+        throw new Error("Workflow worker cancelled before creation");
       return withControlPlaneJobAuthority(deps.db, parentId, async (parent) => {
         if (
           parent.binding.kind !== "workflow-run" ||
@@ -163,7 +180,22 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
           originThreadId: parent.binding.originThreadId,
           sourceBindingId: parentId,
         });
+        const cancel = () => {
+          try {
+            setControlPlaneJobEnabled(deps.db, null, binding.id, false);
+          } catch (error) {
+            deps.logger.warn(
+              { error, bindingId: binding.id },
+              "Could not fence cancelled workflow worker",
+            );
+          }
+        };
+        signal?.addEventListener("abort", cancel, { once: true });
         try {
+          if (signal?.aborted) {
+            cancel();
+            throw new Error("Workflow worker cancelled before creation");
+          }
           const thread = await service.start(
             parent.user.id,
             {
@@ -174,10 +206,16 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
             },
             { bindingId: binding.id, callId: parsed.callId },
           );
+          if (signal?.aborted) {
+            await stop(thread.id);
+            throw new Error("Workflow worker cancelled during creation");
+          }
           return { threadId: thread.id, bindingId: binding.id };
         } catch (error) {
           deleteControlPlaneJobBinding(deps.db, null, binding.id);
           throw error;
+        } finally {
+          signal?.removeEventListener("abort", cancel);
         }
       });
     },
@@ -199,18 +237,23 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
         });
       });
     },
-    async stopWorker(parentId: string, threadId: string) {
+    stopWorker,
+    async archiveWorker(parentId: string, threadId: string) {
+      read(parentId, threadId);
+      await stopWorker(parentId, threadId);
       const record = read(parentId, threadId);
-      setControlPlaneJobEnabled(
-        deps.db,
-        currentControlPlanePrincipal()?.kind === "user"
-          ? record.owner.ownerUserId
-          : null,
-        record.binding.id,
-        false,
-      );
-      await withControlPlaneUser(record.owner.ownerUserId, () =>
-        stop(threadId),
+      const thread = record.thread;
+      if (thread.archivedAt !== null) return;
+      const environment = thread.environmentId
+        ? getEnvironment(deps.db, thread.environmentId)
+        : null;
+      withControlPlaneUser(record.owner.ownerUserId, () =>
+        archiveThreadWithLifecycleEffects(deps, {
+          thread,
+          environment: environment
+            ? { id: environment.id, hostId: environment.hostId }
+            : null,
+        }),
       );
     },
     async close() {

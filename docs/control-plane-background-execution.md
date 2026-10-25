@@ -3,8 +3,8 @@
 This is a source inventory and integration plan for the required personal
 workflow/automation/schedule stage. The authority-binding foundation and native
 workflow owner/binding persistence and isolated pure evaluation are implemented.
-Worker authority/dispatch plumbing is implemented; the agent/nested process bridge
-and automation integration remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
+Worker authority/dispatch and the isolated agent process bridge are implemented.
+Nested workflows and automation integration remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
 
 ## Existing persistence and execution
 
@@ -63,8 +63,8 @@ invoke another user's binding. Async callbacks preserve that principal; the
 caller's previous scope is restored afterward. This is internal server plumbing,
 not a public capability token. The internal builtin-only Plugin SDK facade now
 wraps these same operations. Native workflow runs now retain binding references;
-The worker kernel now participates in native dispatch; the builtin evaluator
-bridge and automation integration remain pending.
+the worker kernel and isolated agent bridge now participate in native dispatch.
+Nested workflows and automation integration remain pending.
 
 ## Remaining integration
 
@@ -143,8 +143,8 @@ before tenant execution opens.
 
 The origin selection comes from the internal pinned-profile reader, rather than
 unrestricted thread defaults. Managed execution revalidates the saved binding
-and evaluates pure workflows in the fixed registered-UID process. Agent/nested
-capabilities still fail explicitly pending controlled worker integration. Unassigned queued legacy workflows fail with an
+and evaluates pure workflows in the fixed registered-UID process. Agent calls now use controlled workers through the framed process bridge.
+Nested workflow capability remains unavailable in managed mode. Unassigned queued legacy workflows fail with an
 administrative-migration error. Managed notifications do not use unrestricted
 thread sends. Standalone execution remains covered by its existing full tests.
 Controlled child dispatch, nested workflows, scoped notifications, personal routes
@@ -163,8 +163,9 @@ stop fencing and client-ancestor death cleanup.
 The core adapter validates bounded input and protocol frames. The trusted runner
 reports its actual UID/HOME/cwd before evaluation; the adapter matches all three
 against saved authority. QuickJS exposes deterministic JSON computation, log and
-phase. Node globals are not exposed. Agent/nested capabilities do not fall back
-to the service process or unrestricted SDK. The adapter rechecks current
+phase. Node globals are not exposed. Agent calls are forwarded to the existing durable call controller through a
+bounded JSON channel. Nested workflows do not fall back to the service process
+or unrestricted SDK. The adapter rechecks current
 execution grants at launch, each event/result, completion and every 500 ms while
 running. Abort, deadline, protocol violation or revocation invoke the fixed stop
 helper and await process close. Result/output/event limits bound the transport.
@@ -207,6 +208,36 @@ one native parent stops its mapped worker while preserving the other user's
 active worker. Resume is rejected before admitting a new user message, and the
 binding/source denial persists after restart. This proves the authority kernel,
 not a completed `agent()` bridge: worker seeding uses a private fixture, and
-successful `startWorker` through the native evaluator still needs end-to-end
-verification when that bridge is implemented. Personal job surfaces, replay,
+successful `startWorker` through the native evaluator is now also verified by
+the later full agent round-trip and prefix replay checks. Personal job surfaces, replay,
 recovery, notifications and automations remain required work.
+
+## Isolated agent process bridge
+
+The same durable call/replay controller now serves standalone and managed runs.
+Managed evaluation forwards normalized agent options over bounded JSON frames;
+request IDs/order, total calls, concurrent calls and reply sizes are checked.
+The server invokes the controller under saved user authority, and the controller
+uses scoped worker start/status/send/stop/archive operations. Model selection
+currently inherits the bound immutable profile; a different explicit tuple is
+rejected. Arbitrary tool/MCP/environment options are not accepted by this channel.
+
+A pending reservation subscribes to the per-call abort signal before native
+creation. Abort disables its authority immediately, so provisioning or a late
+host reply cannot admit execution after cancellation. Independently owned worker
+records retain the parent run even when cancellation wins attachment. RPC close,
+reply failure and deadlines abort pending callbacks and await their cleanup.
+Completed workers are stopped, disabled and retired using core's single-thread
+archive lifecycle, without an unrestricted SDK fallback. Scoped discovery of old
+orphan workers and all controller recovery paths still require completion.
+
+Immutable profile version is part of managed call identity; standalone cache
+identity is unchanged. The existing successful unchanged-prefix replay algorithm
+and structured-result validator are reused. Docker verifies two-user native
+`agent()` → Qwen → result round trips, actual worker profiles/UIDs/HOMEs/cwd,
+structured replies, no new thread for completed-prefix replay, and cancellation
+through the VM/RPC/worker chain. A second replay after server restart uses durable
+call results without creating a new worker. Worker archival and the reservation
+cancellation race also have direct evidence. These checks do not finish nested
+workflows, per-agent profile selection, all retry/recovery cases, notifications,
+personal job APIs, automations or schedules.

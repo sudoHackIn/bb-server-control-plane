@@ -3714,8 +3714,13 @@ immutable profile version. UID/HOME/project/environment/provider/model/tool
 or command overrides are not accepted. `getWorker`, `sendWorker` and `stopWorker`
 validate the exact parent/worker relation; stopped attempts are disabled before
 native stop. Metadata reads and safe stopping remain possible after profile loss.
-These methods are wired to the shared server; the builtin evaluator's `agent()`
-bridge is still pending and does not yet consume them.
+The builtin evaluator now forwards bounded `agent` requests to its existing
+durable call controller through a framed JSON channel. Each callback adopts and
+rechecks the saved owner. IDs, request order and concurrency/call budgets are
+validated; cancellation propagates to callbacks and to authority reservations
+still inside native creation. `archiveWorker` uses the same canonical single-thread
+lifecycle implementation as core, with relation checks after awaiting stop.
+No raw SDK fallback is used for managed worker operations.
 
 Current callers are the builtin Workflows service, core plugin host,
 lifecycle/security tests and Docker fixtures. The allowlist uses the actual
@@ -3723,8 +3728,8 @@ lifecycle/security tests and Docker fixtures. The allowlist uses the actual
 `bb--workflows` / `bb--automations` spelling was incorrect. Workflows persists
 owner/binding references and scopes its native readers and resume/stop handlers.
 Its managed evaluator now runs in a separate registered-UID process. Controlled
-worker authority/creation/lifecycle plumbing is implemented, while the builtin
-`agent()` and nested-workflow bridges remain unavailable until connected. Automations integration remains pending. Only
+worker authority/creation/lifecycle and the isolated `agent()` bridge are
+implemented. Nested workflow dispatch remains unavailable in managed mode. Automations integration remains pending. Only
 these two builtin plugins are intended production consumers. The Plugin Guide's
 SDK inventory includes this member.
 

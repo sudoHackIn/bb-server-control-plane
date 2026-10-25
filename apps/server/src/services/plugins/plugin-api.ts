@@ -1091,9 +1091,9 @@ export function createPluginApi(options: {
         assertLive();
         return source.withAuthority(id, run);
       },
-      startWorker(id, input) {
+      startWorker(id, input, signal) {
         assertLive();
-        return source.startWorker(id, input);
+        return source.startWorker(id, input, signal);
       },
       getWorker(id, threadId) {
         assertLive();
@@ -1107,12 +1107,27 @@ export function createPluginApi(options: {
         assertLive();
         return source.stopWorker(id, threadId);
       },
-      evaluateWorkflow(id, input, signal, onEvent) {
+      archiveWorker(id, threadId) {
         assertLive();
-        return source.evaluateWorkflow(id, input, signal, (event) => {
-          assertLive();
-          onEvent(event);
-        });
+        return source.archiveWorker(id, threadId);
+      },
+      evaluateWorkflow(id, input, signal, onEvent, onAgent) {
+        assertLive();
+        return source.evaluateWorkflow(
+          id,
+          input,
+          signal,
+          (event) => {
+            assertLive();
+            onEvent(event);
+          },
+          onAgent
+            ? (prompt, options, callSignal) => {
+                assertLive();
+                return onAgent(prompt, options, callSignal);
+              }
+            : undefined,
+        );
       },
     };
     return backgroundJobs;

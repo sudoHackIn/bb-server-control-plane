@@ -2,7 +2,7 @@ import { z } from "zod";
 import { StringDecoder } from "node:string_decoder";
 import { toJsonValue } from "./json-value.js";
 import { executeWorkflowScript } from "./runtime.js";
-import type { JsonValue } from "./types.js";
+import type { JsonValue, WorkflowCapabilities } from "./types.js";
 
 const inputSchema = z
   .object({
@@ -18,6 +18,7 @@ export async function runIsolatedWorkflow(
   input: unknown,
   emit: (event: { type: "log" | "phase"; value: string }) => void,
   signal: AbortSignal,
+  agent?: WorkflowCapabilities["agent"],
 ): Promise<JsonValue> {
   const parsed = inputSchema.parse(input);
   return executeWorkflowScript({
@@ -29,11 +30,13 @@ export async function runIsolatedWorkflow(
       maxConcurrentAgents: parsed.maxConcurrentAgents,
     },
     capabilities: {
-      async agent() {
-        throw new Error(
-          "Managed workflow agent dispatch requires scoped worker integration",
-        );
-      },
+      agent:
+        agent ??
+        (async () => {
+          throw new Error(
+            "Managed workflow agent dispatch requires scoped worker integration",
+          );
+        }),
       log(value) {
         if (Buffer.byteLength(value) > 8192)
           throw new Error("Workflow log exceeds 8192 bytes");
@@ -48,18 +51,29 @@ export async function runIsolatedWorkflow(
   });
 }
 
-export async function readIsolatedWorkflowInput(
+export async function* readWorkflowFrames(
   chunks: AsyncIterable<Uint8Array>,
-): Promise<unknown> {
+): AsyncGenerator<unknown> {
   const decoder = new StringDecoder("utf8");
-  let size = 0;
-  let input = "";
+  let buffer = "";
+  let count = 0;
   for await (const chunk of chunks) {
-    size += chunk.byteLength;
-    if (size > 2097152) throw new Error("Workflow input exceeds 2 MiB");
-    input += decoder.write(Buffer.from(chunk));
+    buffer += decoder.write(Buffer.from(chunk));
+    if (Buffer.byteLength(buffer) > 2097152)
+      throw new Error("Workflow input frame exceeds 2 MiB");
+    let index: number;
+    while ((index = buffer.indexOf("\n")) !== -1) {
+      if (++count > 1001)
+        throw new Error("Workflow input frame count exceeded");
+      const line = buffer.slice(0, index);
+      buffer = buffer.slice(index + 1);
+      const value: unknown = JSON.parse(line);
+      yield value;
+    }
   }
-  input += decoder.end();
-  const value: unknown = JSON.parse(input);
-  return value;
+  buffer += decoder.end();
+  if (buffer) {
+    const value: unknown = JSON.parse(buffer);
+    yield value;
+  }
 }

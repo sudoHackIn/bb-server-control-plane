@@ -45,7 +45,7 @@ export function createControlPlaneBackgroundJobs(
   builtin: boolean,
   workers: Pick<
     InternalDoNotUseBackgroundJobs,
-    "startWorker" | "getWorker" | "sendWorker" | "stopWorker"
+    "startWorker" | "getWorker" | "sendWorker" | "stopWorker" | "archiveWorker"
   > | null = null,
 ): InternalDoNotUseBackgroundJobs {
   const kinds: InternalDoNotUseBackgroundJobBinding["kind"][] =
@@ -176,9 +176,9 @@ export function createControlPlaneBackgroundJobs(
         id,
       );
     },
-    startWorker(id, input) {
+    startWorker(id, input, signal) {
       if (required(id).kind !== "workflow-run" || !workers) return denied();
-      return workers.startWorker(id, input);
+      return workers.startWorker(id, input, signal);
     },
     getWorker(id, threadId) {
       if (required(id).kind !== "workflow-run" || !workers) return denied();
@@ -192,7 +192,11 @@ export function createControlPlaneBackgroundJobs(
       if (required(id).kind !== "workflow-run" || !workers) return denied();
       return workers.stopWorker(id, threadId);
     },
-    async evaluateWorkflow(id, input, signal, onEvent) {
+    archiveWorker(id, threadId) {
+      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      return workers.archiveWorker(id, threadId);
+    },
+    async evaluateWorkflow(id, input, signal, onEvent, onAgent) {
       const binding = required(id);
       if (binding.kind !== "workflow-run") return denied();
       return withControlPlaneJobAuthority(db, id, (context) =>
@@ -206,6 +210,12 @@ export function createControlPlaneBackgroundJobs(
           () => {
             withControlPlaneJobAuthority(db, id, () => undefined);
           },
+          onAgent
+            ? (prompt, options, callSignal) =>
+                withControlPlaneJobAuthority(db, id, () =>
+                  onAgent(prompt, options, callSignal),
+                )
+            : undefined,
         ),
       );
     },

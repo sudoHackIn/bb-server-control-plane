@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import {
   runIsolatedWorkflow,
-  readIsolatedWorkflowInput,
+  readWorkflowFrames,
 } from "./isolated-evaluator.js";
 
 const input = {
@@ -79,9 +79,38 @@ it("decodes Unicode across arbitrary pipe chunks and bounds raw input bytes", as
   async function* bytes() {
     for (const byte of encoded) yield Buffer.from([byte]);
   }
-  expect(await readIsolatedWorkflowInput(bytes())).toEqual(value);
+  const frames: unknown[] = [];
+  for await (const frame of readWorkflowFrames(bytes())) frames.push(frame);
+  expect(frames).toEqual([value]);
   async function* oversized() {
     yield Buffer.alloc(2097153);
   }
-  await expect(readIsolatedWorkflowInput(oversized())).rejects.toThrow("2 MiB");
+  await expect(readWorkflowFrames(oversized()).next()).rejects.toThrow("2 MiB");
+});
+
+it("runs normalized agent calls through the injected capability and frames Unicode replies", async () => {
+  const call = vi.fn(async (prompt: string) => ({ response: prompt }));
+  const result = await runIsolatedWorkflow(
+    {
+      ...input,
+      body: 'return await parallel([() => agent("Привет🙂"), () => agent("second")]);',
+    },
+    () => {},
+    new AbortController().signal,
+    call,
+  );
+  expect(result).toEqual([{ response: "Привет🙂" }, { response: "second" }]);
+  expect(call).toHaveBeenCalledTimes(2);
+  const data = Buffer.from(
+    JSON.stringify({ text: "Привет🙂" }) +
+      "\n" +
+      JSON.stringify({ text: "界" }) +
+      "\n",
+  );
+  async function* bytes() {
+    for (const byte of data) yield Buffer.from([byte]);
+  }
+  const decoded: unknown[] = [];
+  for await (const frame of readWorkflowFrames(bytes())) decoded.push(frame);
+  expect(decoded).toEqual([{ text: "Привет🙂" }, { text: "界" }]);
 });

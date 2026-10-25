@@ -15,6 +15,7 @@ interface WorkflowCallExecutionSemantics {
   workerPromptVersion: string;
   resultProtocolVersion: string;
   maxRepairAttempts: number;
+  profileVersionId?: string;
 }
 
 export interface WorkflowCallCacheInput {
@@ -185,6 +186,9 @@ export function computeWorkflowCallCacheKey(
       workerPromptVersion: input.executionSemantics.workerPromptVersion,
       resultProtocolVersion: input.executionSemantics.resultProtocolVersion,
       maxRepairAttempts: input.executionSemantics.maxRepairAttempts,
+      ...(input.executionSemantics.profileVersionId
+        ? { profileVersionId: input.executionSemantics.profileVersionId }
+        : {}),
     },
   };
   return createHash("sha256")

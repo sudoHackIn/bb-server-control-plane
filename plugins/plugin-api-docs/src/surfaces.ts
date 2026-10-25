@@ -1442,6 +1442,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "InternalDoNotUseBackgroundJobs.getWorker",
           "InternalDoNotUseBackgroundJobs.sendWorker",
           "InternalDoNotUseBackgroundJobs.stopWorker",
+          "InternalDoNotUseBackgroundJobs.archiveWorker",
           "InternalDoNotUseBackgroundJobBinding",
           "PluginBbSdk.subscribe",
           "PluginBbSdk.hosts.get",

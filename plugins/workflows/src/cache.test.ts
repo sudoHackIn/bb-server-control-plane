@@ -260,3 +260,40 @@ describe("workflow call result reuse", () => {
     expect(reusableSuccessfulResult(null)).toEqual({ reusable: false });
   });
 });
+
+it("keeps otherwise identical shared-server calls separate across immutable profiles", () => {
+  const base = {
+    version: WORKFLOW_CALL_CACHE_VERSION,
+    previousCacheKey: null,
+    prompt: "work",
+    selection: {
+      providerId: "qwen-server",
+      model: "model",
+      reasoningLevel: "none",
+      permissionMode: "full",
+    },
+    outputSchema: null,
+    executionSemantics: {
+      workerPromptVersion: "worker",
+      resultProtocolVersion: "result",
+      maxRepairAttempts: 2,
+    },
+  };
+  expect(
+    computeWorkflowCallCacheKey({
+      ...base,
+      executionSemantics: {
+        ...base.executionSemantics,
+        profileVersionId: "one",
+      },
+    }),
+  ).not.toBe(
+    computeWorkflowCallCacheKey({
+      ...base,
+      executionSemantics: {
+        ...base.executionSemantics,
+        profileVersionId: "two",
+      },
+    }),
+  );
+});

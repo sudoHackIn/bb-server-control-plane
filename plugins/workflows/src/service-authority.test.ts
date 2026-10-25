@@ -80,6 +80,9 @@ function fixture() {
     async sendWorker() {
       throw new Error("Test workers not configured");
     },
+    async archiveWorker() {
+      throw new Error("Test workers not configured");
+    },
     async stopWorker() {
       throw new Error("Test workers not configured");
     },

@@ -103,3 +103,18 @@ prompts and results.
 - Bounded coverage logs what it omits.
 - Structured consumers receive schema-validated results.
 - The final response uses status or inspected history, not assumptions.
+
+## Shared-server control-plane fork
+
+Managed workflows use the originating thread's approved immutable profile.
+`agent()` runs a controlled child thread with that profile's model, tools, MCP
+and permissions. Explicit provider/model/reasoning must match the bound profile;
+a different tuple requires approved profile selection, which is not yet exposed
+in the DSL. Catalog availability alone does not grant permission. Completed-call
+replay is also tied to the immutable profile version.
+
+The managed evaluator supports `agent()`, JSON results, phase/log and normal
+pipeline/parallel helpers. Nested `workflow()` remains unavailable in managed
+mode. Use the administrator's existing workflow controls while personal job APIs
+are being integrated; a personal token does not grant the general BB CLI API.
+Standalone Workflows behavior is unchanged.

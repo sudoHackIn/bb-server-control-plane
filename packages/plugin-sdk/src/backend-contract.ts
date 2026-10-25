@@ -1972,6 +1972,7 @@ export interface InternalDoNotUseBackgroundJobs {
       title: string | null;
       profileVersionId: string | null;
     },
+    signal?: AbortSignal,
   ): Promise<{ threadId: string; bindingId: string }>;
   getWorker(
     id: string,
@@ -1979,6 +1980,7 @@ export interface InternalDoNotUseBackgroundJobs {
   ): Promise<{ threadId: string; status: string; output: string | null }>;
   sendWorker(id: string, threadId: string, message: string): Promise<void>;
   stopWorker(id: string, threadId: string): Promise<void>;
+  archiveWorker(id: string, threadId: string): Promise<void>;
   /** Runs the fixed isolated workflow evaluator under current saved authority. No command or environment overrides. */
   evaluateWorkflow(
     id: string,
@@ -1991,6 +1993,11 @@ export interface InternalDoNotUseBackgroundJobs {
     },
     signal: AbortSignal,
     onEvent: (event: { type: "log" | "phase"; value: string }) => void,
+    onAgent?: (
+      prompt: string,
+      options: JsonValue,
+      signal: AbortSignal,
+    ) => Promise<JsonValue>,
   ): Promise<JsonValue>;
 }
 
