@@ -1396,3 +1396,35 @@ recovery, the remaining provider retry cases, notifications, legacy unassigned
 jobs, personal background APIs/UI, automations and schedules remain required.
 Interrupted side effects may execute again; no exactly-once or overall background
 stage completion is claimed.
+
+## Thirty-fourth increment: workflow recovery after abrupt parent death
+
+The Docker acceptance scenario now starts pending workflow agents for two users
+before killing the shared BB server with `SIGKILL`. Both workflows already have
+a reusable successful prefix. The process supervisor inspection captures the
+UID-isolated workflow evaluator processes as well as actual Qwen processes,
+namespace leases and daemon descendants, and verifies that none remain alive
+under the captured PID/start identities before BB restarts.
+
+While the server is offline, a private fixture uses the existing profile-access
+primitive to revoke one owner's profile. After restart that run fails authority
+admission without a new worker binding. The other owner's run replays its first
+call in the same run and completes its pending call through a different native
+worker. Old attempts are disabled and archived for both owners, including the
+owner whose execution profile is no longer granted. The fixture restores the
+grant after the assertions. No browser token is used to restore either job.
+
+Verification: strict server typecheck and changed-file lint/format/diff checks
+pass. The full real-fork Docker build/deployment passes all 63 tasks, including
+all earlier checks and the new crash/current-grant scenario. Existing production
+recovery and supervisor paths satisfy these checks without a production policy
+change. Unit suites are not rerun for this fixture-only increment. See
+`control-plane-phase-34-verification.json`.
+
+The expanded default deployment check has a 240-second inner deadline and a
+270-second outer container watchdog; browser-mode deadlines remain unchanged.
+This accommodates the additional two-user process/crash/recovery transitions,
+without changing execution deadlines or namespace/security restrictions.
+Provider retry/correction cases, notifications, personal background APIs/UI,
+legacy assignments, automations and schedules remain open. Pending side effects
+can execute again; successful-prefix replay is not an exactly-once guarantee.

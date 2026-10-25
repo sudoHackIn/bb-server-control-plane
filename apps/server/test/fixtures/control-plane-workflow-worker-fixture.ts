@@ -9,6 +9,7 @@ import {
   createControlPlaneJobBinding,
   createThread,
   getThread,
+  setControlPlaneProfileAccess,
   archiveThread,
   getControlPlaneJobBinding,
   controlPlaneThreads,
@@ -17,7 +18,9 @@ import {
   requireControlPlaneThreadDispatch,
 } from "@bb/db";
 
-const mode = z.enum(["create", "verify", "orphan"]).parse(process.argv[2]);
+const mode = z
+  .enum(["create", "verify", "orphan", "access"])
+  .parse(process.argv[2]);
 const db = createConnection("/srv/bb/bb.db");
 const statePath = "/srv/bb/workflow-worker-proof.json";
 const savedSchema = z
@@ -33,7 +36,23 @@ const savedSchema = z
   )
   .length(2);
 try {
-  if (mode === "orphan") {
+  if (mode === "access") {
+    const input = z
+      .object({
+        profileId: z.string().uuid(),
+        userId: z.string().uuid(),
+        allowed: z.boolean(),
+      })
+      .strict()
+      .parse(JSON.parse(process.argv[3] ?? ""));
+    setControlPlaneProfileAccess(
+      db,
+      input.profileId,
+      input.userId,
+      input.allowed,
+    );
+    process.stdout.write(JSON.stringify({ changed: true }) + "\n");
+  } else if (mode === "orphan") {
     const original = savedSchema.parse(
       JSON.parse(await readFile(statePath, "utf8")),
     );

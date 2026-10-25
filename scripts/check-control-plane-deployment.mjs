@@ -12,7 +12,7 @@ const password = "deployment-check-admin-password";
 const controller = new AbortController();
 const deadline = setTimeout(
   () => controller.abort(),
-  process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1" ? 270000 : 180000,
+  process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1" ? 270000 : 240000,
 );
 const children = new Set();
 const status = await readFile("/proc/self/status", "utf8");

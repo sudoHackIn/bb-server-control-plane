@@ -290,5 +290,19 @@ offline; startup discovers and archives them, including one already archived
 before its cleanup acknowledgement. Earlier ancestry fixtures now include actual
 call correlation, so periodic orphan cleanup can distinguish active calls.
 Interrupted side effects may execute again; these checks do not establish
-exactly-once behavior, abrupt-crash recovery, all provider retries, notifications
+exactly-once behavior, all provider retries, notifications
 or personal background APIs.
+
+## Abrupt server termination
+
+A separate Docker scenario kills BB with `SIGKILL` while two owner workflows are
+waiting on actual Qwen shell tools. Process identities for both workflow
+interpreters are included in the existing PID/start-time death checks, alongside
+the daemon, supervisors and Qwen descendants. BB restarts only after those old
+processes are dead. One owner's profile is revoked offline through the existing
+access primitive: that run cannot create a replacement attempt. The other run
+reuses its saved successful prefix and completes through a new owned worker.
+Both old attempts are disabled and archived. This verifies that crash recovery
+uses current authority rather than a browser credential or a cached grant.
+The fixture restores the revoked grant after assertion. Interrupted side effects
+may be repeated; remaining provider-retry and notification cases are separate.

@@ -755,7 +755,151 @@ export async function verifyNativeWorkflows({
   let recoveryRun = null;
   let previousRecoveryWorker = null;
   let orphanWorkers = [];
+  const crashRuns = [];
   return {
+    async beforeCrash() {
+      for (const source of agentRuns) {
+        const subject = source.subject;
+        const login = subject.user.login;
+        const script = `export const meta = {name:"native-crash-recovery",description:"Interrupted UID worker and current grants"}; const first=await agent("BB_PERSONAL_workflow-agent-${login}"); return [first,await agent("BB_PERSONAL_worker-hang-crash-${login}")];`;
+        const run = await cli(
+          [
+            "workflows",
+            "run",
+            "--script",
+            script,
+            "--resume",
+            source.runId,
+            "--json",
+          ],
+          subject,
+        );
+        await wait(async () => {
+          try {
+            await readFile(
+              `${subject.user.home}/bb-personal-worker-hang-crash-${login}.json`,
+            );
+            return true;
+          } catch (error) {
+            if (error.code === "ENOENT") return false;
+            throw error;
+          }
+        }, `pending workflow before crash for ${login}`);
+        const storage = new Database("/srv/bb/plugins/workflows/data.db", {
+          readonly: true,
+        });
+        try {
+          const row = storage
+            .prepare(
+              "SELECT authority_binding_id FROM workflow_runs WHERE id = ?",
+            )
+            .get(run.runId);
+          const call = storage
+            .prepare(
+              "SELECT child_thread_id FROM workflow_calls WHERE run_id = ? AND call_index = 1",
+            )
+            .get(run.runId);
+          crashRuns.push({
+            runId: run.runId,
+            bindingId: row.authority_binding_id,
+            threadId: call.child_thread_id,
+            subject,
+          });
+          assert.ok(call.child_thread_id);
+        } finally {
+          storage.close();
+        }
+      }
+    },
+    async afterCrashShutdown() {
+      const subject = crashRuns[0].subject;
+      await workerFixture("access", {
+        profileId: subject.profile.body.profile.id,
+        userId: subject.user.id,
+        allowed: false,
+      });
+    },
+    async afterCrash() {
+      const storage = new Database("/srv/bb/plugins/workflows/data.db", {
+        readonly: true,
+      });
+      try {
+        for (const [index, run] of crashRuns.entries()) {
+          const expected = index === 0 ? "failed" : "succeeded";
+          await wait(() => {
+            const row = storage
+              .prepare("SELECT status,error FROM workflow_runs WHERE id = ?")
+              .get(run.runId);
+            if (index !== 0 && row?.status === "failed")
+              throw new Error(row.error);
+            return row?.status === expected;
+          }, `workflow crash recovery ${run.subject.user.login}`);
+          const calls = storage
+            .prepare(
+              "SELECT * FROM workflow_calls WHERE run_id = ? ORDER BY call_index",
+            )
+            .all(run.runId);
+          if (index === 0) {
+            assert.match(
+              storage
+                .prepare("SELECT error FROM workflow_runs WHERE id = ?")
+                .get(run.runId).error,
+              /not authorized/u,
+            );
+            assert.equal(
+              db
+                .prepare(
+                  "SELECT count(*) AS count FROM control_plane_job_bindings WHERE source_binding_id = ? AND kind = 'workflow-worker'",
+                )
+                .get(run.bindingId).count,
+              1,
+            );
+          } else {
+            assert.equal(calls[0].replay_source, "same-run");
+            assert.equal(calls[1].status, "succeeded");
+            assert.notEqual(calls[1].child_thread_id, run.threadId);
+            assert.equal(
+              db
+                .prepare(
+                  "SELECT owner_user_id FROM control_plane_threads WHERE thread_id = ?",
+                )
+                .get(calls[1].child_thread_id).owner_user_id,
+              run.subject.user.id,
+            );
+          }
+          await wait(
+            () =>
+              db
+                .prepare("SELECT archived_at FROM threads WHERE id = ?")
+                .get(run.threadId)?.archived_at > 0,
+            "old crash worker retirement",
+          );
+          assert.equal(
+            db
+              .prepare(
+                "SELECT b.enabled FROM control_plane_threads t JOIN control_plane_job_bindings b ON b.id = t.job_binding_id WHERE t.thread_id = ?",
+              )
+              .get(run.threadId).enabled,
+            0,
+          );
+        }
+      } finally {
+        storage.close();
+        const subject = crashRuns[0].subject;
+        await workerFixture("access", {
+          profileId: subject.profile.body.profile.id,
+          userId: subject.user.id,
+          allowed: true,
+        });
+      }
+      return {
+        abruptCrashWorkflowRecoveryVerified: true,
+        crashRecoveryReusesSuccessfulPrefix: true,
+        revokedUserDeniedNewAttemptAfterCrash: true,
+        otherUserRecoverySurvivesRevocation: true,
+        oldCrashWorkerAttemptsDisabledAndArchived: true,
+      };
+    },
     async beforeRestart() {
       const subject = agentRuns[0].subject;
       const script =

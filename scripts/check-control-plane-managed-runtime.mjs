@@ -600,6 +600,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         .get(created[0].threadId).qwen_session_id,
       created[0].sessionId,
     );
+    await personal.beforeCrash();
     let daemonPid;
     for (const name of await readdir("/proc")) {
       if (!/^\d+$/u.test(name)) continue;
@@ -623,6 +624,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       "Expected a live Qwen session before parent death",
     );
     const qwenProcesses = [];
+    const workflowProcesses = [];
     const processTree = new Map();
     for (const name of await readdir("/proc")) {
       if (!/^\d+$/u.test(name)) continue;
@@ -656,11 +658,31 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       )
         qwenProcesses.push(entry);
     }
+    for (const [pid, info] of processTree) {
+      const argv = await readFile(`/proc/${pid}/cmdline`, "utf8").catch(
+        () => "",
+      );
+      if (
+        argv
+          .split("\0")
+          .includes("/opt/bb-control-plane/workflow-evaluator.mjs")
+      )
+        workflowProcesses.push({ pid, start: info.start });
+    }
+    assert.ok(
+      workflowProcesses.length >= 2,
+      "Expected both UID-isolated workflow evaluators before crash",
+    );
     assert.ok(
       qwenProcesses.length > 0,
       "Expected actual namespaced Qwen processes before parent death",
     );
-    const supervised = [...leases, ...qwenProcesses, ...descendants];
+    const supervised = [
+      ...leases,
+      ...qwenProcesses,
+      ...workflowProcesses,
+      ...descendants,
+    ];
     const exited = once(child, "exit", { signal });
     child.kill("SIGKILL");
     await exited;
@@ -696,7 +718,9 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         }) +
         log.slice(-2000),
     );
+    await personal.afterCrashShutdown();
     token = await start();
+    const workflowCrash = await personal.afterCrash();
     const recovered = await wait(() => {
       const row = connected();
       return row && row.instance_id !== secondSession.instance_id ? row : null;
@@ -715,6 +739,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       ...approvalVerification,
       ...personalVerification,
       ...personalRestartVerification,
+      ...workflowCrash,
+      workflowEvaluatorProcessesExitAfterParentCrash: true,
       trustedPluginSdkRealtimeEvents: true,
       staleContextReclaimedAfterCrash: true,
       localDaemonApiDisabled: true,

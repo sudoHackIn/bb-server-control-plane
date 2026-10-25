@@ -1500,3 +1500,10 @@ workers to repair a missing acknowledgement; maintenance excludes them. A
 normal server restart requeues interrupted runs, reuses successful call results
 and replaces interrupted worker attempts after rechecking authority. Pending
 side effects may run again; this is not exactly-once execution.
+
+The default Docker acceptance test also verifies workflow recovery after shared
+server `SIGKILL`, including interpreter/Qwen process death, successful-prefix
+replay and an execution-profile grant revoked while BB is offline. Its test-only
+inner/outer watchdogs are 240/270 seconds because it now runs both graceful and
+abrupt two-user recovery scenarios. Browser-mode and production run deadlines
+are unchanged.
