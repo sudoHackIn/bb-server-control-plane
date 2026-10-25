@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { access, readFile } from "node:fs/promises";
 import WebSocket from "ws";
 import { verifyUserDeployment } from "./check-control-plane-user-deployment.mjs";
+import { verifyScriptJobs } from "./check-control-plane-script-jobs.mjs";
 import { verifyQwenJobs } from "./check-control-plane-qwen-jobs.mjs";
 import { verifyManagedRuntime } from "./check-control-plane-managed-runtime.mjs";
 
@@ -182,6 +183,11 @@ try {
     launch,
     signal: controller.signal,
   });
+  const scriptRuntime = await verifyScriptJobs({
+    command,
+    launch,
+    signal: controller.signal,
+  });
   const managedRuntime = await verifyManagedRuntime({
     launch,
     signal: controller.signal,
@@ -200,6 +206,7 @@ try {
       users,
       qwen,
       managedRuntime,
+      scriptRuntime,
     }) + "\n",
   );
 } finally {

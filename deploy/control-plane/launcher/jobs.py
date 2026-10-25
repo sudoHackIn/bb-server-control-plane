@@ -131,7 +131,14 @@ def stop_job(user_id, uid, session_id, lock):
 def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, launch_policy=None, runtime='qwen'):
     path = lease_path(session_id)
     entry = policy.get('workflowEvaluator') if runtime == 'workflow' else policy.get('cli')
-    if runtime not in ('qwen', 'workflow') or not policy.get('node') or not entry:
+    if runtime not in ('qwen', 'workflow', 'script') or not policy.get('node'):
+        raise ValueError('Agent execution is not configured')
+    if runtime == 'script':
+        if policy.get('scriptRuntime') != 'node-esm':
+            raise ValueError('Script execution is not configured')
+        if arguments or launch_policy is not None:
+            raise ValueError('Script interpreter arguments cannot be overridden')
+    elif not entry:
         raise ValueError('Agent execution is not configured')
     if runtime == 'workflow':
         if arguments or launch_policy is not None:
@@ -198,11 +205,12 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
             env['QWEN_CODE_SYSTEM_DEFAULTS_PATH'] = os.path.join(runtime_directory, 'settings.json')
             env['QWEN_CODE_NO_RELAUNCH'] = 'true'
             preloads = ['--import', '/opt/bb-control-plane/launcher/policy-preload.mjs']
+        runtime_arguments = ['--input-type=module'] if runtime == 'script' else [entry, *arguments]
         child = subprocess.Popen(['/usr/bin/setpriv', '--reuid=' + str(uid), '--regid=' + str(uid),
                                   '--clear-groups', '--no-new-privs', '--', '/usr/bin/unshare',
                                   '--user', '--map-user=' + str(uid), '--map-group=' + str(uid),
                                   '--pid', '--fork', '--mount-proc', policy['node'],
-                                  '--dns-result-order=ipv4first', *preloads, *(['--max-old-space-size=128'] if runtime == 'workflow' else []), entry, *arguments],
+                                  '--dns-result-order=ipv4first', *preloads, *(['--max-old-space-size=128'] if runtime in ('workflow', 'script') else []), *runtime_arguments],
                                  env=env, close_fds=True, start_new_session=True)
         while clients_alive(clients):
             try:

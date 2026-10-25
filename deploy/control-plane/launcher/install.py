@@ -16,6 +16,7 @@ def main():
     parser.add_argument('--users-root', required=True)
     parser.add_argument('--qwen-cli')
     parser.add_argument('--workflow-evaluator')
+    parser.add_argument('--script-runtime', choices=['node-esm'])
     parser.add_argument('--node', default='/usr/local/bin/node')
     args = parser.parse_args()
     if os.geteuid() != 0:
@@ -57,7 +58,7 @@ def main():
         os.chown(target, 0, 0)
         os.chmod(target, 0o644)
     settings = {'root': str(root), 'serviceUid': service.pw_uid}
-    if args.qwen_cli or args.workflow_evaluator:
+    if args.qwen_cli or args.workflow_evaluator or args.script_runtime:
         executables = [('node', args.node)] + ([('cli', args.qwen_cli)] if args.qwen_cli else [])
         for name, value in executables:
             target = pathlib.Path(value).resolve(strict=True)
@@ -101,6 +102,8 @@ def main():
             current = current.parent
         settings['workflowEvaluator'] = str(target)
         settings['workflowEvaluatorSha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
+    if args.script_runtime:
+        settings['scriptRuntime'] = args.script_runtime
     policy = pathlib.Path('/etc/bb-agent-launcher/policy.json')
     policy.write_text(json.dumps(settings) + '\n')
     os.chown(policy, 0, 0)

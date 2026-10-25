@@ -19,6 +19,11 @@ try {
   for (const [source, target] of [
     ["apps/server/dist", "server"],
     [
+      "scripts/check-control-plane-script-jobs.mjs",
+      "check-control-plane-script-jobs.mjs",
+    ],
+    ["scripts/check-control-plane-script-client.mjs", "script-job-client.mjs"],
+    [
       "apps/server/.control-plane-runtime/workflow-evaluator.mjs",
       "workflow-evaluator.mjs",
     ],

@@ -1806,3 +1806,14 @@ conversations. Cleanup actions remain available after execution access is lost,
 while new runs, edits and resume require execution permission. Read denial hides
 cached definition content and history. The full administrative API and plugin
 frontends remain closed to this application.
+
+## Private managed script launcher
+
+The control-plane helper installer supports optional `--script-runtime node-esm`.
+It enables private `launch-script USER_UUID NUMERIC_UID JOB_UUID PROJECT_CWD`
+execution with JavaScript ESM source on stdin, under the registered UID/HOME/cwd
+and existing process supervisor. Interpreter arguments and environment overrides
+are rejected; Qwen model credentials are not passed to scripts. The Docker lab
+enables this primitive. Managed Automations and personal APIs still reject script
+definitions pending their bounded server runner and durable lifecycle integration.
+See `docs/control-plane-script-runtime.md` for installation, limits and checks.

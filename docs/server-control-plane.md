@@ -42,6 +42,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Expose personal native workflow run start/list/status/result/history/stop and terminal replay through the limited API, SDK and CLI, reusing builtin persistence and owner authority. Automations and schedules remain pending.
 - [x] Manage personal agent automations through limited API/SDK/CLI: create/edit with revision CAS, pause/resume, idempotent run, durable individual stop and deletion. Personal UI and the composite background audit remain pending.
 - [x] Add the personal Automations workspace using the limited API: revision-protected editor, once/cron schedules, pause/resume, manual run, paginated history, individual cancellation, conversation links and confirmed deletion; verify both users in a real browser.
+- [x] Add and verify a private fixed Node ESM script launcher under registered UID/HOME/cwd, including process namespaces, stop fences and descendant cleanup. Bounded runner and managed automation/API integration remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -2045,3 +2046,33 @@ rejection, actual two-owner jobs, schedules, restart and crash scenarios.
 `control-plane-phase-47-verification.json` records the complete proof. No new
 runtime tests or typecheck pass were needed for this documentation-only stage;
 browser acceptance remains the phase-46 baseline.
+
+## Forty-eighth increment: isolated script launcher primitive
+
+The privileged launcher supports an explicitly installed `node-esm` script
+runtime. Trusted service calls use registered UUID/UID/project cwd and a fresh
+job UUID; ESM source is streamed through stdin. Arbitrary interpreter arguments,
+launch policy and environment overrides reject. The script receives the base
+user environment without forwarded Qwen model/backend credentials and reuses
+numeric identity, no-new-privileges, per-job namespaces and root-owned leases.
+
+The existing stop/fence and service-ancestry cleanup paths supervise script
+commands and detached descendants as well. The Docker fixture checks two users,
+foreign HOME/database/cwd denial, UID escalation denial, interpreter argument
+rejection, stop-before-start fencing, foreign-stop rejection and three concurrent
+jobs. It verifies actual detached command removal after stop and caller death,
+while unrelated jobs of the same user and another user stay alive.
+
+This private primitive does not enable native/personal script automation yet.
+The outer bounded-input/output/deadline runner, grant checks, durable automation
+process state/cancellation/restart integration and explicit SDK/CLI/UI contract
+remain required. [Runtime documentation](control-plane-script-runtime.md) states
+that cwd is not a filesystem jail and the Node heap flag is not a process-tree
+cgroup budget. Database schema, daemon protocol and Plugin SDK are unchanged.
+Verification passes Python AST/JavaScript syntax checks, changed-file lint and
+formatting, plus all 63 normal Docker tasks in 7 minutes 47 seconds. Final
+checks include real PID survival, private /proc visibility and project-relative
+module imports. Runtime/helper and QA artifact hashes match the image, and the
+installed policy explicitly enables node-esm. No watchdog was increased.
+`control-plane-phase-48-verification.json` records the complete deployment proof
+and remaining scope.
