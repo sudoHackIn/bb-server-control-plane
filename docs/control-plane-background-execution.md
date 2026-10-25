@@ -482,5 +482,14 @@ Raw native RPC requires administrative access; personal clients use the limited
 API. Administrative run dispatch adopts the saved owner and rechecks that user's
 profile/project/source grants. It cannot bypass a disabled source. A logged-out
 user's API token remains rejected while an authorized administrative dispatch can
-run the still-enabled saved job under that user. Dedicated administrative
-definition UI and legacy assignment remain later work.
+run the still-enabled saved job under that user.
+
+The native administrative Workflows → Workflow definitions panel at
+`/plugins/workflows/definitions` uses this same contract. Owner/project metadata
+is paginated; source/default arguments are loaded on selection. Administrators
+can create from an authorized origin, load historical revisions, save using the
+loaded CAS revision, run saved defaults, enable/disable and delete. Enable does
+not silently advance the editing revision. Run cannot replace the owner or
+ignore disabled source authority. Refresh failures hide cached controls, and
+unmount discards pending reads. Personal clients retain their limited UI/API;
+legacy assignment and automations/schedules remain unfinished.

@@ -1652,5 +1652,18 @@ Raw native RPC requires administrative access; personal clients use the limited
 API. Administrative run dispatch adopts the saved owner and rechecks that user's
 profile/project/source grants. It cannot bypass a disabled source. A logged-out
 user's API token remains rejected while an authorized administrative dispatch can
-run the still-enabled saved job under that user. Dedicated administrative
-definition UI and legacy assignment remain later work.
+run the still-enabled saved job under that user.
+
+In the full administrative BB, open Workflows → Workflow definitions
+(`/plugins/workflows/definitions`). The native panel lists saved owners and
+projects, filters and pages metadata, creates from a project/origin thread,
+loads current or historical revisions, saves new revisions, runs the loaded
+saved revision, enables/disables and deletes definitions. It uses these same
+native SDK/RPC handlers. Owner, profile, UID, HOME and cwd are derived by the
+server; no owner selector or execution-identity override is accepted. Run ignores
+unsaved editor changes and uses the selected saved defaults. Saving uses the
+loaded revision as its compare-and-swap expectation, so stale edits fail rather
+than overwrite a concurrent version. Enable/disable preserves that editing
+revision and draft. Refresh failures hide cached metadata and the editor;
+unmount disposes outstanding reads. The personal UI does not load this plugin
+frontend or gain native RPC access. Legacy assignment remains later work.

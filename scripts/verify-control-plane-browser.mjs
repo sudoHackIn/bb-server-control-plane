@@ -411,7 +411,18 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       [],
     );
     assert.deepEqual(pageErrors, []);
+    const administration = await verifyAdministrativeDefinitions({
+      browser,
+      ready,
+      contexts,
+      pageErrors,
+      command,
+      name,
+      visible,
+    });
+    assert.deepEqual(pageErrors, []);
     return {
+      ...administration,
       productionBrowserRenderingVerified: true,
       browserVersion: browser.version(),
       separateCertificateBrowserContexts: true,
@@ -461,6 +472,256 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     for (const context of contexts) await context.close();
     await browser.close();
   }
+}
+
+async function verifyAdministrativeDefinitions({
+  browser,
+  ready,
+  contexts,
+  pageErrors,
+  command,
+  name,
+  visible,
+}) {
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    viewport: { width: 1280, height: 1000 },
+  });
+  contexts.push(context);
+  await context.route("**/*", (route) =>
+    new URL(route.request().url()).origin === ready.origin
+      ? route.continue()
+      : route.abort(),
+  );
+  const page = await context.newPage();
+  page.setDefaultTimeout(15000);
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.goto(`${ready.origin}/control-plane/login`);
+  await page.getByLabel("Login", { exact: true }).fill("operator");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("deployment-check-admin-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.waitForURL(`${ready.origin}/`);
+  await page.goto(`${ready.origin}/plugins/workflows/definitions`);
+  const setup = page.getByRole("button", { name: "Skip setup", exact: true });
+  await visible(
+    page
+      .getByRole("heading", { name: "Workflow definitions", exact: true })
+      .or(setup)
+      .first(),
+  );
+  if (await setup.isVisible()) await setup.click();
+  await visible(
+    page.getByRole("heading", { name: "Workflow definitions", exact: true }),
+  );
+  await visible(page.getByRole("region", { name: "Definition editor" }));
+  async function response(method, click) {
+    const pending = page.waitForResponse(
+      (item) =>
+        new URL(item.url()).pathname ===
+        `/api/v1/plugins/workflows/rpc/${method}`,
+    );
+    await click();
+    const reply = await pending;
+    assert.equal(reply.status(), 200, await reply.text());
+    const body = await reply.json();
+    assert.equal(body.ok, true);
+    return body.result;
+  }
+  async function waitRun(run, expected, projectId) {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      const { stdout } = await command("docker", [
+        "exec",
+        name,
+        "node",
+        "-e",
+        "const D=require('better-sqlite3');const n=new D('/srv/bb/plugins/workflows/data.db',{readonly:true}),c=new D('/srv/bb/bb.db',{readonly:true});console.log(JSON.stringify({run:n.prepare('SELECT status,error,result_json FROM workflow_runs WHERE id=?').get(process.argv[1]),binding:c.prepare(\"SELECT b.owner_user_id,b.project_id,u.login FROM control_plane_job_bindings b JOIN control_plane_users u ON u.id=b.owner_user_id WHERE b.object_id=? AND b.kind='workflow-run'\").get(process.argv[1])}));n.close();c.close();",
+        run.id,
+      ]);
+      const actual = JSON.parse(stdout);
+      if (actual.run?.status === "failed") throw new Error(actual.run.error);
+      if (actual.run?.status === "succeeded") {
+        assert.deepEqual(JSON.parse(actual.run.result_json), expected);
+        assert.equal(actual.binding.login, expected.owner);
+        assert.equal(actual.binding.project_id, projectId);
+        return actual.binding.owner_user_id;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("Administrative definition run did not complete");
+  }
+  const saved = [];
+  for (const user of ready.users) {
+    await page
+      .getByRole("button", { name: "New definition", exact: true })
+      .click();
+    await page.getByLabel("Project ID", { exact: true }).fill(user.projectId);
+    await page
+      .getByLabel("Origin thread ID", { exact: true })
+      .fill(user.threadId);
+    const title = `admin-definition-${user.login}`;
+    const args = { owner: user.login, revision: 1 };
+    await page
+      .getByLabel("Definition source", { exact: true })
+      .fill(
+        `export const meta={name:${JSON.stringify(title)},description:"Administrative native definition"}; return args;`,
+      );
+    await page
+      .getByLabel("Default arguments", { exact: true })
+      .fill(JSON.stringify(args));
+    const definition = await response("controlPlaneDefinitionCreate", () =>
+      page
+        .getByRole("button", { name: "Create definition", exact: true })
+        .click(),
+    );
+    assert.equal(definition.revision, 1);
+    assert.equal(definition.projectId, user.projectId);
+    await visible(
+      page.getByRole("heading", {
+        name: `Loaded revision 1: ${title}`,
+        exact: true,
+      }),
+    );
+    await page
+      .getByLabel("Default arguments", { exact: true })
+      .fill(JSON.stringify({ ...args, revision: 2 }));
+    const updated = await response("controlPlaneDefinitionUpdate", () =>
+      page
+        .getByRole("button", { name: "Save new revision", exact: true })
+        .click(),
+    );
+    assert.equal(updated.revision, 2);
+    await visible(
+      page.getByRole("heading", {
+        name: `Loaded revision 2: ${title}`,
+        exact: true,
+      }),
+    );
+    await page.getByLabel("Revision to load", { exact: true }).fill("1");
+    await page
+      .getByRole("button", { name: "Load revision", exact: true })
+      .click();
+    await visible(
+      page.getByRole("heading", {
+        name: `Loaded revision 1: ${title}`,
+        exact: true,
+      }),
+    );
+    await page
+      .getByLabel("Default arguments", { exact: true })
+      .fill('{"unsaved":true}');
+    const run = await response("controlPlaneDefinitionRun", () =>
+      page
+        .getByRole("button", { name: "Run saved revision", exact: true })
+        .click(),
+    );
+    const ownerUserId = await waitRun(run, args, user.projectId);
+    await page
+      .getByRole("button", { name: "Save new revision", exact: true })
+      .click();
+    await visible(page.getByRole("alert"));
+    assert.match(
+      await page.getByRole("alert").innerText(),
+      /revision conflict/u,
+    );
+    await page
+      .getByRole("button", { name: "Load latest revision", exact: true })
+      .click();
+    await visible(
+      page.getByRole("heading", {
+        name: `Loaded revision 2: ${title}`,
+        exact: true,
+      }),
+    );
+    await page
+      .getByRole("button", { name: "Disable definition", exact: true })
+      .click();
+    await visible(
+      page.getByRole("button", { name: "Enable definition", exact: true }),
+    );
+    assert.equal(
+      await page
+        .getByRole("button", { name: "Run saved revision", exact: true })
+        .isDisabled(),
+      true,
+    );
+    const denied = await context.request.post(
+      `${ready.origin}/api/v1/plugins/workflows/rpc/controlPlaneDefinitionRun`,
+      {
+        headers: { origin: ready.origin },
+        data: { id: definition.id, revision: 1 },
+      },
+    );
+    assert.equal(denied.ok(), false);
+    await page
+      .getByRole("button", { name: "Enable definition", exact: true })
+      .click();
+    await visible(
+      page.getByRole("button", { name: "Disable definition", exact: true }),
+    );
+    saved.push({ ...definition, title, ownerUserId });
+  }
+  await page.reload();
+  for (const item of saved) {
+    await visible(page.getByRole("button", { name: item.title, exact: true }));
+    const row = page.getByRole("row").filter({
+      has: page.getByRole("button", { name: item.title, exact: true }),
+    });
+    assert.match(await row.innerText(), new RegExp(item.ownerUserId, "u"));
+    assert.match(await row.innerText(), new RegExp(item.projectId, "u"));
+    await row.getByRole("button", { name: item.title, exact: true }).click();
+    await visible(
+      page.getByRole("heading", {
+        name: `Loaded revision 2: ${item.title}`,
+        exact: true,
+      }),
+    );
+    await response("controlPlaneDefinitionRemove", () =>
+      page
+        .getByRole("button", { name: "Delete definition", exact: true })
+        .click(),
+    );
+    await page
+      .getByRole("button", { name: item.title, exact: true })
+      .waitFor({ state: "detached" });
+    assert.equal(
+      await page.getByRole("button", { name: item.title, exact: true }).count(),
+      0,
+    );
+  }
+  const artifacts = process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS;
+  if (artifacts)
+    await page.screenshot({
+      path: join(artifacts, "administrative-definitions.png"),
+    });
+  await page.goto(`${ready.origin}/control-plane/logout`);
+  await page
+    .getByRole("button", { name: "Sign out of BB administration", exact: true })
+    .click();
+  await page.waitForURL(`${ready.origin}/control-plane/login`);
+  assert.equal(
+    (
+      await context.request.post(
+        `${ready.origin}/api/v1/plugins/workflows/rpc/controlPlaneDefinitionInventory`,
+        {
+          headers: { origin: ready.origin },
+          data: { cursor: null, limit: 20 },
+        },
+      )
+    ).status(),
+    401,
+  );
+  return {
+    nativeAdministrativeDefinitionUiRendered: true,
+    administrativeDefinitionsShowBothOwners: true,
+    administrativeDefinitionsCrudAndImmutableRevisionRun: true,
+    administrativeDefinitionRunAdoptsEachSavedOwner: true,
+    administrativeUiRejectsStaleRevisionSave: true,
+    administrativeUiDisableCannotBeBypassedByAdminRun: true,
+    administrativeUiLogoutRevokesNativeRpc: true,
+  };
 }
 
 async function verifyBrowserDefinitions(page, foreign, user, origin, visible) {

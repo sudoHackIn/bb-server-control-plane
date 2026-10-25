@@ -28,6 +28,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
 - [x] Persist personal workflow definitions and immutable source/default-argument revisions, with stable source authority and API/SDK/CLI/UI controls for create/read/update/run/enable/disable/delete.
+- [x] Add native administrative workflow-definition management with owner/project inventory, immutable revisions and owner-adopting dispatch through the existing SDK/RPC/CLI path.
 - [x] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection through approved profile versions. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [x] Stream personal persisted events with exclusive cursor replay and native BB timeline snapshots/updates; recheck token/project authority on every frame and idle intervals, limit buffers/connections, and release subscriptions on cancellation. Global lists/search/bootstrap/user UI still require separate scoping.
@@ -1799,3 +1800,46 @@ row-existence assertion and current guides. Administrative native inventory
 shows both owners, Bob's revoked credential stays rejected, and administrative
 run dispatch adopts Bob's saved authority after logout. Completed evidence is
 in `control-plane-phase-41-verification.json`; the overall goal remains open.
+
+## Forty-second increment: native administrative definition management
+
+The builtin Workflows plugin registers a native navigation panel at
+`/plugins/workflows/definitions` in full administrative BB. It lists owner UUIDs,
+projects and revisions with project filtering and cursor pagination, creates
+from a server-authorized project/origin, loads historical/current content,
+saves a new revision, runs the loaded saved revision/defaults, and controls
+central enabled/deleted authority. The panel shares the existing native
+`controlPlaneDefinition*` RPC contract, SDK `plugins.callRpc` and
+`bb plugin rpc call workflows ...` surface. No alternate executor, new database
+migration, daemon wire or public Plugin SDK member is introduced.
+
+The loaded editing revision remains the compare-and-swap expectation across
+enable/disable. Run deliberately excludes unsaved editor source/arguments and
+requires the explicit saved revision. Refresh errors remove cached metadata and
+the editor; source reads are fenced after unmount. An unconfigured ordinary BB
+reports missing managed authority without offering an active editor. Personal
+clients retain their limited API and cannot load this native plugin frontend.
+Administrative execution still adopts the saved owner and rechecks source,
+project and profile grants; disabling a source denies administrative run too.
+
+Verification and the stage commit are recorded in
+`control-plane-phase-42-verification.json`. Automations, schedules, legacy
+assignment and the broader admission/recovery audit remain open.
+
+Stage verification passes all 277 native Workflows tests (17 files, including
+four new panel scenarios), strict plugin types, changed-file lint with no new
+errors, formatting and diff checks. Real Chrome first exposed the full BB
+onboarding gate and a nested-textarea accessible-label mismatch; the fixture now
+uses the existing Skip setup action when present, and the product uses separate
+explicit labels. The browser watchdog grows to 540/570 seconds for the additional
+administrative cases; individual operation waits remain unchanged.
+
+The production browser Docker deployment passes all 63 tasks in 7 minutes
+20 seconds with zero uncaught page errors. Administrative CRUD for Alice/Bob,
+historical/default-argument execution and actual SQLite owner bindings, stale
+CAS denial, disabled-source denial, reload and logout revocation all pass.
+Existing personal Qwen conversations, definition execution, foreign-ID denial,
+namespace/UID checks and recovery scenarios remain passing. This frontend
+increment uses that complete browser deployment; a second standalone normal
+network-none deployment was not repeated. The feature list remains open beyond
+this completed administrative-definition UI increment.

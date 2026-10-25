@@ -53,6 +53,7 @@ import {
 } from "./realtime-channel.js";
 import type { workflowUiRpcContract } from "./ui-contract.js";
 import type { WorkflowCallView, WorkflowRunView } from "./ui-contract.js";
+import { WorkflowDefinitionsPanel } from "./definition-panel.js";
 
 type RunLoadState =
   | { status: "loading" }
@@ -1189,6 +1190,13 @@ function WorkflowRunPanelLoaded({
 }
 
 export default definePluginApp((app) => {
+  app.slots.navPanel({
+    id: "definitions",
+    title: "Workflow definitions",
+    icon: "Workflow",
+    path: "definitions",
+    component: WorkflowDefinitionsPanel,
+  });
   app.composer.customize({
     id: "workflow-status",
     scopes: ["thread"],

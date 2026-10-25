@@ -14,7 +14,7 @@ import { toJsonValue } from "./json-value.js";
 const id = z.string().min(1).max(200);
 const revision = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const content = { script: z.string().min(1).max(524288), args: z.unknown() };
-const contract = defineRpcContract({
+export const workflowDefinitionRpcContract = defineRpcContract({
   controlPlaneDefinitionInventory: {
     input: z
       .object({
@@ -81,7 +81,7 @@ export function registerWorkflowDefinitionApi(
   service: WorkflowService,
 ) {
   const definitions = createWorkflowDefinitions(bb, db, service);
-  bb.rpc.register(contract, {
+  bb.rpc.register(workflowDefinitionRpcContract, {
     controlPlaneDefinitionInventory: (input) => definitions.inventory(input),
     controlPlaneDefinitionCreate: (input) =>
       definitions.create({ ...input, args: args(input.args) }),
