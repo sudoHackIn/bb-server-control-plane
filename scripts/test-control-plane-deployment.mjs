@@ -70,7 +70,7 @@ const deadline = setTimeout(
   () => {
     void docker(["rm", "--force", name]);
   },
-  browserMode ? 300000 : 270000,
+  browserMode ? 420000 : 390000,
 );
 try {
   const denied = await docker([

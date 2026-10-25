@@ -9,6 +9,7 @@ import {
   getQueuedThreadMessage,
   getStoredProviderSession,
   getThread,
+  requireControlPlaneThreadDispatch,
   holdQueuedThreadMessageForEdit,
   isOrdinaryTurnEndQueuedMessage,
   isThreadQueueAutoSendPaused,
@@ -123,7 +124,7 @@ type ClaimedQueuedMessage = Exclude<
 interface SendClaimedQueuedMessageArgs {
   mode: SendQueuedMessageMode;
   queuedMessages: ClaimedQueuedMessage[];
-  /** True for an explicit "send now"; false for an ordinary drain. */
+
   sendNow: boolean;
   threadId: string;
 }
@@ -205,6 +206,7 @@ function admitQueuedMessage(
   thread: Thread,
 ): { hasProviderSession: boolean } {
   ensureThreadQueueIsWritable(thread);
+  requireControlPlaneThreadDispatch(db, thread.id);
   const hasProviderSession =
     getStoredProviderSession(db, thread.id).kind !== "none";
   if (thread.environmentId === null) {
@@ -262,15 +264,7 @@ export async function createQueuedMessageForThread(
           reasoningLevel: execution.reasoningLevel,
           permissionMode: execution.permissionMode,
           serviceTier: execution.serviceTier,
-          // An explicit "queue this" is a message waiting for the running turn
-          // to end, which is exactly `thread-busy`. Naming it rather than
-          // leaving the wait null keeps every row on one vocabulary, and the
-          // idle drain treats the two identically anyway.
-          //
-          // Queued while the thread is stopping, it is instead a message the
-          // user composed AFTER asking for the stop, so it carries `stopping`
-          // and runs when the stop lands rather than joining the rows the
-          // manual-stop pause holds back.
+
           waitingOn:
             currentThread.status === "stopping"
               ? { kind: "stopping" }
@@ -467,13 +461,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   if (args.mode !== "auto") {
     return null;
   }
-  // This fast path dispatches straight to the daemon, bypassing the dispatch
-  // checkpoint. With a hook installed the drain takes the general path instead,
-  // so there is exactly one place a turn is decided about. With none (the
-  // overwhelming case) this check is a boolean and the drain is byte-for-byte
-  // what it was before the queue carried waits: the row it claims is already
-  // known drainable, so every core wait it could hit has been answered by the
-  // claim query itself.
+
   if (hasMessageDispatchHooks()) {
     return null;
   }
@@ -518,9 +506,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   );
   const initiator: ThreadTurnInitiator =
     senderThreadId === null ? "user" : "agent";
-  // A retry row's model is provenance — the failed attempt's tuple, replayed —
-  // not a model the user picked for this row, so it must not become the
-  // thread's sticky override the way a composed queued message's choice does.
+
   if (initiator === "user" && queuedMessage.payload.kind !== "retry") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
@@ -635,15 +621,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   return queuedMessage;
 }
 
-/**
- * Delivers a claimed row that is one of core's own system notices.
- *
- * Such a row is not a user dispatch and does not go through the checkpoint:
- * it is an `initiator: "system"` turn with its own taxonomy and its own
- * dispatch path, and the only reason it was on the queue at all is that the
- * queue is where a blocked dispatch waits. Null when the row is an ordinary
- * message, which is every row but these.
- */
 async function sendClaimedSystemNotice(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
@@ -663,8 +640,6 @@ async function sendClaimedSystemNotice(
     systemMessageSubject: notice.subject,
   });
   if (!delivered) {
-    // The thread changed under the drain. Leave the row claimed-and-released
-    // by the caller's error path rather than consuming a notice nobody got.
     throw createQueuedMessageClaimLostError();
   }
   const consumed = deps.db.transaction(
@@ -681,15 +656,6 @@ async function sendClaimedSystemNotice(
   return queuedMessage;
 }
 
-/**
- * Re-attempts a claimed group through the dispatch checkpoint.
- *
- * The drain is nothing but a re-attempt: the same checkpoint runs, so a row
- * whose wait cleared but whose thread went busy in the meantime simply queues
- * again on the new reason rather than dispatching into a running turn. The
- * claim the caller already won is handed to the attempt, which either consumes
- * it inside the dispatch transaction (exactly once) or gives it back.
- */
 async function sendClaimedQueuedMessageForThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
@@ -749,15 +715,6 @@ async function sendClaimedQueuedMessageForThread(
     outcome.kind === "queued" &&
     outcome.entry.waitingOn?.kind !== "stopping"
   ) {
-    // "Send now" overrides every plugin wait and the row's own schedule, but
-    // not a core wait — those guard invariants rather than express a policy.
-    // The row is back on the queue with its new reason; say so rather than
-    // returning a success the caller would read as "it went".
-    //
-    // `stopping` is the one core wait Send-now does clear, because pressing it
-    // is what clears it: the row leaves the manual-stop pause behind and
-    // dispatches when the stop lands. Refusing would leave the user no way to
-    // express that intent until the stop finished.
     throw new ApiError(
       409,
       "queued_message_still_waiting",
@@ -767,7 +724,6 @@ async function sendClaimedQueuedMessageForThread(
   return queuedMessage;
 }
 
-/** The user-facing half of a core wait, for a refused "Send now". */
 function describeCoreWait(waitingOn: QueuedMessageWaitingOn | null): string {
   switch (waitingOn?.kind) {
     case "provisioning":
@@ -913,10 +869,7 @@ export async function sendNextQueuedMessageIfPresent(
     ) {
       return false;
     }
-    // Nobody is listening to this attempt, so the row itself has to carry what
-    // happened — either as a `host-offline` wait it can recover from, or as a
-    // failure reason the queued row renders. A host timeout is excluded: the
-    // command is still in flight, so the attempt has not failed yet.
+
     if (!isCommandTimeoutError(error)) {
       recordQueuedMessageDrainFailure(deps, {
         error,

@@ -1,6 +1,7 @@
 import {
   getEnvironment,
   getThread,
+  requireControlPlaneThreadDispatch,
   requireThreadLifecycleEventApplied,
 } from "@bb/db";
 import type { DbConnection, DbTransaction, EnvironmentRow } from "@bb/db";
@@ -97,11 +98,7 @@ type SendThreadMessagePayload = SendMessageRequest & {
 
 interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
-  /**
-   * Present only when this send re-submits a failed turn. Marks the turn event
-   * as attempt N of an earlier request, which is what makes the next failure's
-   * attempt number correct without a separate tally.
-   */
+
   retryOf?: TurnRequestRetryMarker;
   environment: EnvironmentRow;
   historyReplacement?: {
@@ -152,7 +149,6 @@ interface SendThreadMessageQueueRequest {
 }
 
 interface AppendAndQueueSendThreadMessageArgs {
-  /** Retry provenance; absent for an original dispatch. */
   retryOf?: TurnRequestRetryMarker;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   db: DbConnection;
@@ -205,16 +201,6 @@ export function ensureThreadIsWritable(
   }
 }
 
-/**
- * The queue's own writability, which a requested stop does not revoke.
- *
- * Everything else a stopping thread rejects is work against the run that is
- * being torn down. The queue is the opposite: it holds what the user wants to
- * happen NEXT, and the seconds a stop takes to land are exactly when they
- * reach for it. Rows still cannot dispatch mid-stop — the dispatch checkpoint
- * queues them on a `stopping` wait — but composing, editing, reordering and
- * asking for one to go first all stay available.
- */
 export function ensureThreadQueueIsWritable(thread: Thread): void {
   ensureThreadIsWritable(thread, true);
 }
@@ -406,7 +392,7 @@ export function captureUserMessageSentTelemetry(
   });
 }
 
-function appendAndQueueSendThreadMessageInTransaction({
+export function appendAndQueueSendThreadMessageInTransaction({
   retryOf,
   beforeAppendInTransaction,
   db,
@@ -426,6 +412,7 @@ function appendAndQueueSendThreadMessageInTransaction({
     (tx) => {
       assertThreadHostAcceptsWork(tx, thread);
       beforeAppendInTransaction?.({ tx });
+      requireControlPlaneThreadDispatch(tx, thread.id);
       const appended =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
@@ -560,11 +547,7 @@ async function sendThreadMessageWithoutContextClear(
   inputGroups = inputGroups?.map((group) =>
     group.map((item) => resolvedByInput.get(item) ?? item),
   );
-  // Agent-originated CLI sends still appear as normal turn requests in the
-  // timeline, while initiator lets policy distinguish the source. A retry is
-  // `system` whatever the original was: nobody asked for it a second time, and
-  // counting it as a user message would inflate every "messages sent" figure by
-  // however many times the provider happened to be rate limited.
+
   const { initiator } = resolveDispatchAuthor({
     retrying: args.retryOf !== undefined,
     senderThreadId,
@@ -581,9 +564,7 @@ async function sendThreadMessageWithoutContextClear(
     mode === "auto" || mode === "steer"
       ? getActiveTurnId(deps, thread.id)
       : null;
-  // A retry's model is provenance — the failed attempt's tuple, replayed —
-  // not a fresh model choice, so it must not rewrite the thread's sticky
-  // override the way an explicit user send's model does.
+
   if (senderThreadId === null && args.retryOf === undefined) {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
@@ -602,11 +583,7 @@ async function sendThreadMessageWithoutContextClear(
   const execution = await buildExecutionOptions(deps, payload, {
     threadId: thread.id,
   });
-  // No hook pass here. User messages are decided ONCE, at the dispatch
-  // checkpoint in `attemptDispatch`, before they reach this function. The two
-  // other callers bypass the checkpoint deliberately: a manual compaction turn
-  // and an edited message's re-send are operations on the thread's existing
-  // conversation, not new work a limiter admits.
+
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
   });

@@ -3771,3 +3771,11 @@ global idle/failed callbacks; standalone event handling is unchanged. This
 connects the same durable retry/structured-result controller to authoritative
 native failures and prevents duplicate corrective turns during polling. The
 only production consumer is builtin Workflows; no host-daemon wire field changed.
+
+Native `sendThreadMessage` now applies the mandatory managed dispatch guard in
+its canonical append/outbound transaction after preflight. `recordQueuedMessageWait`
+and explicit queued-message admission do the same before creating new rows.
+The existing scoped worker `sendWorker` uses this path, so structured corrections
+gain the same commit-time current-grant guarantee as core/UI/CLI/SDK sends.
+No public or internal SDK member is added. Real database contract tests cover the
+append/outbound boundary and both queue-creation surfaces.

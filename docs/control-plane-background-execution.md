@@ -331,3 +331,21 @@ bounded correction exhaustion. The tested stock Qwen internally keeps retrying
 some headless HTTP 503 responses; that behavior is separate from the external
 controller. Corporate-fork behavior and the remaining retry/revocation matrix
 still require verification.
+
+## Backoff cancellation and final write admission
+
+Docker now waits for the second external retry's four-second backoff before
+cancelling the workflow or revoking its profile through the administrative CLI.
+Both runs settle without another worker; restoring the profile and waiting past
+the original retry deadline does not revive the failed run. Continuous stream
+failures exhaust three worker attempts, and every retired attempt is disabled
+and archived through the scoped adapter.
+
+Native message appending rechecks current managed authority in the same SQLite
+transaction, after preflight and before events/outbound effects. New waiting and
+explicit queued-message rows have the same creation-time check. These core paths
+are used by workflow corrections as well as ordinary sends. Real-database tests
+verify denial after an earlier admission, including atomic rollback of a
+preflight revocation. The existing native correction pipeline remains exercised
+in Docker; the precise commit-time race is verified at the core boundary rather
+than by relying on wall-clock ordering of model responses.

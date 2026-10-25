@@ -486,6 +486,108 @@ export async function verifyNativeWorkflows({
           assert.match(row.error, /Authentication|401/u);
       }
     }
+    for (const action of ["cancel", "revoke", "exhaust"]) {
+      const marker = `workflow-retry-${action}-alice`;
+      const script = `export const meta = {name:"retry-admission",description:"Authority changes between attempts"}; return await agent("BB_PERSONAL_${marker}");`;
+      const run = await cli(
+        ["workflows", "run", "--script", script, "--json"],
+        alice,
+      );
+      const bindingId = agentStorage
+        .prepare("SELECT authority_binding_id FROM workflow_runs WHERE id = ?")
+        .get(run.runId).authority_binding_id;
+      const countWorkers = () =>
+        db
+          .prepare(
+            "SELECT count(*) AS count FROM control_plane_threads o JOIN control_plane_job_bindings b ON b.id = o.job_binding_id WHERE b.source_binding_id = ?",
+          )
+          .get(bindingId).count;
+      if (action !== "exhaust") {
+        await wait(() => {
+          const call = agentStorage
+            .prepare(
+              "SELECT status,provider_retry_attempts FROM workflow_calls WHERE run_id = ?",
+            )
+            .get(run.runId);
+          return (
+            call?.status === "queued" && call.provider_retry_attempts === 2
+          );
+        }, `second retry backoff before ${action}`);
+        assert.equal(countWorkers(), 2);
+        const queuedAt = Date.now();
+        try {
+          if (action === "cancel")
+            await cli(["workflows", "stop", run.runId, "--json"], alice);
+          else
+            await cli([
+              "server",
+              "access",
+              "profiles",
+              "revoke",
+              alice.profile.body.profile.id,
+              alice.user.id,
+              "--json",
+            ]);
+          await wait(
+            () =>
+              agentStorage
+                .prepare("SELECT status FROM workflow_runs WHERE id = ?")
+                .get(run.runId)?.status ===
+              (action === "cancel" ? "cancelled" : "failed"),
+            `retry ${action} settled`,
+          );
+          if (action === "revoke")
+            assert.match(
+              agentStorage
+                .prepare("SELECT error FROM workflow_runs WHERE id = ?")
+                .get(run.runId).error,
+              /not authorized/u,
+            );
+        } finally {
+          if (action === "revoke")
+            await cli([
+              "server",
+              "access",
+              "profiles",
+              "grant",
+              alice.profile.body.profile.id,
+              alice.user.id,
+              "--json",
+            ]);
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.max(0, queuedAt + 4500 - Date.now())),
+        );
+        assert.equal(countWorkers(), 2);
+      } else {
+        await wait(
+          () =>
+            agentStorage
+              .prepare("SELECT status FROM workflow_runs WHERE id = ?")
+              .get(run.runId)?.status === "failed",
+          "transient retry budget exhaustion",
+          60000,
+        );
+        assert.equal(countWorkers(), 3);
+      }
+      assert.equal(
+        agentStorage
+          .prepare(
+            "SELECT provider_retry_attempts FROM workflow_calls WHERE run_id = ?",
+          )
+          .get(run.runId).provider_retry_attempts,
+        2,
+      );
+      await wait(
+        () =>
+          db
+            .prepare(
+              "SELECT count(*) AS count FROM control_plane_threads o JOIN control_plane_job_bindings b ON b.id = o.job_binding_id JOIN threads t ON t.id = o.thread_id WHERE b.source_binding_id = ? AND (b.enabled = 1 OR t.archived_at IS NULL)",
+            )
+            .get(bindingId).count === 0,
+        "all failed or cancelled retry attempts retired",
+      );
+    }
     const beforeReplay = db
       .prepare("SELECT count(*) AS count FROM threads")
       .get().count;
@@ -1011,6 +1113,10 @@ export async function verifyNativeWorkflows({
       nativeWorkflowCliOwnerAndPinnedProfile: true,
       nativeEvaluatorAgentToQwenRoundTrip: true,
       nativeTransientProviderFailureUsesNewWorkerAttempt: true,
+      nativeCancelDuringSecondBackoffPreventsNextAttempt: true,
+      nativeGrantRevocationDuringBackoffPreventsNextAttempt: true,
+      nativeTransientRetryExhaustionStopsAtThreeWorkers: true,
+      nativeAllRetryAttemptsRetiredAfterTerminalOutcome: true,
       nativeAuthenticationFailureIsNotRetried: true,
       nativeStructuredCorrectionUsesSameWorker: true,
       nativeStructuredCorrectionExhaustionIsNotProviderRetry: true,

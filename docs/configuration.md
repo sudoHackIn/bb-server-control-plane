@@ -1504,9 +1504,9 @@ side effects may run again; this is not exactly-once execution.
 The default Docker acceptance test also verifies workflow recovery after shared
 server `SIGKILL`, including interpreter/Qwen process death, successful-prefix
 replay and an execution-profile grant revoked while BB is offline. Its test-only
-inner/outer watchdogs are 240/270 seconds because it now runs both graceful and
-abrupt two-user recovery scenarios. Browser-mode and production run deadlines
-are unchanged.
+inner/outer watchdogs are 360/390 seconds because it now also verifies repeated
+provider failures, cancellation and grant revocation during backoff. Browser-mode
+uses 390/420 seconds. Production run deadlines are unchanged.
 
 Managed workflow agents now preserve terminal worker/provider errors through
 the scoped reader. The existing controller retries qualifying transient failures
@@ -1518,3 +1518,10 @@ two corrective turns. A native completion cursor prevents duplicate repairs
 while polling an idle worker. Stock Qwen can perform its own internal retries:
 the Docker external-retry proof injects an error in an already-open response
 stream, rather than assuming every HTTP 503 leaves the harness immediately.
+
+Managed message and queue creation also recheck current execution authority in
+their write transaction, after asynchronous preparation. Revocation therefore
+cannot admit a new corrective/user message or queue entry using an earlier
+approval. Workflow cancellation and profile revocation during external backoff
+prevent another worker attempt; transient exhaustion remains bounded to two
+external retries. Stock harness retry delays are independent.

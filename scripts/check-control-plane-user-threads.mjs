@@ -22,7 +22,7 @@ export function createUserThreadFixture({ db, users }) {
     )
       return false;
     assert.equal(body.model, "qwen-job-test");
-    if (marker === "workflow-retry-alice") {
+    if (marker.startsWith("workflow-retry-")) {
       const runId = JSON.stringify(body.messages).match(
         /run (wfr_[A-Za-z0-9-]+)/u,
       )?.[1];
@@ -34,7 +34,10 @@ export function createUserThreadFixture({ db, users }) {
         .get(runId);
       assert.ok(worker);
       if (!failedWorkers.has(marker)) failedWorkers.set(marker, worker.id);
-      if (failedWorkers.get(marker) === worker.id) {
+      if (
+        marker !== "workflow-retry-alice" ||
+        failedWorkers.get(marker) === worker.id
+      ) {
         res.writeHead(200, { "content-type": "text/event-stream" });
         res.end(
           `data: ${JSON.stringify({ error: { message: "Provider connection closed", type: "server_error", code: "ECONNRESET" } })}\n\n`,

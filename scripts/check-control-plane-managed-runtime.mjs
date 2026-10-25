@@ -225,13 +225,13 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         state: fields[0],
       };
     } catch (error) {
-      if (error.code === "ENOENT") return null;
+      if (error.code === "ENOENT" || error.code === "ESRCH") return null;
       throw error;
     }
   };
   let log = "";
-  const wait = async (check, label) => {
-    const deadline = Date.now() + 30000;
+  const wait = async (check, label, timeoutMs = 30000) => {
+    const deadline = Date.now() + timeoutMs;
     while (!signal.aborted && Date.now() < deadline) {
       assert.equal(child?.exitCode, null, log);
       try {

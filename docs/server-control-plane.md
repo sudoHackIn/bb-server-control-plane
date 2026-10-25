@@ -1471,3 +1471,47 @@ pretend to exhaust that internal capacity loop. Corporate-fork behavior,
 remaining retry/revocation combinations, notifications, personal background
 APIs/UI, legacy assignments, automations and schedules remain required. Pending
 side effects may repeat; no overall background-stage completion is claimed.
+
+## Thirty-sixth increment: cancellation/revocation between attempts and commit-time admission
+
+Canonical native message submission now rechecks managed execution authority in
+its write transaction after transaction preflight and before appending a client
+request or producing outbound queue effects. Waiting-message creation and
+explicit queue admission also check authority in their creation transactions.
+This closes the gap between an earlier authorization check, asynchronous
+preparation and actual message/queue persistence. Core UI/CLI/SDK and scoped
+workflow corrections share these paths; no plugin-only sending implementation is
+added. Ordinary unmanaged behavior remains covered by regression tests.
+
+Verification: 33 selected server security/lifecycle tests pass, including three
+real-SQLite commit/queue tests. A transaction preflight revokes a profile and
+submission rejects before events or the outbound callback; rollback preserves
+atomicity. A table-driven contract checks both waiting and explicit queue paths
+after prior admission loses its grant. Another 200 core/public send, queue,
+context-clear, edit, hook, dispatch and drain regressions pass. Strict server
+typecheck and changed-file lint/format/diff checks pass.
+
+Docker waits for the second provider-retry backoff before cancelling one run and
+revoking the execution profile of another. Both terminate without a third
+worker, including after the four-second backoff window has elapsed and the
+profile grant has been restored. Repeated stream failures stop at three native
+workers and two external retries. Every failed/cancelled attempt is disabled and
+archived. The full build/deployment passes all 63 tasks, retaining prior
+correction, identity, restart and crash checks. See
+`control-plane-phase-36-verification.json`.
+
+The exhaustion scenario explicitly waits up to 60 seconds because three stock
+Qwen attempts include harness-internal retry delays. Default/outer deployment
+watchdogs are 360/390 seconds; browser-mode uses 390/420 seconds. These are test
+budgets, not production execution or retry-policy changes. Commit-time
+correction/message denial is verified at the real core transaction boundary;
+the Docker backoff scenarios verify live external cancellation/revocation.
+Notifications, personal background APIs/UI, legacy assignment, automation and
+scheduler integration and the remaining ownership/recovery audit stay open.
+
+The expanded real-fork run measured almost five minutes, so its watchdog leaves
+an extra minute of headroom. The `/proc` identity checker handles both `ENOENT`
+and `ESRCH` as a vanished process while preserving all other error checks. Touched
+core files had pre-existing comments forbidden by the repository lint rule;
+these were removed. A TypeScript syntax-tree comparison verifies that the only
+semantic edits are the intended guards and the exported canonical test boundary.
