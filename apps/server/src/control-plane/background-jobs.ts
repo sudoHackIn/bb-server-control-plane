@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../services/system/execution-admission.js";
 import type {
   InternalDoNotUseBackgroundJobs,
   InternalDoNotUseBackgroundJobBinding,
@@ -117,6 +118,7 @@ export function createControlPlaneBackgroundJobs(
       };
     },
     async bind(input) {
+      assertExecutionAdmission(db);
       const parsed = controlPlaneJobBindingSchema
         .omit({ userId: true })
         .extend({ profileVersionId: z.string().uuid().nullable() })
@@ -160,6 +162,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     async setEnabled(id, enabled) {
+      if (enabled) assertExecutionAdmission(db);
       const job = required(id);
       if (typeof enabled !== "boolean") return denied();
       const principal = currentControlPlanePrincipal();
@@ -189,6 +192,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     runAutomationScript(id, input, signal) {
+      assertExecutionAdmission(db);
       if (
         pluginId !== BUILTIN_AUTOMATIONS_PLUGIN_ID ||
         required(id).kind !== "automation-run"
@@ -242,6 +246,7 @@ export function createControlPlaneBackgroundJobs(
       });
     },
     startWorker(id, input, signal) {
+      assertExecutionAdmission(db);
       if (
         required(id).kind !==
           (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -264,6 +269,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.getWorker(id, threadId);
     },
     notifyOrigin(id, message) {
+      assertExecutionAdmission(db);
       if (
         pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID ||
         required(id).kind !==
@@ -276,6 +282,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.notifyOrigin(id, message);
     },
     sendWorker(id, threadId, message) {
+      assertExecutionAdmission(db);
       if (
         required(id).kind !==
           (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -324,6 +331,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.archiveWorker(id, threadId);
     },
     async evaluateWorkflow(id, input, signal, onEvent, onAgent) {
+      assertExecutionAdmission(db);
       const binding = required(id);
       if (binding.kind !== "workflow-run") return denied();
       return withControlPlaneJobAuthority(db, id, (context) =>

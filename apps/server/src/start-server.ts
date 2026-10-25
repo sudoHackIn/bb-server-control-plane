@@ -1,3 +1,4 @@
+import { stopExecutionAdmission } from "./services/system/execution-admission.js";
 import { createDesktopAppUpdateService } from "./services/system/desktop-app-update.js";
 import { createDesktopUpdateChannel } from "./services/system/desktop-update-channel.js";
 import { serve } from "@hono/node-server";
@@ -518,6 +519,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     if (shutdownPromise) {
       return shutdownPromise;
     }
+    stopExecutionAdmission(db);
+    if (sweepInterval !== null) clearInterval(sweepInterval);
     shutdownPromise = (async () => {
       await pluginService
         .quiesceBackgroundServices()

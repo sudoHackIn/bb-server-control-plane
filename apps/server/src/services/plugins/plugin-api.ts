@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { experimental_PluginRpcRefusal } from "@get-bb/plugin-sdk";
 import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import { assertServiceRealtimePrincipal } from "../../control-plane/access.js";
@@ -665,6 +666,7 @@ export function createPluginApi(options: {
 
   function assertBackgroundAdmission(): void {
     assertLive();
+    assertExecutionAdmission(db);
     if (options.isBackgroundExecutionStopping())
       throw new experimental_PluginRpcRefusal({
         code: "conflict",

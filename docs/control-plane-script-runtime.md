@@ -215,8 +215,10 @@ The core private background facade also rejects new bind/enable/start/send,
 workflow evaluation and script execution while the host is quiescing or that
 plugin is disposing. Metadata/current-owner rechecks, disable/remove and stop/
 release/archive remain live for trusted cleanup. This gate is host-owned and
-not an optional plugin policy. It does not yet fence every full SDK/HTTP thread
-or queue entry point.
+not an optional plugin policy. Core also fences thread/turn/queue execution and
+daemon transport attempts during server shutdown; see
+[execution admission](control-plane-execution-admission.md) for its cleanup
+exceptions and the remaining broader audit.
 
 If an aborted service exceeds the existing host stop timeout, fresh RPC lookup
 and replacement activation stay unavailable. Storage and SDK cleanup liveness

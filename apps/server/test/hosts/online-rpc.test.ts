@@ -8,6 +8,7 @@ import { hostDaemonSessions, openSession, updateHost } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
+import { stopExecutionAdmission } from "../../src/services/system/execution-admission.js";
 import {
   callHostOnlineRpc,
   callHostRetryableOnlineRpc,
@@ -86,6 +87,103 @@ function registerDropThenReplaceSocket(args: DropThenReplaceSocketArgs): void {
 }
 
 describe("host online RPC retry semantics", () => {
+  it("refuses approval continuations during shutdown even though they do not wake a machine", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+      try {
+        stopExecutionAdmission(harness.db);
+        await expect(
+          callHostOnlineRpc(harness.deps, {
+            hostId: host.id,
+            timeoutMs: 1000,
+            command: {
+              type: "interactive.resolve",
+              environmentId: "environment",
+              threadId: "thread",
+              interactionId: "approval",
+              providerId: "qwen-server",
+              providerThreadId: "session",
+              providerRequestId: "request",
+              resolution: { decision: "allow_once", grantedPermissions: null },
+            },
+          }),
+        ).rejects.toMatchObject({
+          status: 503,
+          body: { code: "server_stopping" },
+        });
+        expect(request).not.toHaveBeenCalled();
+      } finally {
+        request.mockRestore();
+      }
+    });
+  });
+
+  it("rechecks shutdown after daemon reconnect before sending an admitted RPC", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      harness.hub.unregisterDaemon(session.id);
+      const wait = vi
+        .spyOn(harness.hub, "waitForDaemonForHost")
+        .mockImplementation(async () => {
+          stopExecutionAdmission(harness.db);
+          return true;
+        });
+      const request = vi.spyOn(harness.hub, "requestHostOnlineRpc");
+      try {
+        await expect(
+          callHostOnlineRpc(harness.deps, {
+            hostId: host.id,
+            timeoutMs: 1000,
+            command: { type: "host.read_file", path: "/tmp/file" },
+          }),
+        ).rejects.toMatchObject({
+          status: 503,
+          body: { code: "server_stopping" },
+        });
+        expect(wait).toHaveBeenCalled();
+        expect(request).not.toHaveBeenCalled();
+      } finally {
+        wait.mockRestore();
+        request.mockRestore();
+      }
+    });
+  });
+
+  it("does not retry a transport failure after shutdown starts", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+      harness.hub.unregisterDaemon(session.id);
+      harness.hub.registerDaemon(session.id, host.id, {
+        close() {},
+        send(data) {
+          const request = parseHostRpcRequest(data);
+          if (!request) return;
+          requests.push(request);
+          stopExecutionAdmission(harness.db);
+          harness.hub.unregisterDaemon(session.id);
+        },
+      });
+      await expect(
+        callHostRetryableOnlineRpcForWork(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 1000,
+          command: {
+            type: "provider.list_models",
+            contributedEnv: [],
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
+        }),
+      ).rejects.toMatchObject({
+        status: 503,
+        body: { code: "server_stopping" },
+      });
+      expect(requests).toHaveLength(1);
+    });
+  });
+
   it("classifies suspended hosts before sending read-only RPCs", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

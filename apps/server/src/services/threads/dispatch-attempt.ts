@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
 import {
   cancelPreparingMachinePause,
@@ -252,6 +253,7 @@ async function runDispatchAttempt(
   const { thread } = args;
   let { payload } = args;
 
+  assertExecutionAdmission(deps.db);
   ensureThreadIsWritable(thread, true);
   requireControlPlaneThreadDispatch(deps.db, thread.id);
   assertThreadHostAcceptsWork(deps.db, thread);
@@ -334,6 +336,7 @@ async function runDispatchAttempt(
     waitingOn: QueuedMessageWaitingOn,
     sendAt: number | null,
   ): DispatchAttemptOutcome => {
+    assertExecutionAdmission(deps.db);
     const entry = recordQueuedMessageWait(deps, {
       thread,
       message: queuedMessage,
@@ -359,6 +362,8 @@ async function runDispatchAttempt(
   };
 
   const continueThroughCoreWaits = async (): Promise<void> => {
+    assertExecutionAdmission(deps.db);
+    requireControlPlaneThreadDispatch(deps.db, thread.id);
     const sendAt = payload.sendAt ?? null;
     if (!sendNow && sendAt !== null && sendAt > Date.now()) {
       continued.outcome = waitOn({ kind: "time" }, sendAt);
@@ -664,6 +669,8 @@ async function admitPendingThread(
   const execution = await buildExecutionOptions(deps, args.payload, {
     threadId: args.thread.id,
   });
+  assertExecutionAdmission(deps.db);
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   const claimedRow = args.claimed?.[0] ?? null;
   let startingThread: Thread;
   try {

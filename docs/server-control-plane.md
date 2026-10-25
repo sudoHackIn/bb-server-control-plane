@@ -49,6 +49,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Integrate supported inline Node scripts with native Automations persistence, saved UUID execution, pending cancellation/cleanup retry, pause/delete and interrupted-run recovery. Personal script definition/output contracts remain pending.
 - [x] Expose personal script create/edit/definition and exact-run output through limited API/SDK/CLI and the personal editor, with strict descriptors, source CAS, output budgets and owner/access checks.
 - [x] Fence managed Automations and private background execution during quiescence/disposal, await in-flight attachment and active script cleanup, and retain plugin storage/artifacts across a hung service stop until teardown completes. Universal HTTP/SDK/queue admission remains pending.
+- [x] Close core thread/turn/queue/background execution admission at server shutdown, repeat checks after asynchronous preparation and before each daemon RPC attempt, preserve queued input and retry budgets, and keep explicit cleanup available. See [shutdown admission](control-plane-execution-admission.md); the full machine/source audit remains pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -64,18 +65,20 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
 - [ ] Package and verify this fork in the Docker lab, including direct API/CLI bypass attempts from a user's UID, certificate login and user-to-user denials.
 
-## Remaining delivery packages after increment 52
+## Remaining delivery packages after increment 53
 
 Increment numbers describe verified implementation slices, not a fixed count of
 product features. As a planning estimate, the remaining scope including project
-MCP connections and the reusable agent experience needs approximately 8–12
-additional implementation increments after 52, putting the expected final number
+MCP connections and the reusable agent experience needs approximately 7–11
+additional implementation increments after 53, putting the expected final number
 around 60–65. This is not a completion guarantee or a time estimate. Integration
 findings may split packages; close the existing requirements by evidence rather
 than treating a target increment number as acceptance.
 
-1. Mandatory execution admission across HTTP, SDK, CLI, daemon RPC and queued
-   work, including quiescence and current user/project/profile authority.
+1. Complete current user/project/profile/source authorization across machine RPC,
+   queues and retries. Core thread/turn shutdown admission is implemented in 53;
+   inbound daemon tool/interactive requests, current-turn binding and the broader
+   per-tenant machine/action audit remain open.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -91,7 +94,7 @@ than treating a target increment number as acceptance.
    API/CLI/RPC bypass attempts, revocation and recovery.
 
 Packages overlap and do not replace the unchecked requirements below. Project
-MCP and agent product work can follow 52 without waiting for every audit package;
+MCP and agent product work can follow 53 without waiting for every audit package;
 new execution paths must enforce authority from their first implementation.
 
 ## Project MCP connections
@@ -2310,3 +2313,36 @@ QA scripts; all prior restart/crash assertions remain enabled and deployment
 watchdogs are unchanged. The UI is unchanged; browser acceptance remains the
 increment 51 baseline. `control-plane-phase-52-verification.json` records the
 complete deployment proof and the remaining composite requirements.
+
+## Fifty-third increment: core shutdown execution admission
+
+Core closes a monotonic per-server admission gate before awaiting background
+cleanup or stopping the managed daemon. Full HTTP/SDK and limited personal thread
+creation/send, queue claims/writes, restoration/provisioning, parent system messages
+and private background execution reject new work. Checks repeat after asynchronous
+preparation and at mutation boundaries. Losing shutdown does not consume queued
+input, append a new turn request or spend the queue retry budget.
+
+The single daemon RPC sender checks before waits and every transport attempt.
+It defaults to rejecting calls during shutdown with explicit cleanup exceptions;
+the machine wake classification is not used as an execution permission. In
+particular, approval resolution is denied even though it does not wake a machine.
+Stop, teardown and registered cleanup continue to work. Saved thread authority is
+also rechecked before thread.start/turn.submit reaches the daemon, and before
+prepared queue continuations or parent notifications mutate history.
+
+The Docker fixture holds a trusted service at shutdown so it can verify private
+plugin SDK and real administrator/personal HTTP denials while the server remains
+reachable, then releases cleanup and exercises restart/crash recovery. Rejected
+calls leave thread counts and turn events unchanged. There are no database,
+Plugin SDK, UI or daemon wire changes. The full source/machine action audit,
+forced/hung-process handling and composite background acceptance remain open.
+See [execution admission](control-plane-execution-admission.md) for exact scope.
+
+Verification passes 708 server thread/host/security/plugin-SDK tests in 77 files,
+six typecheck tasks, changed-file lint/format and all 63 final Docker deployment
+tasks in 7 minutes 50.199 seconds. The compiled server, both changed deployment
+scripts and trusted probe plugin match the final image by SHA-256. Deployment
+watchdogs and existing restart/crash assertions are unchanged. The UI is unchanged;
+browser acceptance remains the increment 51 baseline. The complete proof and
+remaining scope are recorded in `control-plane-phase-53-verification.json`.

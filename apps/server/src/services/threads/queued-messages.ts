@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import {
   getLatestThreadSequence,
   claimNextQueuedThreadMessageGroup,
@@ -232,6 +233,7 @@ export async function createQueuedMessageForThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: CreateQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {
+  assertExecutionAdmission(deps.db);
   const { payload, thread } = args;
   ensureThreadQueueIsWritable(thread);
   const input = await resolvePromptAttachmentReferences({
@@ -248,6 +250,7 @@ export async function createQueuedMessageForThread(
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
+  assertExecutionAdmission(deps.db);
   const { currentThread, hasProviderSession, queuedMessage } =
     deps.db.transaction(
       (tx) => {
@@ -536,6 +539,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     thread,
   });
 
+  assertExecutionAdmission(deps.db);
   const { activeThread, command } = deps.db.transaction(
     (tx) => {
       if (
@@ -550,6 +554,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
           threadId: thread.id,
         });
       }
+      requireControlPlaneThreadDispatch(tx, thread.id);
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
         queuedMessages: args.queuedMessages,
       });
@@ -749,6 +754,7 @@ export async function sendQueuedMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
+  assertExecutionAdmission(deps.db);
   const sendNow = args.claimPolicy.kind === "explicit-send";
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
   if (queuedMessages.length === 0) {
@@ -823,6 +829,7 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
+  assertExecutionAdmission(deps.db);
   const initialThread = getThread(deps.db, args.threadId);
   if (!isQueuedMessageAutoSendCandidate(initialThread)) {
     return false;

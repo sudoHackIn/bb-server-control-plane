@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { advanceEnvironmentProvisioning } from "../environments/environment-engine.js";
 import { revokeThreadDesktopBrowserControl } from "../desktop-browsers.js";
 import {
@@ -979,6 +980,7 @@ export async function prepareReadyThreadTurnCommand(
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
+  assertExecutionAdmission(deps.db);
   requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   const providerThreadId = requireDispatchableProviderThreadId(
     deps,
@@ -1269,6 +1271,7 @@ async function requestThreadStartOnce(
   deps: CommandResultSideEffectsDeps,
   args: ThreadStartCommandArgs,
 ): Promise<void> {
+  assertExecutionAdmission(deps.db);
   requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   if (hasLiveThreadStartInFlight(args.thread.id)) {
     return;
@@ -1284,6 +1287,7 @@ async function requestThreadStartOnce(
   await ensureHostSessionReadyForWork(deps, {
     hostId: args.environment.hostId,
   });
+  assertExecutionAdmission(deps.db);
   requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   const result = dispatchThreadStartFromRequest(deps, {
     command,

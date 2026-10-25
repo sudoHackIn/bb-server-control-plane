@@ -3931,5 +3931,10 @@ execution with a conflict refusal. Metadata, saved-authority rechecks and safe
 cleanup stay live until disposal actually finishes. A stop-timeout retains the
 old instance's storage and mutable module roots for pending service cleanup;
 replacement activation and fresh RPC lookup remain blocked until service/invocation/hook/
-storage teardown completes. This does not constitute the remaining universal
-SDK/HTTP/queue shutdown admission gate.
+storage teardown completes. Core additionally closes HTTP/SDK thread and queue
+execution admission at server shutdown, before service cleanup. That shared
+server gate also guards the background factory and actual daemon RPC transport
+attempts; cleanup exceptions and remaining source/machine audit are documented
+in `control-plane-execution-admission.md`. Cached SDK handles during individual
+plugin disposal retain their existing trusted cleanup lifetime; the server
+shutdown gate applies globally.

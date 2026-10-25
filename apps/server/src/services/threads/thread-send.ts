@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import {
   getEnvironment,
   getThread,
@@ -407,6 +408,7 @@ export function appendAndQueueSendThreadMessageInTransaction({
   target,
   thread,
 }: AppendAndQueueSendThreadMessageArgs): AppendAndQueueSendThreadMessageResult {
+  assertExecutionAdmission(db);
   let activeThread: Thread | null = null;
   const request = db.transaction(
     (tx) => {
@@ -461,6 +463,7 @@ export async function sendThreadMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendThreadMessageArgs,
 ): Promise<void> {
+  assertExecutionAdmission(deps.db);
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     await clearThreadContext(deps, {
       environment: args.environment,
@@ -477,6 +480,7 @@ async function sendThreadMessageWithoutContextClear(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendThreadMessageArgs,
 ): Promise<void> {
+  assertExecutionAdmission(deps.db);
   const { environment, payload, thread } = args;
   ensureThreadIsWritable(thread);
   if (args.trigger === "user") {

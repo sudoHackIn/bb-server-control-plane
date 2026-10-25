@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { getThread, type ClaimedQueuedThreadMessageRow } from "@bb/db";
 import type { Thread, ThreadQueuedMessage } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -23,6 +24,7 @@ export function queueInputForStartingTurn(
     threadId: string;
   },
 ): QueueInputForStartingTurnResult {
+  assertExecutionAdmission(deps.db);
   if (args.input.input.length === 0) return { kind: "dispatched" };
   const notifications = new NotificationBuffer();
   const outcome: QueueInputForStartingTurnResult = deps.db.transaction(

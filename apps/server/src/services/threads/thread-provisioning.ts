@@ -1,4 +1,9 @@
 import {
+  assertExecutionAdmission,
+  isExecutionStopping,
+  isExecutionStoppingError,
+} from "../system/execution-admission.js";
+import {
   getLatestThreadSequence,
   requireControlPlaneThreadDispatch,
   getNonDestroyedHostByLaunchKey,
@@ -288,6 +293,8 @@ export function requestThreadProvision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadProvisionArgs,
 ): ThreadProvisionContext {
+  assertExecutionAdmission(deps.db);
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   return deps.db.transaction(() => {
     const { initiator, senderThreadId } = resolveDispatchAuthor({
       retrying: false,
@@ -343,6 +350,8 @@ export function requestThreadEnvironmentRestore(
   deps: Pick<AppDeps, "db" | "hub" | "logger">,
   args: RequestThreadEnvironmentRestoreArgs,
 ): ThreadProvisionContext | null {
+  assertExecutionAdmission(deps.db);
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   return deps.db.transaction(
     (tx) => {
       const prepared = applyLoggedThreadLifecycleEventInTransaction(
@@ -383,6 +392,8 @@ export function requestThreadTargetReprovision(
   deps: Pick<AppDeps, "db" | "hub">,
   args: RequestThreadTargetReprovisionArgs,
 ): ThreadProvisionContext {
+  assertExecutionAdmission(deps.db);
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   return deps.db.transaction(() => {
     const request = appendReprovisionTurnRequest(deps, args);
     const context = createThreadStartup({
@@ -518,6 +529,7 @@ async function advanceThreadProvisioningOnce(
       thread: ready.thread,
     });
   } catch (error) {
+    if (isExecutionStoppingError(error)) return;
     const failureThread = getCurrentProvisioningFailureThread(deps, {
       context,
       threadId: thread.id,
@@ -538,6 +550,7 @@ export async function advanceThreadProvisioning(
   deps: ThreadProvisioningDeps,
   args: AdvanceThreadProvisioningArgs,
 ): Promise<void> {
+  if (isExecutionStopping(deps.db)) return;
   await deps.lifecycleDedupers.threadProvisionAdvance.run(args.threadId, () =>
     advanceThreadProvisioningOnce(deps, args),
   );

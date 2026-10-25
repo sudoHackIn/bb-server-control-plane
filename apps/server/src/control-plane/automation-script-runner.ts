@@ -1,9 +1,11 @@
+import { assertExecutionAdmission } from "../services/system/execution-admission.js";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
 import {
   controlPlaneUsers,
   getControlPlaneJobBinding,
+  type DbConnection,
   type DbQueryConnection,
 } from "@bb/db";
 import { eq } from "drizzle-orm";
@@ -44,11 +46,12 @@ export interface ControlPlaneScriptResult {
 }
 
 export async function runControlPlaneAutomationScript(
-  db: DbQueryConnection,
+  db: DbConnection,
   bindingId: string,
   input: z.input<typeof inputSchema>,
   signal: AbortSignal,
 ): Promise<ControlPlaneScriptResult> {
+  assertExecutionAdmission(db);
   const parsed = inputSchema.parse(input);
   const authority = () =>
     withControlPlaneJobAuthority(db, bindingId, (context) => {

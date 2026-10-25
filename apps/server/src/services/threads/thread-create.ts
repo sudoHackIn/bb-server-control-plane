@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { requestThreadStorageDeletion } from "./thread-lifecycle.js";
 import { seedThreadSessionOptionSelections } from "./thread-session-options.js";
 import { assertEnvironmentPathAvailable } from "../environments/path-admission.js";
@@ -557,6 +558,7 @@ export async function createThreadFromRequest(
     forkSourceEnvironmentId?: string;
   } = {},
 ) {
+  assertExecutionAdmission(deps.db);
   controlPlaneThreadOwnerForCreate(deps.db, rawRequestInput);
   const project = requirePublicProjectForThreadCreate(
     deps,

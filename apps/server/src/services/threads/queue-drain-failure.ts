@@ -1,3 +1,4 @@
+import { isExecutionStoppingError } from "../system/execution-admission.js";
 import {
   setQueuedThreadMessageFailureReason,
   setQueuedThreadMessageWaitingOn,
@@ -19,13 +20,6 @@ export const QUEUED_MESSAGE_RETRY_DELAYS_MS: readonly number[] = [
   15_000, 60_000, 300_000,
 ];
 
-/**
- * What a failed dispatch says to the person whose message did not go.
- *
- * `ApiError` messages are already written for a caller, so they pass through.
- * Anything else is an internal fault whose message was written for a log, so
- * the row gets a sentence that is true without pretending to diagnose.
- */
 export function describeDispatchFailure(error: unknown): string {
   const message =
     error instanceof ApiError
@@ -36,25 +30,6 @@ export function describeDispatchFailure(error: unknown): string {
     : `${sliceUtf16Head(message, QUEUED_MESSAGE_FAILURE_REASON_MAX_LENGTH - 1)}…`;
 }
 
-/**
- * Settles a DRAIN attempt that neither dispatched nor queued.
- *
- * Two outcomes, and which one applies is decided by asking the world rather
- * than by pattern-matching the error: if the thread's host has no live daemon
- * session *right now*, the attempt did not fail so much as arrive at a machine
- * that is not there, and the row re-queues on a `host-offline` wait that the
- * host-reconnect drain clears when the machine comes back. Any other failure
- * is recorded as the row's failure reason, leaving its existing wait alone —
- * the row is still waiting on whatever it was waiting on, and what went wrong
- * last time is a different fact from what it is waiting for — and spends one
- * of the row's attempts, booking the next on
- * {@link QUEUED_MESSAGE_RETRY_DELAYS_MS}. The row gives up only once that
- * budget runs out.
- *
- * Only the drain calls this. An inline attempt has a caller still listening
- * and surfaces its error to them instead, which is why a queued row never
- * shows a failure the sender was already told about to their face.
- */
 export function recordQueuedMessageDrainFailure(
   deps: QueueDrainFailureDeps,
   args: {
@@ -64,15 +39,13 @@ export function recordQueuedMessageDrainFailure(
     thread: Thread;
   },
 ): void {
+  if (isExecutionStoppingError(args.error)) return;
   const { host } = dispatchEnvironmentAndHost(deps, args.thread.environmentId);
   if (host !== null && !deps.hub.hasDaemonForHost(host.id)) {
     setQueuedThreadMessageWaitingOn(deps.db, deps.hub, {
       id: args.row.id,
       threadId: args.row.threadId,
       waitingOn: { kind: "host-offline", hostName: host.name },
-      // An offline host is not a schedule. Whatever instant this row carried
-      // has already passed by the time a drain picked it up, and keeping it
-      // would leave the due sweep re-claiming a row that cannot dispatch.
       sendAt: null,
     });
     return;

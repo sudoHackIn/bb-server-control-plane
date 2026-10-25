@@ -1,3 +1,4 @@
+import { isExecutionStopping } from "../system/execution-admission.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
 import { isMachineWaitingForExecution } from "../machines/lifecycle.js";
 import { isServerMoveFrozen } from "../server-move/freeze-state.js";
@@ -169,12 +170,14 @@ export function requestQueuedMachineReadiness(
   deps: QueueDispatchDeps,
   hostId: string,
 ): void {
+  if (isExecutionStopping(deps.db)) return;
   const pending = queuedMachineReadiness.get(deps.db) ?? new Set<string>();
   queuedMachineReadiness.set(deps.db, pending);
   if (pending.has(hostId)) return;
   pending.add(hostId);
   void waitForMachineMaintenance(deps, hostId)
     .then(() => {
+      if (isExecutionStopping(deps.db)) return;
       return ensureHostSessionReadyForWork(deps, { hostId });
     })
     .then(() => {
@@ -193,7 +196,7 @@ export function requestQueuedMessageDispatch(
   deps: QueueDispatchDeps,
   wake: QueuedMessageDispatchWake,
 ): void {
-  if (isServerMoveFrozen(deps.db)) {
+  if (isExecutionStopping(deps.db) || isServerMoveFrozen(deps.db)) {
     return;
   }
   if (
@@ -216,7 +219,7 @@ export async function runQueuedMessageDispatch(
   deps: QueueDispatchDeps,
   wake: QueuedMessageDispatchWake,
 ): Promise<void> {
-  if (isServerMoveFrozen(deps.db)) {
+  if (isExecutionStopping(deps.db) || isServerMoveFrozen(deps.db)) {
     return;
   }
   for (const prepared of prepareQueuedMessageDispatchWake(deps, wake)) {
@@ -228,6 +231,7 @@ async function executePreparedQueuedMessageDispatch(
   deps: QueueDispatchDeps,
   wake: PreparedQueuedMessageDispatchWake,
 ): Promise<void> {
+  if (isExecutionStopping(deps.db)) return;
   switch (wake.kind) {
     case "host-connected":
       for (const threadId of listThreadIdsWithHostOfflineQueueWaits(
@@ -501,18 +505,6 @@ async function runDueScheduledDispatch(
   }
 }
 
-/**
- * Re-attempts rows whose booked retry has come due.
- *
- * This is the only automatic path that may claim a row with a recorded
- * failure, and it exists because a failure is not a verdict about the message:
- * it is what the server was able to do at one instant, usually an instant
- * during a restart. Every other wake asks "did the thing this row waits for
- * happen?", which a row that failed can no longer be asked — its wait may have
- * gone stale while it sat there, and the edge that would have cleared it has
- * passed. So this one re-asks the whole question instead, and the row's
- * remaining attempts are what stop it asking forever.
- */
 async function runFailedRetryDispatch(
   deps: QueueDispatchDeps,
   now: number,

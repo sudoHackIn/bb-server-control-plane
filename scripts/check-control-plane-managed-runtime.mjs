@@ -4,7 +4,7 @@ import { createApprovalFixture } from "./check-control-plane-approvals.mjs";
 import { createServer } from "node:http";
 import { request } from "node:https";
 import { once } from "node:events";
-import { readFile, writeFile, readdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, unlink } from "node:fs/promises";
 import Database from "better-sqlite3";
 import WebSocket from "ws";
 
@@ -464,6 +464,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
           (error) => error.code === "ENOENT",
         );
       created.push({
+        threadInput,
         threadId,
         sessionId: owner.qwen_session_id,
         profileId: approved.body.profile.id,
@@ -567,8 +568,56 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     }, "supervised daemon restart");
     stage("personal-and-browser-complete");
     await personal.beforeRestart();
+    const shutdownHold = "/srv/bb/shutdown-admission-hold";
+    const shutdownReady = "/srv/bb/shutdown-admission-ready";
+    await writeFile(
+      shutdownHold,
+      JSON.stringify({ threadId: created[0].threadId }),
+      { mode: 0o644 },
+    );
+    const shutdownExit = once(child, "exit", { signal });
     child.kill("SIGTERM");
-    await once(child, "exit", { signal });
+    try {
+      await wait(async () => {
+        const proof = JSON.parse(await readFile(shutdownReady, "utf8"));
+        assert.deepEqual(proof.refused, [true, true]);
+        return true;
+      }, "shutdown admission barrier");
+      const before = db.prepare("SELECT count(*) AS n FROM threads").get().n;
+      for (const [path, body] of [
+        [
+          "/api/v1/threads",
+          {
+            ...created[0].threadInput,
+            title: "Must not create while stopping",
+          },
+        ],
+        [
+          `/api/v1/threads/${created[0].threadId}/send`,
+          {
+            input: [{ type: "text", text: "must not send", mentions: [] }],
+            mode: "start",
+          },
+        ],
+        [
+          `/api/v1/threads/${created[0].threadId}/queued-messages`,
+          { input: [{ type: "text", text: "must not queue", mentions: [] }] },
+        ],
+      ]) {
+        const denied = await send(path, body, token);
+        assert.equal(denied.status, 503, JSON.stringify(denied.body));
+        assert.equal(denied.body.code, "server_stopping");
+      }
+      assert.equal(
+        db.prepare("SELECT count(*) AS n FROM threads").get().n,
+        before,
+      );
+      await personal.duringShutdown();
+    } finally {
+      await unlink(shutdownHold);
+      await unlink(shutdownReady);
+    }
+    await shutdownExit;
     await personal.afterShutdown();
     assert.equal(
       connected(),
@@ -774,6 +823,9 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       nativeUidHomeTools: true,
       nativeTimeline: true,
       managedShutdown: true,
+      coreShutdownAdmissionRejectsCreateSendAndQueue: true,
+      trustedPluginSdkCannotAdmitExecutionDuringShutdown: true,
+      personalShutdownAdmissionAndReadStopVerified: true,
       persistedDaemonIdentity: true,
       resumedThreadAfterRestart: true,
       immutableProfileBoundBeforeCreation: true,

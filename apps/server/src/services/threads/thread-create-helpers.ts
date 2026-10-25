@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import {
   createThread,
   InvalidLifecycleOwnerError,
@@ -96,6 +97,7 @@ export function createThreadRecord(
     request: ThreadCreateServiceRequest;
   },
 ) {
+  assertExecutionAdmission(deps.db);
   const sectionId = args.request.sectionId ?? null;
   if (sectionId !== null && !getThreadSectionById(deps.db, sectionId)) {
     throw new ApiError(404, "section_not_found", "Section not found");

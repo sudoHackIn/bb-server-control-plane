@@ -1,9 +1,11 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import {
   getLatestThreadSequence,
   getEnvironment,
   getHost,
   getThread,
   requireThreadLifecycleEventApplied,
+  requireControlPlaneThreadDispatch,
   type DbTransaction,
 } from "@bb/db";
 import type {
@@ -319,6 +321,8 @@ async function queueActiveParentSystemMessage(
     },
   });
 
+  assertExecutionAdmission(deps.db);
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   const command = deps.db.transaction(
     (tx) =>
       queueActiveParentSystemMessageInTransaction(tx, {
@@ -381,6 +385,8 @@ async function queueReadyParentSystemMessage(
     providerId: args.thread.providerId,
     syncGeneratedTitle: false,
   });
+  assertExecutionAdmission(deps.db);
+  requireControlPlaneThreadDispatch(deps.db, args.thread.id);
   const activeThread: Thread | null = deps.db.transaction(
     (tx) => {
       ensureThreadCanStartRequest(args.thread);
@@ -433,6 +439,7 @@ export async function queueParentSystemMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueParentSystemMessageArgs,
 ): Promise<boolean> {
+  assertExecutionAdmission(deps.db);
   const parentThread = getThread(deps.db, args.parentThreadId);
   if (
     !parentThread ||
@@ -481,6 +488,8 @@ export async function queueParentSystemMessage(
   if (hostUnavailable && !host) {
     throw new Error("Parent host disappeared while queueing a system message");
   }
+  assertExecutionAdmission(deps.db);
+  requireControlPlaneThreadDispatch(deps.db, parentThread.id);
   createQueuedThreadMessage(deps.db, deps.hub, {
     threadId: parentThread.id,
     content: args.input,
@@ -515,14 +524,6 @@ interface DeliverParentSystemMessageArgs extends ParentSystemMessageTaxonomy {
   parentThread: Thread;
 }
 
-/**
- * Dispatches a parent-system notice, with no interaction check of its own.
- *
- * Split out so the queue drain can deliver a notice that QUEUED on an
- * interaction without re-entering the check that queued it — which, on a
- * thread whose interaction settled a moment ago, would otherwise be a race
- * that could queue a second copy of the same notice.
- */
 export async function deliverParentSystemMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DeliverParentSystemMessageArgs,
@@ -536,7 +537,9 @@ async function deliverParentSystemMessageWithContextGuard(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DeliverParentSystemMessageArgs,
 ): Promise<boolean> {
+  assertExecutionAdmission(deps.db);
   const { parentThread } = args;
+  requireControlPlaneThreadDispatch(deps.db, parentThread.id);
   const { environment } = requireThreadEnvironment(deps.db, parentThread.id);
   const execution = await buildExecutionOptions(
     deps,

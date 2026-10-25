@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { hostCommandMayWake } from "./wake-policy.js";
 import { isHostCleanupAllowed } from "./cleanup-context.js";
 import { assertMachineLifecycleAdmission } from "../machines/lifecycle.js";
@@ -6,6 +7,7 @@ import {
   getLatestSessionForHost,
   getSessionById,
   getThread,
+  requireControlPlaneThreadDispatch,
 } from "@bb/db";
 import { randomUUID } from "node:crypto";
 import {
@@ -62,6 +64,7 @@ export async function callHostOnlineRpc(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonRpcResultForCommand> {
+  assertRpcAdmission(deps, args);
   await waitForReconnectingDaemon(deps, args.hostId);
   assertHostActiveForRead(deps, args);
   return callHostOnlineRpcWithRetry(deps, args, {
@@ -78,6 +81,7 @@ export async function callHostOnlineRpcForWork(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonRpcResultForCommand> {
+  assertRpcAdmission(deps, args);
   await waitForReconnectingDaemon(deps, args.hostId);
   await prepareHostForWork(deps, args, false);
   return callHostOnlineRpcWithRetry(deps, args, {
@@ -96,6 +100,7 @@ export async function callHostRetryableOnlineRpc(
   deps: WorkSessionDeps,
   args: CallHostRetryableOnlineRpcArgs<HostDaemonRetryableOnlineRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResultForCommand> {
+  assertRpcAdmission(deps, args);
   await waitForReconnectingDaemon(deps, args.hostId);
   assertHostActiveForRead(deps, args);
   return callHostOnlineRpcWithRetry(deps, args, {
@@ -110,6 +115,7 @@ export async function callHostRetryablePluginHostCall(
     retryCommand: (command: PluginHostCallCommand) => PluginHostCallCommand;
   },
 ): Promise<HostDaemonRpcResultForCommand<PluginHostCallCommand>> {
+  assertRpcAdmission(deps, args);
   await waitForReconnectingDaemon(deps, args.hostId);
   assertHostActiveForRead(deps, args);
   const { retryCommand, ...callArgs } = args;
@@ -130,6 +136,7 @@ export async function callHostRetryableOnlineRpcForWork(
   deps: WorkSessionDeps,
   args: CallHostRetryableOnlineRpcArgs<HostDaemonRetryableOnlineRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResultForCommand> {
+  assertRpcAdmission(deps, args);
   await waitForReconnectingDaemon(deps, args.hostId);
   await prepareHostForWork(deps, args, true);
   return callHostOnlineRpcWithRetry(deps, args, {
@@ -139,7 +146,7 @@ export async function callHostRetryableOnlineRpcForWork(
 }
 
 function isCleanupRpc(
-  deps: WorkSessionDeps,
+  deps: Pick<WorkSessionDeps, "db">,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): boolean {
   return (
@@ -149,6 +156,32 @@ function isCleanupRpc(
       (args.command.type === "environment.hook.run" &&
         args.command.kind === "teardown"))
   );
+}
+
+function assertRpcAdmission(
+  deps: Pick<WorkSessionDeps, "db">,
+  args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
+): void {
+  if (isCleanupRpc(deps, args)) return;
+  switch (args.command.type) {
+    case "thread.stop":
+    case "thread.storage.delete":
+    case "thread.archive":
+    case "thread.plan.cancel":
+    case "thread.rewind.discard":
+    case "environment.attach.cancel":
+    case "environment.hook.cancel":
+    case "environment.inspect_cleanup":
+    case "plugin.host.cancel":
+    case "plugin.host.dispose":
+    case "desktop.browser.close_tab":
+    case "desktop.browser.release_control":
+    case "server_move.abort":
+      return;
+    case "environment.hook.run":
+      if (args.command.kind === "teardown") return;
+  }
+  assertExecutionAdmission(deps.db);
 }
 
 function assertHostActiveForRead(
@@ -186,6 +219,7 @@ async function prepareHostForWork(
   retryOnTransportFailure: boolean,
 ): Promise<void> {
   if (isCleanupRpc(deps, args)) return;
+  assertRpcAdmission(deps, args);
   if (!hostCommandMayWake(args.command)) {
     assertHostActiveForRead(deps, args);
     return;
@@ -263,7 +297,8 @@ async function callHostOnlineRpcWithRetry(
   },
 ): Promise<HostDaemonRpcResultForCommand> {
   const retryArgs = (): CallHostOnlineRpcArgs<HostDaemonRpcCommand> =>
-    options.retryCommand !== undefined && args.command.type === "plugin.host.call"
+    options.retryCommand !== undefined &&
+    args.command.type === "plugin.host.call"
       ? { ...args, command: options.retryCommand(args.command) }
       : args;
   const timeoutRetryDeadline =
@@ -371,6 +406,12 @@ function requestHostOnlineRpcResponse(
   deps: Pick<WorkSessionDeps, "hub" | "db">,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResponseMessage> {
+  assertRpcAdmission(deps, args);
+  if (
+    args.command.type === "thread.start" ||
+    args.command.type === "turn.submit"
+  )
+    requireControlPlaneThreadDispatch(deps.db, args.command.threadId);
   if (args.command.type === "environment.inspect_cleanup") {
     const sessionId = deps.hub.getDaemonSessionIdForHost(args.hostId);
     const session = sessionId ? getSessionById(deps.db, { sessionId }) : null;

@@ -921,6 +921,7 @@ export function createUserThreadFixture({ db, users }) {
         replayAfter,
       );
       saved = {
+        send,
         command,
         alice,
         wait,
@@ -964,6 +965,54 @@ export function createUserThreadFixture({ db, users }) {
     async beforeRestart() {
       await saved.workflows.beforeRestart();
       await saved.automations.beforeRestart();
+    },
+    async duringShutdown() {
+      const { send, alice } = saved;
+      const token = sessions.get("alice").token;
+      const before = db
+        .prepare("SELECT count(*) AS n FROM events WHERE thread_id=?")
+        .get(alice.thread.id).n;
+      for (const [path, body] of [
+        [
+          "/control-plane/user/threads",
+          {
+            projectId: alice.project.projectId,
+            profileVersionId: alice.profile.body.version.id,
+            message: "must not start",
+          },
+        ],
+        [
+          `/control-plane/user/threads/${alice.thread.id}/send`,
+          { message: "must not send", mode: "queue-if-active" },
+        ],
+      ]) {
+        const denied = await send(path, { token, method: "POST", body });
+        assert.equal(denied.status, 503, JSON.stringify(denied.body));
+        assert.equal(denied.body.code, "server_stopping");
+      }
+      assert.equal(
+        db
+          .prepare("SELECT count(*) AS n FROM events WHERE thread_id=?")
+          .get(alice.thread.id).n,
+        before,
+      );
+      assert.equal(
+        (
+          await send(`/control-plane/user/threads/${alice.thread.id}`, {
+            token,
+          })
+        ).status,
+        200,
+      );
+      assert.equal(
+        (
+          await send(`/control-plane/user/threads/${alice.thread.id}/stop`, {
+            token,
+            method: "POST",
+          })
+        ).status,
+        200,
+      );
     },
     async afterShutdown() {
       await saved.workflows.afterShutdown();
