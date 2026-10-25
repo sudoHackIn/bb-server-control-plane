@@ -81,6 +81,7 @@ export type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
 };
 
 export interface AutomationService {
+  managedRead?(ids: string[]): AutomationDetailReadResult[];
   managedTick?(startup: boolean, signal: AbortSignal): Promise<void>;
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: ListAutomationsInput): AutomationReadResult[];

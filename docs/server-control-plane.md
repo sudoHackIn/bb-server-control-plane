@@ -29,7 +29,8 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
 - [x] Persist personal workflow definitions and immutable source/default-argument revisions, with stable source authority and API/SDK/CLI/UI controls for create/read/update/run/enable/disable/delete.
 - [x] Add native administrative workflow-definition management with owner/project inventory, immutable revisions and owner-adopting dispatch through the existing SDK/RPC/CLI path.
-- [x] Bind native automation agent definitions/runs/sweeps to saved user authority, execute through registered Qwen workers, preserve revisions and recover owned once schedules; personal API/UI and script execution remain subsequent increments.
+- [x] Bind native automation agent definitions/runs/sweeps to saved user authority, execute through registered Qwen workers, preserve revisions and recover owned once schedules; personal mutation API/UI and script execution remain subsequent increments.
+- [x] Expose owner-scoped automation metadata and run history through the limited API, SDK and CLI, including bounded pagination across incomplete reservations; personal mutations and UI remain pending.
 - [x] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection through approved profile versions. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [x] Stream personal persisted events with exclusive cursor replay and native BB timeline snapshots/updates; recheck token/project authority on every frame and idle intervals, limit buffers/connections, and release subscriptions on cancellation. Global lists/search/bootstrap/user UI still require separate scoping.
@@ -1893,3 +1894,46 @@ once schedules, idempotency, process termination, checkpoint/history continuity
 and an offline once schedule after restart. This increment did not add personal
 automation API/UI or script execution, and did not rerun browser acceptance;
 the composite stage and broader admission/recovery audit remain open.
+
+## Forty-fourth increment: personal automation read API
+
+Personal credentials now reach only fixed GET routes for automation list,
+metadata and paginated run history. The server checks central owner/current
+project access before native plugin access, carries the user principal into the
+builtin controller, validates reply identities and rechecks access afterwards.
+The plugin must retain builtin provenance and be enabled. No plugin ID, owner,
+execution configuration, path or credential is accepted from this interface.
+
+The SDK `automations.list/get/history` and `bb server access automations`
+commands share this API. List pagination uses central binding cursors; history
+uses native opaque run cursors. Both are bounded and owner-scoped at the data
+source. Metadata and run projections strip execution settings, prompts, output
+and private native fields. Thread IDs link to the existing owned conversation
+API. Bounded native batch reads omit reserved roots without definitions while
+advancing binding cursors; direct metadata reads of incomplete definitions return 404. Unauthenticated reads reject; foreign IDs remain opaque, shared-project
+membership does not expose another owner's records, and unknown/mutation/native
+RPC routes remain closed. Responses disable caching.
+
+This read increment does not complete personal automation creation, editing,
+manual dispatch, cancellation or UI. Isolated scripts, legacy assignment and
+the broader background admission/recovery audit remain required. Verification
+will be recorded in `control-plane-phase-44-verification.json` after focused
+checks and the full Docker deployment.
+
+Verification: 143 native Automations tests, six server security tests and one
+SDK and CLI test each pass (151 selected tests). Strict server/SDK/CLI/plugin
+types, changed-file lint and formatting pass. The full normal Docker deployment
+passes all 63 tasks in 7 minutes 9 seconds, including actual two-user Qwen jobs,
+owner-filtered CLI reads, empty-page cursor traversal over an incomplete reserved
+root, foreign-ID/override denials and restart/crash recovery. Alice retains
+personal read access after restart; Bob's deliberately revoked credential still
+returns 401 while his saved offline schedule executes under his registered UID.
+
+The initial full run exposed the incomplete native-definition case. Bounded
+native batch reads fix that case without deleting registry evidence or loading
+all definitions. A second run caught the fixture's attempt to use a credential
+that an existing logout scenario had intentionally revoked; the final fixture
+preserves that revocation and asserts denial. Temporary diagnostics were not
+shipped. `control-plane-phase-44-verification.json` records the full deployment
+proof and remaining scope. Browser acceptance was not rerun for this read API
+increment; personal automation mutations/UI and the composite stage remain open.

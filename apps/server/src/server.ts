@@ -1,4 +1,8 @@
 import {
+  createControlPlaneAutomationRpc,
+  createControlPlaneAutomationService,
+} from "./control-plane/automations.js";
+import {
   createControlPlaneWorkflowService,
   createControlPlaneWorkflowRpc,
 } from "./control-plane/workflows.js";
@@ -519,6 +523,10 @@ export function createApp(
                 createControlPlaneWorkflowService(
                   deps.db,
                   createControlPlaneWorkflowRpc(deps.db, () => pluginService),
+                ),
+                createControlPlaneAutomationService(
+                  deps.db,
+                  createControlPlaneAutomationRpc(deps.db, () => pluginService),
                 ),
               )
             : undefined,

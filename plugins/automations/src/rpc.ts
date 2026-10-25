@@ -18,6 +18,12 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { AutomationService } from "./service.js";
 
 export const automationRpcContract = defineRpcContract({
+  controlPlaneAutomationReads: {
+    input: z
+      .object({ ids: z.array(z.string().min(1).max(200)).max(50) })
+      .strict(),
+    output: z.array(automationDetailReadResultSchema).max(50),
+  },
   automations_overview: {
     input: z.null(),
     output: automationsOverviewResponseSchema,
@@ -62,6 +68,11 @@ export const automationRpcContract = defineRpcContract({
 
 export function createRpcHandlers(service: AutomationService) {
   return {
+    controlPlaneAutomationReads(input: { ids: string[] }) {
+      if (!service.managedRead)
+        throw new Error("Managed automation reads are unavailable");
+      return service.managedRead(input.ids);
+    },
     automations_overview() {
       return service.overview();
     },

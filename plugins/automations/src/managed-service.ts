@@ -516,6 +516,15 @@ export function createManagedAutomationService({
     list(input) {
       return rows(input).map((row) => decodeAutomationRow(row).automation);
     },
+    managedRead(ids) {
+      return ids.flatMap((id) => {
+        const row = getAutomation(db, id, jobs.userId ?? undefined);
+        if (!row) return [];
+        if (jobs.userId !== null) head(row);
+        const value = decodeAutomationRow(row).automation;
+        return ["problem" in value ? value : detail(value)];
+      });
+    },
     async get(input) {
       const value = decodeAutomationRow(required(input)).automation;
       return "problem" in value ? value : detail(value);

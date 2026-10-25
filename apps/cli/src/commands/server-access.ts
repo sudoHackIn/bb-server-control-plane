@@ -1,3 +1,4 @@
+import { registerServerAutomationCommands } from "./server-automations.js";
 import { registerServerWorkflowCommands } from "./server-workflows.js";
 import type { Command } from "commander";
 import { z } from "zod";
@@ -52,6 +53,12 @@ export function registerServerAccessCommands(
     }),
   );
   registerServerThreadCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
+  registerServerAutomationCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,
       fetch: cliFetch,

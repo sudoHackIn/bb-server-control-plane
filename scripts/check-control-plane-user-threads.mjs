@@ -514,6 +514,8 @@ export function createUserThreadFixture({ db, users }) {
         subjects: created,
         db,
         userCommand: command,
+        userRequest: (login, path, options = {}) =>
+          send(path, { ...options, token: sessions.get(login).token }),
       });
       const productionBrowser = await verifyExternalBrowser({
         origin,

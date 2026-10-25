@@ -1,13 +1,18 @@
+import { normalizeRpcRegistration } from "@get-bb/plugin-sdk/internal/host-policy";
+import type { PluginRpcHandler } from "../../src/services/plugins/plugin-api.js";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { build } from "esbuild";
 import { z } from "zod";
 import { expect, it, onTestFinished } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
+  ControlPlaneRegistry,
+  controlPlaneUserSessions,
+  installedPlugins,
   createThread,
   createControlPlaneJobBinding,
   controlPlaneJobBindings,
@@ -18,6 +23,15 @@ import {
 } from "@bb/db";
 import { eq } from "drizzle-orm";
 import { turnScope } from "@bb/domain";
+import { createControlPlaneClient } from "@bb/sdk/node";
+import {
+  createControlPlaneAutomationService,
+  createControlPlaneAutomationRpc,
+} from "../../src/control-plane/automations.js";
+import { createControlPlaneUserAccess } from "../../src/control-plane/user-access.js";
+import { createControlPlaneAccess } from "../../src/control-plane/access.js";
+import { hashAdminPassword } from "../../src/control-plane/credentials.js";
+import { createApp } from "../../src/server.js";
 import { withTestHarness } from "../helpers/test-app.js";
 import { seedControlPlaneJobSubjects } from "../helpers/control-plane-authority.js";
 import { createControlPlaneWorkflowWorkers } from "../../src/control-plane/workflow-workers.js";
@@ -164,7 +178,24 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         >((value) => typeof value === "function"),
       })
       .parse(imported).default;
+    const records = new Map<string, PluginRpcHandler>();
+    const register = fake.bb.rpc.register;
+    fake.bb.rpc.register = (contract, handlers, options) => {
+      for (const [name, record] of normalizeRpcRegistration(
+        contract,
+        handlers,
+        records,
+        options,
+      ))
+        records.set(name, record);
+      register(contract, handlers, options);
+    };
     const native = factory(fake.bb);
+    await expect(
+      fake.harness.callRpc("controlPlaneAutomationReads", {
+        ids: Array.from({ length: 51 }, () => "id"),
+      }),
+    ).rejects.toThrow();
     const invoke = (userId: string, method: string, input: unknown) =>
       withControlPlaneUser(userId, () => fake.harness.callRpc(method, input));
     const payload = (subject: typeof alice) => ({
@@ -198,6 +229,148 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         role: "runner",
       })
       .run();
+    const registry = new ControlPlaneRegistry(harness.db, {
+      usersRoot: "/srv/users",
+      firstUid: 200000,
+      lastUid: 299999,
+    });
+    let rpcCalls = 0;
+    const personal = createControlPlaneAutomationService(
+      harness.db,
+      async (method, input) => {
+        rpcCalls++;
+        return realRpc(method, input);
+      },
+    );
+    const origin = "https://bb.example";
+    harness.config.appUrl = origin;
+    const server = createApp(harness.deps, {
+      controlPlane: createControlPlaneAccess(
+        {
+          version: 1,
+          publicOrigin: origin,
+          admin: {
+            login: "admin",
+            passwordHash: await hashAdminPassword("automation-test-password"),
+          },
+        },
+        Date.now,
+        createControlPlaneUserAccess(
+          registry,
+          origin,
+          Date.now,
+          undefined,
+          undefined,
+          undefined,
+          personal,
+        ),
+      ),
+    });
+    harness.db
+      .insert(installedPlugins)
+      .values({
+        id: "automations",
+        source: "builtin:automations",
+        rootDir: "/test/native-automations",
+        version: "0.1.0",
+        provenance: "builtin",
+        sourceKind: "builtin",
+        sourceBuiltinName: "automations",
+        installedAt: 1,
+        updatedAt: 1,
+      })
+      .onConflictDoUpdate({
+        target: installedPlugins.id,
+        set: {
+          enabled: true,
+          provenance: "builtin",
+          sourceKind: "builtin",
+          sourceBuiltinName: "automations",
+          removedAt: null,
+        },
+      })
+      .run();
+    const realRpc = createControlPlaneAutomationRpc(harness.db, () => ({
+      getRpcHandler(_id, method) {
+        const handler = records.get(method);
+        if (!handler) throw new Error("Missing actual automation RPC handler");
+        return { outcome: "found", value: handler };
+      },
+      invokeRpcHandler: server.pluginService.invokeRpcHandler,
+    }));
+    onTestFinished(async () => {
+      await server.pluginService.stop();
+      await server.closeWebSockets();
+    });
+    const tokens = new Map<string, string>();
+    for (const subject of [alice, bob]) {
+      const token = `agt_${randomBytes(32).toString("base64url")}`;
+      tokens.set(subject.user.id, token);
+      harness.db
+        .insert(controlPlaneUserSessions)
+        .values({
+          userId: subject.user.id,
+          digest: createHash("sha256").update(token).digest("hex"),
+          expiresAt: Date.now() + 60000,
+        })
+        .run();
+    }
+    const client = (userId: string) =>
+      createControlPlaneClient({
+        origin,
+        token: () => tokens.get(userId) ?? null,
+        fetch: async (input, init) =>
+          server.app.fetch(new Request(input, init)),
+      });
+    const mine = client(alice.user.id).automations;
+    const foreign = client(bob.user.id).automations;
+    expect(
+      (await mine.list({ limit: 1 })).automations.map((row) => row.id),
+    ).toEqual([saved.id]);
+    expect(
+      (await foreign.list({ projectId: alice.project.id })).automations,
+    ).toEqual([]);
+    expect((await mine.get(saved.id)).id).toBe(saved.id);
+    const beforeForeign = rpcCalls;
+    await expect(foreign.get(saved.id)).rejects.toThrow("404");
+    await expect(foreign.history(saved.id)).rejects.toThrow("404");
+    expect(rpcCalls).toBe(beforeForeign);
+    const base = "/control-plane/user/automations";
+    for (const path of [
+      base,
+      `${base}/${saved.id}`,
+      `${base}/${saved.id}/history`,
+    ]) {
+      expect((await server.app.request(path)).status).toBe(401);
+    }
+    for (const path of [
+      `${base}?limit=51`,
+      `${base}?ownerUserId=${bob.user.id}`,
+      `${base}/${saved.id}?projectId=${bob.project.id}`,
+      `${base}/${saved.id}/history?limit=101`,
+      `${base}/${saved.id}/history?cursor=%2Fbad`,
+    ]) {
+      expect(
+        (
+          await server.app.request(path, {
+            headers: { authorization: `Bearer ${tokens.get(alice.user.id)}` },
+          })
+        ).status,
+      ).toBe(400);
+    }
+    for (const path of [
+      `${base}/${saved.id}/run`,
+      "/api/plugins/automations/rpc/automations_list",
+    ]) {
+      expect(
+        (
+          await server.app.request(path, {
+            method: "POST",
+            headers: { authorization: `Bearer ${tokens.get(alice.user.id)}` },
+          })
+        ).status,
+      ).toBe(401);
+    }
     expect(
       automation.array().parse(
         await invoke(bob.user.id, "automations_list", {
@@ -289,6 +462,21 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
     expect(starts).toBe(1);
     await native.tick();
     expect(releases).toBe(1);
+    const read = await mine.get(saved.id);
+    expect(read).not.toHaveProperty("execution");
+    expect(read).not.toHaveProperty("ownerUserId");
+    const page = await mine.history(saved.id, { limit: 1 });
+    expect(page.runs[0]?.id).toBe(first.run.id);
+    expect(page.runs[0]).not.toHaveProperty("output");
+    expect(page.runs[0]).not.toHaveProperty("runMode");
+    expect(
+      (
+        await server.app.request(`${base}/${saved.id}`, {
+          headers: { authorization: `Bearer ${tokens.get(alice.user.id)}` },
+        })
+      ).headers.get("cache-control"),
+    ).toBe("no-store");
+
     if (!first.run.threadId) throw new Error("Missing worker");
     harness.db
       .update(threads)
@@ -343,6 +531,39 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       })
       .toBe("succeeded");
     expect(starts).toBe(2);
+    const secondSaved = automation.parse(
+      await invoke(alice.user.id, "automations_create", payload(alice)),
+    );
+    const firstDefinitions = await mine.list({
+      projectId: alice.project.id,
+      limit: 1,
+    });
+    expect(firstDefinitions.nextCursor).not.toBeNull();
+    if (!firstDefinitions.nextCursor)
+      throw new Error("Missing definition cursor");
+    const nextDefinitions = await mine.list({
+      projectId: alice.project.id,
+      limit: 1,
+      cursor: firstDefinitions.nextCursor,
+    });
+    expect(
+      new Set(
+        [...firstDefinitions.automations, ...nextDefinitions.automations].map(
+          (row) => row.id,
+        ),
+      ),
+    ).toEqual(new Set([saved.id, secondSaved.id]));
+    expect(nextDefinitions.nextCursor).toBeNull();
+    createControlPlaneJobBinding(harness.db, {
+      kind: "automation",
+      objectId: "reserved-without-native-definition",
+      revision: 1,
+      userId: alice.user.id,
+      projectId: alice.project.id,
+      originThreadId: alice.thread.id,
+      profileVersionId: alice.profile.versionId,
+      sourceBindingId: null,
+    });
     await invoke(alice.user.id, "automations_pause", {
       projectId: alice.project.id,
       automationId: saved.id,
@@ -386,6 +607,17 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       projectId: alice.project.id,
       automationId: saved.id,
     });
+    const callsBeforeDeleted = rpcCalls;
+    await expect(mine.get(saved.id)).rejects.toThrow("404");
+    await expect(mine.history(saved.id)).rejects.toThrow("404");
+    expect(rpcCalls).toBe(callsBeforeDeleted);
+    await expect(
+      mine.get("reserved-without-native-definition"),
+    ).rejects.toThrow("404");
+    expect(
+      (await mine.list({ limit: 50 })).automations.map((row) => row.id),
+    ).toEqual([secondSaved.id]);
+
     expect(
       harness.db
         .select()

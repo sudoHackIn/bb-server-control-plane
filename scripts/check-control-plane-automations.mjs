@@ -14,6 +14,7 @@ export async function verifyNativeAutomations({
   subjects,
   db,
   userCommand,
+  userRequest,
 }) {
   const env = {
     ...process.env,
@@ -201,6 +202,102 @@ export async function verifyNativeAutomations({
       assert.equal(worker.profile_version_id, subject.profile.body.version.id);
       owned.push({ subject, saved, run });
     }
+    const command = (subject, ...args) =>
+      userCommand(subject.user.login, ["automations", ...args, "--json"]);
+    async function personalReads(items = owned) {
+      for (const item of items) {
+        const value = await command(item.subject, "get", item.saved.id);
+        assert.equal(value.id, item.saved.id);
+        assert.equal(value.projectId, item.subject.project.projectId);
+        assert.equal(value.createdByThreadId, item.subject.thread.id);
+        assert.equal("execution" in value, false);
+        const found = new Set();
+        const cursors = new Set();
+        let cursor = null;
+        do {
+          const page = await command(
+            item.subject,
+            "list",
+            "--project",
+            value.projectId,
+            "--limit",
+            "1",
+            ...(cursor ? ["--cursor", cursor] : []),
+          );
+          assert.ok(page.automations.length <= 1);
+          for (const row of page.automations) {
+            assert.equal(row.projectId, value.projectId);
+            assert.equal(found.has(row.id), false);
+            found.add(row.id);
+          }
+          cursor = page.nextCursor;
+          if (cursor) {
+            assert.equal(cursors.has(cursor), false);
+            cursors.add(cursor);
+            assert.ok(cursors.size < 20);
+          }
+        } while (cursor);
+        assert.ok(found.has(item.saved.id));
+        assert.equal(
+          found.has(`fixture-definition-${item.subject.user.id}`),
+          false,
+        );
+        const history = await command(
+          item.subject,
+          "history",
+          value.id,
+          "--limit",
+          "1",
+        );
+        assert.equal(history.automationId, value.id);
+        assert.equal(history.runs[0].id, item.run.id);
+        assert.equal("output" in history.runs[0], false);
+        assert.equal(history.runs[0].status, "succeeded");
+        const other = owned.find(
+          (row) => row.subject.user.id !== item.subject.user.id,
+        );
+        for (const suffix of ["", "/history"]) {
+          assert.equal(
+            (
+              await userRequest(
+                item.subject.user.login,
+                `/control-plane/user/automations/${other.saved.id}${suffix}`,
+              )
+            ).status,
+            404,
+          );
+        }
+        assert.equal(
+          (
+            await userRequest(
+              item.subject.user.login,
+              `/control-plane/user/automations/${value.id}/run`,
+              { method: "POST" },
+            )
+          ).status,
+          401,
+        );
+        assert.equal(
+          (
+            await userRequest(
+              item.subject.user.login,
+              "/control-plane/user/automations?ownerUserId=forged",
+            )
+          ).status,
+          400,
+        );
+        assert.equal(
+          (
+            await userRequest(
+              item.subject.user.login,
+              `/control-plane/user/automations/${value.id}`,
+            )
+          ).headers["cache-control"],
+          "no-store",
+        );
+      }
+    }
+    await personalReads();
     const alice = subjects[0],
       bob = subjects[1];
     const first = owned[0],
@@ -324,6 +421,7 @@ export async function verifyNativeAutomations({
         1,
       );
     }
+    await personalReads();
     const hanging = await rpc(
       "automations_create",
       payload(alice, "worker-hang-automation-alice"),
@@ -381,6 +479,11 @@ export async function verifyNativeAutomations({
     let offline;
     return {
       verification: {
+        personalAutomationReadApiAndCli: true,
+        personalAutomationOwnerFilteredPagination: true,
+        personalAutomationPendingRootDoesNotBreakPagination: true,
+        personalAutomationForeignReadsDenied: true,
+        personalAutomationMutationAndOwnerInjectionDenied: true,
         nativeAutomationsUseSavedOwner: true,
         nativeAutomationQwenUidHomeCwd: true,
         nativeAutomationWorkerAndSourceBindings: true,
@@ -442,6 +545,23 @@ export async function verifyNativeAutomations({
             "succeeded",
           );
         }
+        await personalReads(
+          owned.filter((item) => item.subject.user.id === alice.user.id),
+        );
+        for (const suffix of ["", "/history"]) {
+          const item = owned.find(
+            (entry) => entry.subject.user.id === bob.user.id,
+          );
+          assert.equal(
+            (
+              await userRequest(
+                bob.user.login,
+                `/control-plane/user/automations/${item.saved.id}${suffix}`,
+              )
+            ).status,
+            401,
+          );
+        }
         assert.ok(offline);
         await wait(
           () =>
@@ -463,6 +583,8 @@ export async function verifyNativeAutomations({
         );
         storage.close();
         return {
+          personalAutomationActiveOwnerReadsAfterRestart: true,
+          personalAutomationLoggedOutOwnerDeniedAfterRestart: true,
           nativeAutomationOwnerAndHistorySurviveRestart: true,
           nativeOfflineScheduleExecutesUnderSavedOwner: true,
           nativeOfflineScheduleSingleFire: true,

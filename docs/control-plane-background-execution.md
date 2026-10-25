@@ -520,8 +520,15 @@ Completed idle workers release physical runtime processes without archiving or
 fencing their thread/session history. Core and plugins share the same release
 path; host protocol 253 preserves active-turn races across environments.
 Managed scripts, target-thread reuse and arbitrary execution overrides are
-rejected. Limited personal automation API/UI, isolated scripts, full legacy
+rejected. Personal automation mutations/UI, isolated scripts, full legacy
 assignment and the remaining recovery/admission audit are still required.
+The personal read API lists central owner-filtered definition bindings, then
+invokes only the builtin controller under that principal. Metadata and history
+are projected to bounded public schemas, identity-checked and access-checked
+after awaiting native reads. A final ownership check covers the entire batch after native reads yield.
+Reserved roots without native definitions are omitted while binding cursors
+advance, so interrupted creation does not break an owner's list. Direct metadata reads
+of those incomplete definitions return an opaque not-found response.
 
 During server shutdown, core first quiesces every registered plugin background
 service before stopping the managed daemon. All service abort signals are sent
@@ -536,3 +543,12 @@ and daemon runtime-release acknowledgement. Pending idle release is retried;
 a newer/active turn marks the runtime retained and prevents background cleanup
 from interrupting an interactive continuation. Source authority and recorded
 Qwen session IDs remain intact.
+
+Personal list/get use only `controlPlaneAutomationReads` with a maximum of 50
+IDs chosen from owner-filtered central bindings. Native metadata is selected by
+ID and owner before decoding, and incomplete reserved IDs are omitted. Personal
+history uses `automations_runs` with the project derived from that same saved
+binding; callers cannot supply an owner or project override. Public projections
+strip native execution configuration and output, validate identity, reject
+unknown/duplicate definition rows and recheck the full requested batch after
+awaiting the plugin. SDK and CLI use these fixed routes without exposing RPC.

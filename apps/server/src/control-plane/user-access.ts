@@ -1,4 +1,9 @@
 import {
+  installControlPlaneAutomationRoutes,
+  isControlPlaneAutomationPath,
+} from "./automation-routes.js";
+import type { ControlPlaneAutomationService } from "./automations.js";
+import {
   installControlPlaneDefinitionRoutes,
   isControlPlaneDefinitionPath,
 } from "./definition-routes.js";
@@ -84,6 +89,7 @@ export function certificateLogin(context: Context): string | null {
 
 export function isUserAuthPath(path: string, method: string): boolean {
   if (
+    isControlPlaneAutomationPath(path, method) ||
     isControlPlaneThreadPath(path, method) ||
     isControlPlaneDefinitionPath(path, method) ||
     isControlPlaneWorkflowPath(path, method)
@@ -126,6 +132,7 @@ export function createControlPlaneUserAccess(
   projects?: ControlPlaneProjectService,
   threads?: ControlPlaneThreadService,
   workflows?: ControlPlaneWorkflowService,
+  automations?: ControlPlaneAutomationService,
 ) {
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
@@ -156,6 +163,8 @@ export function createControlPlaneUserAccess(
       signOutAdministrator: (context: Context) => void = () => {},
     ) {
       browser.install(app, signOutAdministrator);
+      if (automations)
+        installControlPlaneAutomationRoutes(app, automations, authenticate);
       installControlPlaneProfileRoutes(app, registry.db, authenticate);
       if (threads) installControlPlaneThreadRoutes(app, threads, authenticate);
       if (workflows) {

@@ -151,6 +151,9 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access profiles grant`
 - `bb server access profiles revoke`
 - `bb server access profiles access`
+- `bb server access automations list`
+- `bb server access automations get`
+- `bb server access automations history`
 - `bb server access status`
 - `bb server access logout`
 

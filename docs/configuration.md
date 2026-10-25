@@ -1699,5 +1699,30 @@ Native user-principal list/get/mutations/history require personal ownership and
 current project access, including shared projects. Full administrative native
 RPC can manage registered owners and inspect legacy history; unassigned legacy
 objects are disabled at startup and cannot execute until explicitly assigned.
-The limited personal automation API/UI and isolated script execution remain
-later stages. Browser tokens are not stored with jobs.
+Personal automation mutation API/UI and isolated script execution remain
+later stages; the read-only personal API is described below. Browser tokens are not stored with jobs.
+
+## Personal automation reads
+
+The limited `/control-plane/user/automations` API supports authenticated GET
+list, `/:id` and `/:id/history` requests. SDK clients use
+`createControlPlaneClient(...).automations.list/get/history`; CLI clients use:
+
+```sh
+bb server access automations list --project <project-id> --limit 20 --json
+bb server access automations get <automation-id> --json
+bb server access automations history <automation-id> --limit 20 --json
+```
+
+Lists accept `--cursor` from `nextCursor`, with at most 50 definitions per page.
+History uses a separate opaque `--cursor`, with at most 100 runs per page.
+Ownership and current project access are checked before invoking the fixed
+builtin controller and again after awaiting its response. Shared project access
+does not expose another user's personal automations. Replies use `no-store`.
+
+These projections contain schedules, state, origin and execution thread IDs;
+they omit execution configuration, prompts, script paths and run output.
+Read agent output through the owned thread API. The full administrative/native
+management surfaces remain available. Personal create/update/pause/resume/run/
+delete and a personal automation workspace are subsequent work; native plugin
+RPC and unsupported mutation URLs remain closed to personal credentials.

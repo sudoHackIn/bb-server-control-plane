@@ -24,8 +24,9 @@ is supported. Script mode, arbitrary host/worktree targets, target-thread
 re-prompting and service-tier overrides are rejected until their isolated paths
 are implemented. Managed pause also blocks manual run and stops descendants.
 Completed idle runtimes are released; owned history and Qwen session resume
-remain available. Personal automation HTTP/UI access is a later stage; user
-credentials do not grant the native CLI/RPC administrative API.
+remain available. Personal automation mutations/UI are a later stage; personal
+reads use the limited API described below. User credentials do not grant the
+native CLI/RPC administrative API.
 
 Choosing a mode:
 
@@ -72,3 +73,18 @@ read [references/updates.md](references/updates.md). Every command supports `--j
 accepted values, and rules. Unknown commands, unknown options, and stray
 arguments are rejected rather than ignored, and a failure under `--json` also
 prints a `{"ok":false,"error":{"code","message","hint"}}` envelope on stdout.
+
+## Personal shared-server reads
+
+A personal server credential uses `bb server access automations list/get/history`
+through the limited API, rather than native plugin RPC. Lists are owner-filtered
+and accept `--project`, `--cursor` and `--limit` (maximum 50). History accepts
+its own opaque `--cursor` and `--limit` (maximum 100). Agent output remains in
+its owned thread; these read projections omit execution configuration and output.
+Personal mutations and automation UI are not yet exposed.
+
+The managed builtin `controlPlaneAutomationReads` RPC accepts at most 50 `ids`
+and reads existing definitions through owner predicates. It omits incomplete
+reservations; personal clients page through empty pages while `nextCursor` is
+present. It is unavailable in standalone mode. Personal clients use the limited
+SDK/CLI rather than selecting or calling this RPC directly.

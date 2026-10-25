@@ -30,6 +30,7 @@ const THREAD_ID = "thr_target";
 const SECTION_ID = "sec_reviews";
 
 const rpcMethods = [
+  "controlPlaneAutomationReads",
   "automations_overview",
   "automations_list",
   "automations_get",
@@ -209,6 +210,9 @@ describe("automations server plugin harness", () => {
     const { harness } = await bootAutomationsPlugin();
 
     expect([...harness.registrations.rpcMethods].sort()).toEqual(rpcMethods);
+    await expect(
+      harness.callRpc("controlPlaneAutomationReads", { ids: ["missing"] }),
+    ).rejects.toThrow("Managed automation reads are unavailable");
     expect(harness.registrations.cli?.name).toBe("automation");
     expect(
       harness.registrations.services.map((service) => service.name),
