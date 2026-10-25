@@ -125,3 +125,8 @@ Managed child invocations have a separate ceiling equal to `maxAgentCalls`, and
 at most `maxConcurrentAgents` child VMs run at once. Use the administrator's existing workflow controls while personal job APIs
 are being integrated; a personal token does not grant the general BB CLI API.
 Standalone Workflows behavior is unchanged.
+
+Managed server restart requeues interrupted runs and replays the successful
+unchanged prefix under current authority. Pending steps can execute again.
+Registered worker discovery and cleanup use owner-aware core operations;
+cleanup references survive removal of old run history.

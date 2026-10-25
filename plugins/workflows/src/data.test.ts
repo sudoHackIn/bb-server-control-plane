@@ -8,6 +8,7 @@ import {
   recordWorkerCleanup,
   workerOrigins,
   workerRunId,
+  workerParentBindingId,
   ownWorker,
   cancelRun,
   countCallsForRun,
@@ -131,6 +132,72 @@ describe("workflow durable data", () => {
     ).toEqual([legacy.id]);
   });
 
+  it("retains worker parent authority after terminal history is pruned", () => {
+    const run = newRun();
+    ownWorker(
+      db,
+      "orphan",
+      run.id,
+      "missing-call",
+      run.originThreadId,
+      "binding",
+    );
+    ownWorker(
+      db,
+      "orphan",
+      run.id,
+      "missing-call",
+      run.originThreadId,
+      "foreign-binding",
+    );
+    expect(workerParentBindingId(db, "orphan")).toBe("binding");
+    settleRun(db, {
+      id: run.id,
+      status: "succeeded",
+      result: null,
+      error: null,
+    });
+    deleteTerminalRuns(db, [run.id]);
+    expect(getRun(db, run.id)).toBeNull();
+    expect(workerParentBindingId(db, "orphan")).toBe("binding");
+    expect(retiredWorkers(db, Date.now())).toEqual([
+      { threadId: "orphan", callId: "missing-call" },
+    ]);
+  });
+
+  it("does not treat another run's call metadata as worker ownership", () => {
+    const first = newRun();
+    const second = newRun();
+    markRunning(first.id);
+    markRunning(second.id);
+    const call = startCall(db, {
+      runId: second.id,
+      callIndex: 0,
+      cacheKey: "foreign",
+      prompt: "work",
+      options: {
+        selection: null,
+        outputSchema: null,
+        title: null,
+        phase: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    db.prepare(
+      "UPDATE workflow_calls SET status = 'running', child_thread_id = 'misleading-worker' WHERE id = ?",
+    ).run(call.id);
+    ownWorker(
+      db,
+      "misleading-worker",
+      first.id,
+      call.id,
+      first.originThreadId,
+      "parent",
+    );
+    expect(isWorkerRetired(db, "misleading-worker")).toBe(true);
+  });
+
   it("persists failed cleanup deadlines and caps retry delays", () => {
     ownWorker(db, "worker", "missing-run", "missing-call", "origin");
     const clock = vi.spyOn(Date, "now").mockReturnValue(10_000);
@@ -164,7 +231,16 @@ describe("workflow durable data", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -4).join("\n"));
+    db.exec(
+      migrations
+        .slice(
+          0,
+          migrations.findIndex((sql) =>
+            sql.startsWith("CREATE TABLE workflow_workers"),
+          ),
+        )
+        .join("\n"),
+    );
     const run = legacyRun();
     const call = { id: "legacy-call" };
     db.prepare(
@@ -174,7 +250,15 @@ describe("workflow durable data", () => {
        VALUES (?, ?, 0, 'key', 'work', '{}', 'codex', 'gpt-test', 'medium', 'full',
          'failed', 'legacy-worker', 0)`,
     ).run(call.id, run.id);
-    db.exec(migrations.slice(-4).join("\n"));
+    db.exec(
+      migrations
+        .slice(
+          migrations.findIndex((sql) =>
+            sql.startsWith("CREATE TABLE workflow_workers"),
+          ),
+        )
+        .join("\n"),
+    );
     expect(getRunRequired(db, run.id)).toMatchObject({
       ownerUserId: null,
       authorityBindingId: null,
@@ -191,7 +275,16 @@ describe("workflow durable data", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -4).join("\n"));
+    db.exec(
+      migrations
+        .slice(
+          0,
+          migrations.findIndex((sql) =>
+            sql.startsWith("CREATE TABLE workflow_workers"),
+          ),
+        )
+        .join("\n"),
+    );
     const run = legacyRun();
     const insertCall = db.prepare(
       `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
@@ -208,7 +301,15 @@ describe("workflow durable data", () => {
         `worker-${String(index).padStart(3, "0")}`,
       );
     const migratedAt = Date.now();
-    db.exec(migrations.slice(-4).join("\n"));
+    db.exec(
+      migrations
+        .slice(
+          migrations.findIndex((sql) =>
+            sql.startsWith("CREATE TABLE workflow_workers"),
+          ),
+        )
+        .join("\n"),
+    );
 
     const buckets = db
       .prepare(

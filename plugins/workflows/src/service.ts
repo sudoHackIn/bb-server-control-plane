@@ -18,6 +18,7 @@ import {
   ownWorker,
   workerOrigins,
   workerRunId,
+  workerParentBindingId,
   isWorkerRetired,
   retiredWorkers,
   recordWorkerCleanup,
@@ -424,8 +425,28 @@ export function createWorkflowService(
     originThreadId: z.string().min(1),
   });
 
-  async function discoverWorkers(): Promise<void> {
-    if (backgroundJobs) return;
+  async function discoverWorkers(includeArchived = false): Promise<void> {
+    if (backgroundJobs) {
+      let cursor: string | null = null;
+      do {
+        const page = backgroundJobs.listWorkers({
+          cursor,
+          limit: 100,
+          includeArchived,
+        });
+        for (const worker of page.workers)
+          ownWorker(
+            db,
+            worker.threadId,
+            worker.runId,
+            worker.callId ?? worker.threadId,
+            worker.originThreadId,
+            worker.parentBindingId,
+          );
+        cursor = page.nextCursor;
+      } while (cursor !== null);
+      return;
+    }
     let offset = 0;
     while (true) {
       const threads = await bb.sdk.threads.list({
@@ -482,7 +503,9 @@ export function createWorkflowService(
     if (pending !== undefined) return pending;
     const call = backgroundJobs ? getCallByChildThread(db, threadId) : null;
     const runId = call?.runId ?? workerRunId(db, threadId);
-    const parent = runId ? getRun(db, runId)?.authorityBindingId : null;
+    const parent =
+      workerParentBindingId(db, threadId) ??
+      (runId ? getRun(db, runId)?.authorityBindingId : null);
     const stopping = (
       backgroundJobs
         ? parent
@@ -1009,7 +1032,14 @@ export function createWorkflowService(
                 permissionMode: selection.permissionMode,
                 visibility: "hidden",
               });
-        ownWorker(db, child.id, run.id, call.id, run.originThreadId);
+        ownWorker(
+          db,
+          child.id,
+          run.id,
+          call.id,
+          run.originThreadId,
+          run.authorityBindingId,
+        );
         if (signal.aborted) {
           await stopChild(child.id);
           throw new Error("Workflow cancelled");
@@ -1744,7 +1774,9 @@ export function createWorkflowService(
         const runId =
           getCallByChildThread(db, threadId)?.runId ??
           workerRunId(db, threadId);
-        const parent = runId ? getRun(db, runId)?.authorityBindingId : null;
+        const parent =
+          workerParentBindingId(db, threadId) ??
+          (runId ? getRun(db, runId)?.authorityBindingId : null);
         if (!parent) return false;
         await backgroundJobs.archiveWorker(parent, threadId);
         return true;
@@ -1781,6 +1813,7 @@ export function createWorkflowService(
         );
       }
     };
+    if (backgroundJobs) await isolated("discover-workers", discoverWorkers);
     await isolated("cleanup-workers", cleanupWorkers);
     await isolated("enforce-timeouts", () => enforceTimeouts(now));
     await isolated("retention", () => sweepExpiredRuns(now));
@@ -1797,7 +1830,7 @@ export function createWorkflowService(
     );
     await stopChildren(recoverInterruptedRuns(db));
     for (const [name, operation] of [
-      ["discover-workers", discoverWorkers],
+      ["discover-workers", () => discoverWorkers(true)],
       ["reconcile-origins", reconcileOrigins],
       ["reconcile-workers", reconcileRunningCalls],
     ] as const) {

@@ -71,6 +71,9 @@ function fixture() {
       return binding;
     },
     remove: retire,
+    listWorkers() {
+      return { workers: [], nextCursor: null };
+    },
     resolveWorkerProfile() {
       return { ...origin, profileVersionId };
     },
@@ -114,6 +117,7 @@ function fixture() {
   };
   return {
     owner,
+    authority,
     profileVersionId,
     bindings,
     originLookup,
@@ -234,6 +238,48 @@ it("delegates managed evaluation and never evaluates unassigned scripts in the s
     expect(test.service.get(owned.id)?.resultJson).toBeNull();
     expect(test.spawn).not.toHaveBeenCalled();
     expect(test.send).not.toHaveBeenCalled();
+  } finally {
+    controller.abort();
+    await worker;
+    await test.harness.dispose();
+  }
+});
+
+it("discovers paginated workers and cleans them without retained run history", async () => {
+  const test = fixture();
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  const remaining = new Set(["orphan-one", "orphan-two"]);
+  const archive = vi.fn(async (_parent: string, thread: string) => {
+    remaining.delete(thread);
+  });
+  test.authority.archiveWorker = archive;
+  test.authority.listWorkers = ({ cursor }) => {
+    const id = cursor === null ? "orphan-one" : "orphan-two";
+    return {
+      workers: remaining.has(id)
+        ? [
+            {
+              threadId: id,
+              parentBindingId: `parent-${id}`,
+              runId: "pruned-run",
+              callId: null,
+              originThreadId: "origin",
+            },
+          ]
+        : [],
+      nextCursor: cursor === null ? "next" : null,
+    };
+  };
+  test.setCaller(null);
+  try {
+    worker = test.service.runWorker(controller.signal);
+    await vi.waitFor(() => expect(archive).toHaveBeenCalledTimes(2));
+    expect(archive).toHaveBeenCalledWith("parent-orphan-one", "orphan-one");
+    expect(archive).toHaveBeenCalledWith("parent-orphan-two", "orphan-two");
+    expect(test.spawn).not.toHaveBeenCalled();
+    expect(test.send).not.toHaveBeenCalled();
+    expect(test.originLookup).not.toHaveBeenCalled();
   } finally {
     controller.abort();
     await worker;

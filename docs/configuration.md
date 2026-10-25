@@ -1487,7 +1487,16 @@ current grants must permit execution. Cancelling the source prevents subsequent
 sends/resumes and stops pending or running mapped workers through a service-scoped
 monitor. These references are assigned internally; the personal thread API does
 not accept binding/UID/HOME/environment overrides. Personal workflow controls,
-scoped orphan recovery and notifications remain unfinished. The
+complete crash/retry recovery and notifications remain unfinished. The
 managed `agent()` bridge now uses the scoped worker adapter, persists native calls
 and results, and fences cancellation during worker creation. Completed-call
 replay includes the immutable profile version.
+
+Managed Workflows startup now discovers bound workers through the scoped core
+facade and repairs cleanup after history retention. The plugin database retains
+parent binding IDs independently of workflow run rows. Current owner/project
+access filters worker cursor pages before limits. Startup includes archived
+workers to repair a missing acknowledgement; maintenance excludes them. A
+normal server restart requeues interrupted runs, reuses successful call results
+and replaces interrupted worker attempts after rechecking authority. Pending
+side effects may run again; this is not exactly-once execution.

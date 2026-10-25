@@ -238,6 +238,8 @@ export const migrations = [
    ALTER TABLE workflow_runs ADD COLUMN authority_binding_id TEXT;
    CREATE INDEX workflow_runs_owner_project_created_idx ON workflow_runs(owner_user_id, project_id, created_at DESC);
    CREATE INDEX workflow_runs_owner_origin_created_idx ON workflow_runs(owner_user_id, origin_thread_id, created_at DESC);`,
+  `ALTER TABLE workflow_workers ADD COLUMN parent_binding_id TEXT;
+   UPDATE workflow_workers SET parent_binding_id = (SELECT authority_binding_id FROM workflow_runs WHERE workflow_runs.id = workflow_workers.run_id);`,
 ];
 
 export function createWorkflowRunId() {
@@ -921,9 +923,16 @@ export function ownWorker(
   runId: string,
   callId: string,
   originThreadId: string,
+  parentBindingId: string | null = null,
 ): void {
-  db.prepare(`INSERT OR IGNORE INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id)
-    VALUES (?, ?, ?, ?)`).run(threadId, runId, callId, originThreadId);
+  db.prepare(`INSERT INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id, parent_binding_id)
+    VALUES (?, ?, ?, ?, ?) ON CONFLICT(thread_id) DO UPDATE SET parent_binding_id = COALESCE(workflow_workers.parent_binding_id, excluded.parent_binding_id)`).run(
+    threadId,
+    runId,
+    callId,
+    originThreadId,
+    parentBindingId,
+  );
 }
 
 export function workerOrigins(db: Db, now: number): string[] {
@@ -936,7 +945,7 @@ export function workerOrigins(db: Db, now: number): string[] {
 }
 
 const RETIRED_WORKER_FROM = `FROM workflow_workers workers
-    LEFT JOIN workflow_calls calls ON calls.id = workers.call_id
+    LEFT JOIN workflow_calls calls ON calls.id = workers.call_id AND calls.run_id = workers.run_id
     LEFT JOIN workflow_runs runs ON runs.id = workers.run_id
     WHERE workers.archived_at IS NULL
       AND (calls.id IS NULL OR calls.status NOT IN ('queued', 'running')
@@ -1005,4 +1014,18 @@ export function workerRunId(db: Db, threadId: string): string | null {
   )
     return row.runId;
   return null;
+}
+
+export function workerParentBindingId(db: Db, threadId: string): string | null {
+  const row: unknown = db
+    .prepare(
+      "SELECT parent_binding_id AS id FROM workflow_workers WHERE thread_id = ?",
+    )
+    .get(threadId);
+  return row !== null &&
+    typeof row === "object" &&
+    "id" in row &&
+    typeof row.id === "string"
+    ? row.id
+    : null;
 }

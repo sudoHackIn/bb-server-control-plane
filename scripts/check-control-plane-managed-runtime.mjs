@@ -547,8 +547,10 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       const current = connected();
       return current && current.instance_id !== firstSession.instance_id;
     }, "supervised daemon restart");
+    await personal.beforeRestart();
     child.kill("SIGTERM");
     await once(child, "exit", { signal });
+    await personal.afterShutdown();
     assert.equal(
       connected(),
       undefined,

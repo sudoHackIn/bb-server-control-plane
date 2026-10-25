@@ -752,7 +752,54 @@ export async function verifyNativeWorkflows({
     wait,
     subjects,
   });
+  let recoveryRun = null;
+  let previousRecoveryWorker = null;
+  let orphanWorkers = [];
   return {
+    async beforeRestart() {
+      const subject = agentRuns[0].subject;
+      const script =
+        'export const meta = {name:"native-recovery",description:"Successful prefix and interrupted worker"}; const first = await agent("BB_PERSONAL_workflow-agent-alice"); return [first, await agent("BB_PERSONAL_worker-hang-recovery-alice")];';
+      recoveryRun = await cli(
+        [
+          "workflows",
+          "run",
+          "--script",
+          script,
+          "--resume",
+          agentRuns[0].runId,
+          "--json",
+        ],
+        subject,
+      );
+      await wait(async () => {
+        try {
+          await readFile(
+            `${subject.user.home}/bb-personal-worker-hang-recovery-alice.json`,
+          );
+          return true;
+        } catch (error) {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        }
+      }, "interrupted native workflow worker");
+      const storage = new Database("/srv/bb/plugins/workflows/data.db", {
+        readonly: true,
+      });
+      try {
+        previousRecoveryWorker = storage
+          .prepare(
+            "SELECT child_thread_id FROM workflow_calls WHERE run_id = ? AND call_index = 1",
+          )
+          .get(recoveryRun.runId).child_thread_id;
+        assert.ok(previousRecoveryWorker);
+      } finally {
+        storage.close();
+      }
+    },
+    async afterShutdown() {
+      orphanWorkers = await workerFixture("orphan");
+    },
     verification: {
       ...processProof,
       ...evaluatorProof,
@@ -788,6 +835,49 @@ export async function verifyNativeWorkflows({
     async afterRestart() {
       verify();
       const workerRestart = await workerFixture("verify");
+      const recoveredStorage = new Database(
+        "/srv/bb/plugins/workflows/data.db",
+        { readonly: true },
+      );
+      try {
+        await wait(() => {
+          const row = recoveredStorage
+            .prepare("SELECT status,error FROM workflow_runs WHERE id = ?")
+            .get(recoveryRun.runId);
+          if (row?.status === "failed") throw new Error(row.error);
+          return row?.status === "succeeded";
+        }, "automatic native workflow recovery after restart");
+        const calls = recoveredStorage
+          .prepare(
+            "SELECT * FROM workflow_calls WHERE run_id = ? ORDER BY call_index",
+          )
+          .all(recoveryRun.runId);
+        assert.equal(calls.length, 2);
+        assert.equal(calls[0].replay_source, "same-run");
+        assert.equal(calls[1].status, "succeeded");
+        assert.notEqual(calls[1].child_thread_id, previousRecoveryWorker);
+        await wait(
+          () =>
+            orphanWorkers.every(
+              (worker) =>
+                db
+                  .prepare("SELECT archived_at FROM threads WHERE id = ?")
+                  .get(worker.threadId)?.archived_at > 0,
+            ),
+          "scoped orphan cleanup after restart",
+        );
+        for (const worker of orphanWorkers)
+          assert.equal(
+            db
+              .prepare(
+                "SELECT enabled FROM control_plane_job_bindings WHERE id = ?",
+              )
+              .get(worker.bindingId).enabled,
+            0,
+          );
+      } finally {
+        recoveredStorage.close();
+      }
       await cli(
         [
           "server",
@@ -850,6 +940,9 @@ export async function verifyNativeWorkflows({
       }
       return {
         ...workerRestart,
+        interruptedNativeWorkflowAutomaticallyRecovered: true,
+        successfulPrefixRecoveredWithoutDuplicateWorker: true,
+        missingRunOrphansDiscoveredAndArchivedAfterRestart: true,
         nativeWorkflowOwnerBindingSurvivesRestart: true,
         isolatedAgentPrefixReplaySurvivesRestartWithoutNewWorker: true,
       };

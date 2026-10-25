@@ -1964,6 +1964,20 @@ export interface InternalDoNotUseBackgroundJobs {
     id: string,
     run: (binding: InternalDoNotUseBackgroundJobBinding) => T,
   ): T;
+  listWorkers(input: {
+    cursor: string | null;
+    limit: number;
+    includeArchived: boolean;
+  }): {
+    workers: Array<{
+      threadId: string;
+      parentBindingId: string;
+      runId: string;
+      callId: string | null;
+      originThreadId: string;
+    }>;
+    nextCursor: string | null;
+  };
   resolveWorkerProfile(
     id: string,
     profileVersionId: string | null,

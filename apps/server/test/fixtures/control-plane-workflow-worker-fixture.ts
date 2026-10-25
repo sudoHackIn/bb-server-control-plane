@@ -9,13 +9,15 @@ import {
   createControlPlaneJobBinding,
   createThread,
   getThread,
+  archiveThread,
+  getControlPlaneJobBinding,
   controlPlaneThreads,
   noopNotifier,
   requireControlPlaneJobDispatch,
   requireControlPlaneThreadDispatch,
 } from "@bb/db";
 
-const mode = z.enum(["create", "verify"]).parse(process.argv[2]);
+const mode = z.enum(["create", "verify", "orphan"]).parse(process.argv[2]);
 const db = createConnection("/srv/bb/bb.db");
 const statePath = "/srv/bb/workflow-worker-proof.json";
 const savedSchema = z
@@ -31,7 +33,73 @@ const savedSchema = z
   )
   .length(2);
 try {
-  if (mode === "create") {
+  if (mode === "orphan") {
+    const original = savedSchema.parse(
+      JSON.parse(await readFile(statePath, "utf8")),
+    );
+    const storage = new Database("/srv/bb/plugins/workflows/data.db", {
+      readonly: true,
+    });
+    try {
+      const orphans = original.map((subject, index) => {
+        const parent = getControlPlaneJobBinding(db, null, subject.parentId);
+        assert.ok(parent?.originThreadId);
+        const origin = getThread(db, parent.originThreadId);
+        assert.ok(origin?.environmentId);
+        const synthetic = createControlPlaneJobBinding(db, {
+          kind: "workflow-run",
+          objectId: `wfr_${randomUUID()}`,
+          revision: 1,
+          userId: subject.userId,
+          projectId: origin.projectId,
+          profileVersionId: subject.profileVersionId,
+          originThreadId: origin.id,
+          sourceBindingId: null,
+        });
+        assert.equal(
+          storage
+            .prepare("SELECT id FROM workflow_runs WHERE id = ?")
+            .get(synthetic.objectId),
+          undefined,
+        );
+        const binding = createControlPlaneJobBinding(db, {
+          kind: "workflow-worker",
+          objectId: randomUUID(),
+          revision: 1,
+          userId: subject.userId,
+          projectId: origin.projectId,
+          profileVersionId: subject.profileVersionId,
+          originThreadId: origin.id,
+          sourceBindingId: synthetic.id,
+        });
+        const child = createThread(db, noopNotifier, {
+          providerId: "qwen-server",
+          projectId: origin.projectId,
+          environmentId: origin.environmentId,
+          status: "idle",
+          visibility: "hidden",
+          originPluginId: "workflows",
+          controlPlaneOwnerUserId: subject.userId,
+          controlPlaneProfileVersionId: subject.profileVersionId,
+          controlPlaneJobBindingId: binding.id,
+          pluginMetadata: {
+            pluginId: "workflows",
+            metadata: {
+              workflowWorker: 1,
+              runId: synthetic.objectId,
+              callId: `wfc_${randomUUID()}`,
+              originThreadId: origin.id,
+            },
+          },
+        });
+        if (index === 1) archiveThread(db, noopNotifier, child.id);
+        return { threadId: child.id, bindingId: binding.id };
+      });
+      process.stdout.write(JSON.stringify(orphans) + "\n");
+    } finally {
+      storage.close();
+    }
+  } else if (mode === "create") {
     const inputs = z
       .array(
         z
@@ -40,9 +108,7 @@ try {
       )
       .length(2)
       .parse(JSON.parse(process.argv[3] ?? ""));
-    const storage = new Database("/srv/bb/plugins/workflows/data.db", {
-      readonly: true,
-    });
+    const storage = new Database("/srv/bb/plugins/workflows/data.db");
     try {
       const saved = inputs.map((input) => {
         const row: unknown = storage
@@ -73,6 +139,26 @@ try {
           originThreadId: parent.binding.originThreadId,
           sourceBindingId: parent.binding.id,
         });
+        const callId = `wfc_${randomUUID()}`;
+        storage
+          .prepare(
+            `INSERT INTO workflow_calls(id,run_id,call_index,cache_key,prompt,options_json,resolved_provider,resolved_model,resolved_reasoning_level,resolved_permission_mode,status,created_at) VALUES (?,?,0,'fixture','Worker authority fixture',?,?,?,?,?,'running',?)`,
+          )
+          .run(
+            callId,
+            input.parentRunId,
+            JSON.stringify({
+              selection: null,
+              outputSchema: null,
+              title: null,
+              phase: null,
+            }),
+            parent.profileVersion.definition.providerId,
+            parent.profileVersion.definition.model,
+            parent.profileVersion.definition.reasoningLevel,
+            parent.profileVersion.definition.permissionMode,
+            Date.now(),
+          );
         const thread = createThread(db, noopNotifier, {
           providerId: parent.profileVersion.definition.providerId,
           projectId: parent.project.projectId,
@@ -80,12 +166,24 @@ try {
           status: "idle",
           visibility: "hidden",
           originPluginId: "workflows",
+          pluginMetadata: {
+            pluginId: "workflows",
+            metadata: {
+              workflowWorker: 1,
+              runId: input.parentRunId,
+              callId,
+              originThreadId: origin.id,
+            },
+          },
           lifecycleOwnerThreadId: origin.id,
           parentThreadId: origin.id,
           controlPlaneOwnerUserId: input.userId,
           controlPlaneProfileVersionId: parent.profileVersion.id,
           controlPlaneJobBindingId: binding.id,
         });
+        storage
+          .prepare("UPDATE workflow_calls SET child_thread_id = ? WHERE id = ?")
+          .run(thread.id, callId);
         assert.equal(
           requireControlPlaneThreadDispatch(db, thread.id)?.user.id,
           input.userId,

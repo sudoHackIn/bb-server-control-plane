@@ -3748,3 +3748,16 @@ version UUID or null for inheritance. Workflows calls it before cache/replay
 decisions and passes the exact version through canonical worker creation.
 Foreign, revoked and disabled profiles cannot authorize cached results. The
 Plugin Guide inventory includes this internal method.
+
+The builtin Workflows facade's `listWorkers` performs cursor pagination over
+central worker bindings, native ownership and native threads. It verifies the
+parent workflow-run relation, owner/project/profile consistency and origin
+provenance before returning IDs. User callers are filtered by owner and current
+project access in SQL before pagination; trusted service callers may reconcile
+all registered owners. Call IDs are optional correlation metadata, never authority.
+`includeArchived` is explicit: startup includes archived threads to recover an
+interrupted cleanup acknowledgement; periodic discovery excludes them. Its
+only production caller is builtin Workflows startup/maintenance. The Plugin
+Guide inventory includes this internal method. Deleted native workers return a
+missing-thread result for metadata and idempotent stop/archive after parent
+admission; existing foreign workers remain denied.

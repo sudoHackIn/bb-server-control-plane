@@ -243,3 +243,113 @@ it("fences a worker reservation when cancellation arrives during native creation
     }
   });
 });
+
+it("discovers only authoritative worker mappings with source-filtered cursor pages", async () => {
+  await withTestHarness(async (harness) => {
+    const { alice, bob } = seedControlPlaneJobSubjects(harness.db);
+    const workers = createControlPlaneWorkflowWorkers(harness.deps);
+    const jobs = createControlPlaneBackgroundJobs(
+      harness.db,
+      "workflows",
+      true,
+      workers,
+    );
+    try {
+      const expected = new Map<string, string[]>();
+      for (const subject of [alice, bob]) {
+        const parent = await withControlPlaneUser(subject.user.id, () =>
+          jobs.bind(subject.input),
+        );
+        const ids = [];
+        for (let index = 0; index < 2; index++) {
+          const binding = createControlPlaneJobBinding(harness.db, {
+            ...subject.input,
+            kind: "workflow-worker",
+            objectId: randomUUID(),
+            userId: subject.user.id,
+            profileVersionId: subject.profile.versionId,
+            sourceBindingId: parent.id,
+          });
+          const child = createThread(harness.db, harness.hub, {
+            projectId: subject.project.id,
+            environmentId: subject.environment.id,
+            providerId: "qwen-server",
+            status: "idle",
+            originPluginId: "workflows",
+            controlPlaneOwnerUserId: subject.user.id,
+            controlPlaneProfileVersionId: subject.profile.versionId,
+            controlPlaneJobBindingId: binding.id,
+            pluginMetadata: {
+              pluginId: "workflows",
+              metadata: {
+                workflowWorker: 1,
+                runId: parent.objectId,
+                callId: `call-${index}`,
+              },
+            },
+          });
+          ids.push(child.id);
+        }
+        expected.set(subject.user.id, ids);
+      }
+      expect(
+        jobs.listWorkers({
+          cursor: null,
+          limit: 100,
+          includeArchived: false,
+        }).workers,
+      ).toHaveLength(4);
+      for (const subject of [alice, bob])
+        withControlPlaneUser(subject.user.id, () => {
+          const first = jobs.listWorkers({
+            cursor: null,
+            limit: 1,
+            includeArchived: false,
+          });
+          expect(first.workers).toHaveLength(1);
+          expect(first.workers[0]?.callId).toMatch(/^call-/u);
+          expect(first.nextCursor).not.toBeNull();
+          const second = jobs.listWorkers({
+            cursor: first.nextCursor,
+            includeArchived: false,
+            limit: 1,
+          });
+          expect(second.nextCursor).toBeNull();
+          expect(
+            [...first.workers, ...second.workers].map((w) => w.threadId).sort(),
+          ).toEqual(expected.get(subject.user.id)?.sort());
+        });
+      await jobs.archiveWorker(
+        jobs.listWorkers({ cursor: null, limit: 1, includeArchived: false })
+          .workers[0]!.parentBindingId,
+        jobs.listWorkers({ cursor: null, limit: 1, includeArchived: false })
+          .workers[0]!.threadId,
+      );
+      expect(
+        jobs.listWorkers({
+          cursor: null,
+          limit: 100,
+          includeArchived: false,
+        }).workers,
+      ).toHaveLength(3);
+      expect(
+        jobs.listWorkers({ cursor: null, limit: 100, includeArchived: true })
+          .workers,
+      ).toHaveLength(4);
+      const first = jobs.listWorkers({
+        cursor: null,
+        limit: 1,
+        includeArchived: false,
+      }).workers[0]!;
+      harness.db.delete(threads).where(eq(threads.id, first.threadId)).run();
+      await expect(
+        jobs.archiveWorker(first.parentBindingId, first.threadId),
+      ).resolves.toBeUndefined();
+      await expect(
+        jobs.getWorker(first.parentBindingId, first.threadId),
+      ).rejects.toMatchObject({ status: 404 });
+    } finally {
+      await workers.close();
+    }
+  });
+});

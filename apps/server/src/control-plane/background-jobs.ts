@@ -46,7 +46,12 @@ export function createControlPlaneBackgroundJobs(
   builtin: boolean,
   workers: Pick<
     InternalDoNotUseBackgroundJobs,
-    "startWorker" | "getWorker" | "sendWorker" | "stopWorker" | "archiveWorker"
+    | "startWorker"
+    | "getWorker"
+    | "sendWorker"
+    | "stopWorker"
+    | "archiveWorker"
+    | "listWorkers"
   > | null = null,
 ): InternalDoNotUseBackgroundJobs {
   const kinds: InternalDoNotUseBackgroundJobBinding["kind"][] =
@@ -176,6 +181,10 @@ export function createControlPlaneBackgroundJobs(
           : null,
         id,
       );
+    },
+    listWorkers(input) {
+      if (pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID || !workers) return denied();
+      return workers.listWorkers(input);
     },
     resolveWorkerProfile(id, profileVersionId) {
       if (required(id).kind !== "workflow-run") return denied();

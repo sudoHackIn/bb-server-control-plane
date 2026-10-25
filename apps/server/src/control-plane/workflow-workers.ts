@@ -1,15 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, asc, gt, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { z } from "zod";
 import type { InternalDoNotUseBackgroundJobs } from "@get-bb/plugin-sdk";
 import {
   controlPlaneThreads,
+  accessibleControlPlaneProjects,
+  controlPlaneProjectAccess,
   controlPlaneJobBindings,
   threads,
   createControlPlaneJobBinding,
   deleteControlPlaneJobBinding,
   setControlPlaneJobEnabled,
   getThread,
+  getThreadPluginMetadata,
   getEnvironment,
   requireControlPlaneThreadDispatch,
 } from "@bb/db";
@@ -48,6 +52,12 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
   let closed = false;
   let sweep: Promise<void> | null = null;
   function read(parentId: string, threadId: string) {
+    if (!getThread(deps.db, threadId))
+      throw new ApiError(
+        404,
+        "thread_not_found",
+        "Workflow worker was deleted",
+      );
     const record = deps.db
       .select({ owner: controlPlaneThreads, binding: controlPlaneJobBindings })
       .from(controlPlaneThreads)
@@ -92,6 +102,7 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
     await stopThreadForCurrentState(deps, thread, environment);
   }
   async function stopWorker(parentId: string, threadId: string) {
+    if (!getThread(deps.db, threadId)) return;
     const record = read(parentId, threadId);
     setControlPlaneJobEnabled(
       deps.db,
@@ -155,6 +166,103 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
   );
   timer.unref();
   return {
+    listWorkers(
+      input: Parameters<InternalDoNotUseBackgroundJobs["listWorkers"]>[0],
+    ) {
+      const parsed = z
+        .object({
+          cursor: z.string().min(1).nullable(),
+          includeArchived: z.boolean(),
+          limit: z.number().int().min(1).max(100),
+        })
+        .strict()
+        .parse(input);
+      const principal = currentControlPlanePrincipal();
+      const parent = alias(controlPlaneJobBindings, "worker_parent_binding");
+      const accessible =
+        principal?.kind === "user"
+          ? accessibleControlPlaneProjects(deps.db)
+              .where(eq(controlPlaneProjectAccess.userId, principal.userId))
+              .as("readable_worker_projects")
+          : null;
+      const rows = deps.db
+        .select({
+          threadId: threads.id,
+          bindingId: controlPlaneJobBindings.id,
+          parentBindingId: parent.id,
+          runId: parent.objectId,
+          originThreadId: parent.originThreadId,
+        })
+        .from(controlPlaneJobBindings)
+        .innerJoin(
+          controlPlaneThreads,
+          eq(controlPlaneThreads.jobBindingId, controlPlaneJobBindings.id),
+        )
+        .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
+        .innerJoin(
+          parent,
+          eq(parent.id, controlPlaneJobBindings.sourceBindingId),
+        )
+        .where(
+          and(
+            eq(controlPlaneJobBindings.kind, "workflow-worker"),
+            eq(parent.kind, "workflow-run"),
+            eq(threads.originPluginId, "workflows"),
+            isNull(threads.deletedAt),
+            parsed.includeArchived ? undefined : isNull(threads.archivedAt),
+            eq(parent.ownerUserId, controlPlaneJobBindings.ownerUserId),
+            eq(parent.projectId, controlPlaneJobBindings.projectId),
+            eq(parent.originThreadId, controlPlaneJobBindings.originThreadId),
+            isNotNull(parent.originThreadId),
+            eq(
+              controlPlaneThreads.ownerUserId,
+              controlPlaneJobBindings.ownerUserId,
+            ),
+            eq(
+              controlPlaneThreads.profileVersionId,
+              controlPlaneJobBindings.profileVersionId,
+            ),
+            eq(threads.projectId, parent.projectId),
+            principal?.kind === "user"
+              ? eq(controlPlaneJobBindings.ownerUserId, principal.userId)
+              : undefined,
+            accessible
+              ? sql`EXISTS (SELECT 1 FROM ${accessible} WHERE ${accessible.projectId} = ${parent.projectId})`
+              : undefined,
+            parsed.cursor
+              ? gt(controlPlaneJobBindings.id, parsed.cursor)
+              : undefined,
+          ),
+        )
+        .orderBy(asc(controlPlaneJobBindings.id))
+        .limit(parsed.limit + 1)
+        .all();
+      const found = rows.slice(0, parsed.limit);
+      return {
+        workers: found.map((row) => {
+          const metadata = z
+            .object({
+              workflowWorker: z.literal(1),
+              runId: z.literal(row.runId),
+              callId: z.string().min(1).max(200),
+            })
+            .safeParse(
+              getThreadPluginMetadata(deps.db, row.threadId, "workflows")
+                .metadata,
+            );
+          if (row.originThreadId === null) return denied();
+          return {
+            threadId: row.threadId,
+            parentBindingId: row.parentBindingId,
+            runId: row.runId,
+            callId: metadata.success ? metadata.data.callId : null,
+            originThreadId: row.originThreadId,
+          };
+        }),
+        nextCursor:
+          rows.length > parsed.limit ? (found.at(-1)?.bindingId ?? null) : null,
+      };
+    },
     async startWorker(
       parentId: string,
       input: Parameters<InternalDoNotUseBackgroundJobs["startWorker"]>[1],
@@ -239,6 +347,7 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
     },
     stopWorker,
     async archiveWorker(parentId: string, threadId: string) {
+      if (!getThread(deps.db, threadId)) return;
       read(parentId, threadId);
       await stopWorker(parentId, threadId);
       const record = read(parentId, threadId);

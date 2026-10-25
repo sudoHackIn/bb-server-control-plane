@@ -231,8 +231,9 @@ host reply cannot admit execution after cancellation. Independently owned worker
 records retain the parent run even when cancellation wins attachment. RPC close,
 reply failure and deadlines abort pending callbacks and await their cleanup.
 Completed workers are stopped, disabled and retired using core's single-thread
-archive lifecycle, without an unrestricted SDK fallback. Scoped discovery of old
-orphan workers and all controller recovery paths still require completion.
+archive lifecycle, without an unrestricted SDK fallback. Scoped discovery now recovers mapped workers and persists their parent binding
+independently of run retention. Additional controller recovery paths still
+require completion.
 
 Immutable profile version is part of managed call identity; standalone cache
 identity is unchanged. The existing successful unchanged-prefix replay algorithm
@@ -263,3 +264,31 @@ outside the project is rejected before opening. The final file must be regular;
 `O_NONBLOCK` prevents a FIFO open from hanging. A bounded 512 KiB read rejects
 oversized or invalid UTF-8 source without following symlinks. This confines child
 source resolution, not all filesystem operations of the agent.
+
+## Worker discovery and interrupted execution
+
+Builtin Workflows reconciles registered workers through a source-filtered core
+query, with no global thread SDK fallback. Central worker/parent bindings and
+native ownership establish identity; plugin metadata supplies optional call
+correlation only. Cursor pages contain at most 100 rows. Current user project
+access is applied in SQL before pagination. Startup includes archived threads
+so a crash between native archive and plugin acknowledgement can be repaired;
+periodic discovery lists only unarchived threads.
+
+The plugin's real SQLite migration adds `workflow_workers.parent_binding_id`,
+backfilled from retained runs. New ownership records save it before attachment;
+discovery fills absent references without replacing an existing nonnull parent.
+This reference survives run-history deletion and authorizes scoped cleanup.
+Native deletion is handled idempotently, while an existing foreign worker still
+fails relation checks. Cleanup retries keep their existing bounded backoff.
+
+Docker verifies actual automatic recovery after graceful server restart: a
+successful prefix is reused, the interrupted attempt remains disabled/stopped,
+and a new attempt completes the pending step under saved user authority. A
+private fixture seeds registered workers with missing run history while BB is
+offline; startup discovers and archives them, including one already archived
+before its cleanup acknowledgement. Earlier ancestry fixtures now include actual
+call correlation, so periodic orphan cleanup can distinguish active calls.
+Interrupted side effects may execute again; these checks do not establish
+exactly-once behavior, abrupt-crash recovery, all provider retries, notifications
+or personal background APIs.

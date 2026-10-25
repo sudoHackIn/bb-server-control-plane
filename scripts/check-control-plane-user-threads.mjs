@@ -853,6 +853,12 @@ export function createUserThreadFixture({ db, users }) {
         revokedSendDeniedBeforeEvents: true,
       };
     },
+    async beforeRestart() {
+      await saved.workflows.beforeRestart();
+    },
+    async afterShutdown() {
+      await saved.workflows.afterShutdown();
+    },
     async afterRestart() {
       const { command, alice, wait, shutdownStream, bindingCheck } = saved;
       const jobBindingRestart = await bindingCheck("resume");

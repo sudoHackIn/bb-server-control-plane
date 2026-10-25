@@ -1356,3 +1356,43 @@ nesting. The complete build/deployment passes all 63 tasks. See
 Personal job APIs/UI, scoped orphan recovery, retries/notifications, automation
 and scheduler integration and the remaining unchecked feature stages are still
 required. No completion of the overall background stage is claimed.
+
+## Thirty-third increment: scoped worker discovery and restart recovery
+
+The builtin-only background facade exposes bounded `listWorkers` cursor pages.
+The core query joins worker authority, parent workflow-run authority, native
+ownership and native threads, checking owner/project/profile/origin consistency.
+Current user owner/project access is filtered in SQL before pagination. Trusted
+service reconciliation sees registered owners without using the unrestricted
+thread SDK. Metadata supplies optional call correlation, never authentication.
+Startup includes archived workers to repair interrupted cleanup acknowledgement;
+periodic discovery excludes them.
+
+A real plugin SQLite migration adds `workflow_workers.parent_binding_id` and
+backfills it from retained runs. New ownership and discovery save this reference
+before attachment and preserve it across run-history pruning. Scoped stop/archive
+can therefore complete after the run row is gone. Physically deleted native
+threads return 404 metadata and idempotent cleanup after parent admission;
+existing foreign workers remain denied. Existing cleanup retry/backoff is reused.
+
+Verification: 267 Workflows tests, 402 Plugin SDK tests, 75 Plugin Guide tests and
+30 selected server tests pass. Tests cover source-filtered two-user cursor
+pagination, optional metadata correlation, archived inclusion, native deletion,
+migration backfill and cleanup after pruning without a global SDK fallback.
+Strict server/SDK/Workflows/Guide typechecks, portable SDK declarations and
+changed-file lint/format/diff checks pass.
+
+Docker starts a real workflow with a completed prefix and a pending Qwen worker,
+then restarts BB. The first call replays in the same run and the interrupted call
+completes through a different worker attempt. An offline private fixture creates
+registered workers with absent run history, including one already archived before
+acknowledgement; startup discovers and retires them. The earlier ancestry fixture
+now creates corresponding native call rows/metadata so valid active workers are
+not mistaken for orphans. All 63 build/deployment tasks pass. See
+`control-plane-phase-33-verification.json`.
+
+This proves graceful restart and registered-worker reconciliation. Abrupt-crash
+recovery, the remaining provider retry cases, notifications, legacy unassigned
+jobs, personal background APIs/UI, automations and schedules remain required.
+Interrupted side effects may execute again; no exactly-once or overall background
+stage completion is claimed.
