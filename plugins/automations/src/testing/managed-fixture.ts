@@ -15,6 +15,13 @@ export default function fixture(bb: BbPluginApi) {
   let service = createAutomationService(configuration);
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   return {
+    scriptAttempt(runId: string) {
+      return db
+        .prepare(
+          "SELECT job_id AS jobId,cleanup_error AS cleanupError,result_json AS resultJson FROM automation_script_attempts WHERE run_id=?",
+        )
+        .get(runId);
+    },
     cancelRequested(runId: string) {
       return (
         db

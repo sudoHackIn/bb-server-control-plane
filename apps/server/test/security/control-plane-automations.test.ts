@@ -198,6 +198,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       .object({
         default: z.custom<
           (bb: BbPluginApi) => {
+            scriptAttempt(runId: string): unknown;
             cancelRequested(runId: string): boolean;
             restart(): void;
             tick(startup?: boolean): Promise<void> | undefined;
@@ -844,6 +845,157 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       body: JSON.stringify({ prompt: "x".repeat(1024 * 1024) }),
     });
     expect(large.status).toBe(413);
+    const scriptCalls: Array<{ id: string; source: string }> = [];
+    const pendingScripts = new Map<
+      string,
+      (result: Awaited<ReturnType<typeof jobs.runAutomationScript>>) => void
+    >();
+    let scriptStopFailures = 0;
+    const originalScriptRun = jobs.runAutomationScript;
+    const originalScriptStop = jobs.stopAutomationScript;
+    jobs.runAutomationScript = async (id, input) => {
+      withControlPlaneJobAuthority(harness.db, id, () => undefined);
+      scriptCalls.push({ id, source: input.source });
+      return new Promise((resolve) => pendingScripts.set(id, resolve));
+    };
+    jobs.stopAutomationScript = async (id) => {
+      if (scriptStopFailures-- > 0)
+        throw new Error("Script cleanup unavailable");
+      pendingScripts.get(id)?.({
+        jobId: id,
+        status: "cancelled",
+        exitCode: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        outputBytes: 0,
+        truncated: false,
+      });
+      pendingScripts.delete(id);
+    };
+    try {
+      const scriptDefinition = z.object({ id: z.string() }).parse(
+        await invoke(alice.user.id, "automations_create", {
+          ...payload(alice),
+          execution: {
+            mode: "script",
+            interpreter: "node",
+            script: "console.log('original')",
+            workingDirectory: { type: "project" },
+            timeoutMs: 1000,
+          },
+        }),
+      );
+      expect((await mine.get(scriptDefinition.id)).id).toBe(
+        scriptDefinition.id,
+      );
+      await expect(foreign.get(scriptDefinition.id)).rejects.toThrow("404");
+      const firstScript = run.parse(
+        await invoke(alice.user.id, "automations_run", {
+          projectId: alice.project.id,
+          automationId: scriptDefinition.id,
+          idempotencyKey: "script-stable",
+        }),
+      ).run;
+      expect(firstScript.threadId).toBeNull();
+      expect(firstScript.status).toBe("running");
+      expect(scriptCalls).toHaveLength(1);
+      expect(scriptCalls[0]?.source).toBe("console.log('original')");
+      const attempt = z
+        .object({
+          jobId: z.string().uuid(),
+          cleanupError: z.string().nullable(),
+        })
+        .parse(native.scriptAttempt(firstScript.id));
+      expect(attempt.jobId).toBe(scriptCalls[0]?.id);
+      await invoke(alice.user.id, "controlPlaneAutomationUpdate", {
+        projectId: alice.project.id,
+        automationId: scriptDefinition.id,
+        expectedRevision: 1,
+        execution: {
+          mode: "script",
+          interpreter: "node",
+          script: "console.log('revised')",
+          workingDirectory: { type: "project" },
+          timeoutMs: 1000,
+        },
+      });
+      expect(scriptCalls[0]?.source).toBe("console.log('original')");
+      scriptStopFailures = 2;
+      await expect(
+        invoke(alice.user.id, "controlPlaneAutomationStop", {
+          projectId: alice.project.id,
+          automationId: scriptDefinition.id,
+          runId: firstScript.id,
+        }),
+      ).rejects.toThrow(/pending/u);
+      expect(native.cancelRequested(firstScript.id)).toBe(true);
+      expect(
+        z
+          .object({ cleanupError: z.string() })
+          .parse(native.scriptAttempt(firstScript.id)).cleanupError,
+      ).toContain("unavailable");
+      native.restart();
+      await native.tick(true);
+      const states = async () =>
+        z
+          .object({
+            runs: z.array(z.object({ id: z.string(), status: z.string() })),
+          })
+          .parse(
+            await invoke(alice.user.id, "automations_runs", {
+              projectId: alice.project.id,
+              automationId: scriptDefinition.id,
+            }),
+          );
+      expect(
+        (await states()).runs.find((value) => value.id === firstScript.id)
+          ?.status,
+      ).toBe("running");
+      await native.tick();
+      await expect
+        .poll(
+          async () =>
+            (await states()).runs.find((value) => value.id === firstScript.id)
+              ?.status,
+        )
+        .toBe("cancelled");
+      expect(scriptCalls).toHaveLength(1);
+      const deduped = run.parse(
+        await invoke(alice.user.id, "automations_run", {
+          projectId: alice.project.id,
+          automationId: scriptDefinition.id,
+          idempotencyKey: "script-stable",
+        }),
+      ).run;
+      expect(deduped.id).toBe(firstScript.id);
+      expect(scriptCalls).toHaveLength(1);
+      const interrupted = run.parse(
+        await invoke(alice.user.id, "automations_run", {
+          projectId: alice.project.id,
+          automationId: scriptDefinition.id,
+          idempotencyKey: "script-new",
+        }),
+      ).run;
+      expect(scriptCalls[1]?.source).toBe("console.log('revised')");
+      native.restart();
+      await native.tick(true);
+      await expect
+        .poll(
+          async () =>
+            (await states()).runs.find((value) => value.id === interrupted.id)
+              ?.status,
+        )
+        .toBe("failed");
+      expect(scriptCalls).toHaveLength(2);
+      await invoke(alice.user.id, "automations_delete", {
+        projectId: alice.project.id,
+        automationId: scriptDefinition.id,
+      });
+    } finally {
+      jobs.runAutomationScript = originalScriptRun;
+      jobs.stopAutomationScript = originalScriptStop;
+    }
     setControlPlaneProfileAccess(
       harness.db,
       alice.profile.profileId,

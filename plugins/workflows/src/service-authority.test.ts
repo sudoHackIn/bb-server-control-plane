@@ -95,6 +95,15 @@ function fixture() {
     async stopWorker() {
       throw new Error("Test workers not configured");
     },
+    async runAutomationScript() {
+      throw new Error("Automations only");
+    },
+    async stopAutomationScript() {
+      throw new Error("Automations only");
+    },
+    async releaseWorker() {
+      throw new Error("Test workers not configured");
+    },
     async evaluateWorkflow() {
       throw new Error("Test evaluator not configured");
     },

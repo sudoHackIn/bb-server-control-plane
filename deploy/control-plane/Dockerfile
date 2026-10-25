@@ -17,7 +17,7 @@ COPY app ./apps/app/dist
 COPY cli ./apps/cli/dist
 COPY host-daemon ./apps/host-daemon/dist
 COPY --chown=node:node control-plane-tool-plugin /srv/bb-tool-fixture
-COPY script-runner-check.mjs check-control-plane-script-jobs.mjs script-job-client.mjs check-control-plane-automations.mjs workflow-worker-check.mjs workflow-evaluator-check.mjs check-control-plane-workflows.mjs check-control-plane-workflow-definitions.mjs job-bindings-check.mjs check-control-plane-approvals.mjs check-control-plane-user-threads.mjs check-control-plane-browser-handshake.mjs ./
+COPY check-control-plane-script-automations.mjs script-runner-check.mjs check-control-plane-script-jobs.mjs script-job-client.mjs check-control-plane-automations.mjs workflow-worker-check.mjs workflow-evaluator-check.mjs check-control-plane-workflows.mjs check-control-plane-workflow-definitions.mjs job-bindings-check.mjs check-control-plane-approvals.mjs check-control-plane-user-threads.mjs check-control-plane-browser-handshake.mjs ./
 COPY configure.mjs deployment-check.mjs namespace-denial.mjs check-control-plane-user-deployment.mjs check-control-plane-qwen-jobs.mjs check-control-plane-managed-runtime.mjs qwen-job-client.mjs qwen-server-query.mjs qwen-runtime-fixture.mjs ./
 ENV NODE_ENV=production BB_DATA_DIR=/srv/bb BB_SERVER_PORT=8080 BB_SERVER_BIND_HOST=0.0.0.0 BB_CONTROL_PLANE_REQUIRED=1 BB_TELEMETRY=0
 USER node

@@ -33,6 +33,37 @@ it("rejects foreign, disabled, wrong-purpose and cancelled script launches befor
       await expect(
         runControlPlaneAutomationScript(db, source.id, input, active.signal),
       ).rejects.toThrow("not authorized");
+      const workflowJobs = createControlPlaneBackgroundJobs(
+        db,
+        "workflows",
+        true,
+      );
+      expect(() =>
+        workflowJobs.runAutomationScript(
+          run.id,
+          { source: input.source, timeoutMs: input.timeoutMs },
+          active.signal,
+        ),
+      ).toThrow("not authorized");
+      expect(() => workflowJobs.stopAutomationScript(run.id)).toThrow(
+        "not authorized",
+      );
+      await expect(
+        withControlPlaneUser(bob.user.id, () =>
+          jobs.stopAutomationScript(run.id),
+        ),
+      ).rejects.toThrow("not authorized");
+      expect(() =>
+        jobs.runAutomationScript(
+          run.id,
+          {
+            source: input.source,
+            timeoutMs: input.timeoutMs,
+            ...{ jobId: input.jobId },
+          },
+          active.signal,
+        ),
+      ).toThrow();
       const cancelled = new AbortController();
       cancelled.abort();
       await expect(

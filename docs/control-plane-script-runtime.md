@@ -1,9 +1,10 @@
 # Isolated Node script launcher primitive
 
-Phase 48 adds the private launcher and phase 49 adds its bounded TypeScript
-runner. Native managed Automations still rejects script definitions. Durable
-controller lifecycle and explicit personal API/SDK/CLI/UI contracts remain
-required before tenants can submit script jobs.
+Phase 48 adds the private launcher, phase 49 its bounded TypeScript runner and
+phase 50 the native managed Automations controller. Centrally managed scripts
+use inline Node ESM, project cwd and a full-permission approved origin profile.
+The limited personal script definition/output API/SDK/CLI/UI contract remains
+pending; existing personal agent automation controls are unchanged.
 
 ## Installation and invocation
 
@@ -98,8 +99,7 @@ interpreter argument injection and launch after a pre-start stop fence reject.
 
 The normal Qwen/workflow/automation/restart/crash scenarios remain enabled. The
 new primitive does not change their provider policy, daemon protocol, database
-schema or public SDK. Native script definitions remain denied until their
-managed runner/controller integration is complete.
+schema or public SDK. Unsupported script configurations remain denied before spawn.
 
 ## Bounded TypeScript runner
 
@@ -134,7 +134,45 @@ Docker integration exercises both owners through this actual core function and
 sudo/helper chain: success, nonzero exit, separate streams, a combined output
 limit, invalid UTF-8, cancellation, timeout and live source revocation. Detached
 commands are checked from the container's outer process namespace after return.
-Real-SQLite tests cover pre-spawn authorization and input rejection. Persisting
-script process identity, controller crash recovery, pending cleanup retries and
-the public script definition/history contract are subsequent work. This runner
-alone does not make managed script Automations available.
+Real-SQLite tests cover pre-spawn authorization and input rejection. The native controller now supplies durable process identity, crash handling and
+pending cleanup retries as described below. Personal script definition/output
+contracts remain subsequent work.
+
+## Native managed Automations controller
+
+Builtin Automations uses `runAutomationScript` and `stopAutomationScript` on the
+internal background authority facade. These members are unavailable to other
+plugins and route through the core runner, never the standalone script runner.
+The core runner also requires the bound profile's `full` permission mode; an
+accept-edits/approval profile does not authorize arbitrary Node workspace code.
+Native create/update reject shell/Python interpreters, scriptFile, custom cwd,
+environment overrides, missing Node selection and oversized UTF-8 source.
+The existing native Automations RPC, SDK plugin RPC and CLI can create and manage
+this supported subset. No public process/command endpoint is added.
+
+Before dispatch the native run stores its approved definition revision and
+central automation-run binding. `automation_script_attempts` stores that same
+binding UUID as job UUID before process launch. No fake Qwen/thread ID is used.
+Completion stores separate stdout/stderr, exit outcome and byte/truncation
+metadata in result JSON and the native run output, atomically with terminal
+state. Active source edits apply to subsequent runs, not the saved current body.
+
+Individual cancellation persists intent before cleanup and leaves the source
+schedule/failure budget intact. Pause/delete fence source admission and stop
+script attempts before reporting success; delete waits for cleanup before
+removing persistence. Failed cleanup retains a running native run and error
+metadata. Subsequent sweeps and controller restarts retry cleanup under saved
+ownership even after execution grants disappear. The service loop aborts
+and awaits active script tasks in its finally path. The host still applies its
+generic hung-service timeout during disposal; forced unload/pending cleanup after
+that timeout remains part of the broader lifecycle acceptance.
+
+A restarted controller never relaunches a script attempt whose execution might
+already have had side effects. It first stops/fences the saved job UUID, then
+settles cancellation or an interrupted failure. This is not resumable JavaScript
+memory or exactly-once side effects. A new explicit manual run gets a new UUID.
+Current once/cron scheduling, single-flight claims and idempotency use the same
+native persistence as agent Automations. Personal metadata/history can include
+native scripts, but the prompt-only personal definition editor rejects script
+bodies explicitly; use the native administration surface until its dedicated
+personal contract ships.

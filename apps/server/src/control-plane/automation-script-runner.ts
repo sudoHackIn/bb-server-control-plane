@@ -1,7 +1,13 @@
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
-import { getControlPlaneJobBinding, type DbQueryConnection } from "@bb/db";
+import {
+  controlPlaneUsers,
+  getControlPlaneJobBinding,
+  type DbQueryConnection,
+} from "@bb/db";
+import { eq } from "drizzle-orm";
+import { currentControlPlanePrincipal } from "./access.js";
 import { withControlPlaneJobAuthority } from "./job-authority.js";
 
 const exec = promisify(execFile);
@@ -54,6 +60,7 @@ export async function runControlPlaneAutomationScript(
           )
         : null;
       if (
+        context.profileVersion.definition.permissionMode !== "full" ||
         context.binding.kind !== "automation-run" ||
         parent?.kind !== "automation"
       )
@@ -228,5 +235,54 @@ export async function runControlPlaneAutomationScript(
     if (closeDeadline) clearTimeout(closeDeadline);
     clearInterval(grants);
     signal.removeEventListener("abort", abort);
+  }
+}
+
+export async function stopControlPlaneAutomationScript(
+  db: DbQueryConnection,
+  bindingId: string,
+): Promise<void> {
+  const binding = getControlPlaneJobBinding(
+    db,
+    null,
+    z.string().uuid().parse(bindingId),
+  );
+  const principal = currentControlPlanePrincipal();
+  if (
+    !binding ||
+    binding.kind !== "automation-run" ||
+    (principal?.kind === "user" && binding.ownerUserId !== principal.userId)
+  )
+    throw new Error("Script cleanup is not authorized");
+  const parent = binding.sourceBindingId
+    ? getControlPlaneJobBinding(db, null, binding.sourceBindingId)
+    : null;
+  const user = db
+    .select()
+    .from(controlPlaneUsers)
+    .where(eq(controlPlaneUsers.id, binding.ownerUserId))
+    .get();
+  if (
+    !user ||
+    parent?.kind !== "automation" ||
+    parent.ownerUserId !== binding.ownerUserId ||
+    parent.projectId !== binding.projectId
+  )
+    throw new Error("Script cleanup is not authorized");
+  try {
+    await exec(
+      "/usr/bin/sudo",
+      ["-n", "--", helper, "stop", user.id, String(user.uid), binding.id],
+      {
+        cwd: "/tmp",
+        env: { PATH: "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" },
+        timeout: 12000,
+        maxBuffer: 16384,
+      },
+    );
+  } catch (cause) {
+    throw new Error(`Script cleanup is unconfirmed for job ${binding.id}`, {
+      cause,
+    });
   }
 }

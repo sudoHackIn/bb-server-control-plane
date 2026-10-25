@@ -3913,3 +3913,14 @@ and daemon runtime-release acknowledgement. Pending idle release is retried;
 a newer/active turn marks the runtime retained and prevents background cleanup
 from interrupting an interactive continuation. Source authority and recorded
 Qwen session IDs remain intact.
+
+`InternalDoNotUseBackgroundJobs.runAutomationScript` and `stopAutomationScript`
+are builtin Automations-only plumbing. Core's bounded script runner is the only
+execution path. The saved automation-run binding UUID is also the immutable
+launcher job UUID; callers cannot override identity, paths, environment or the
+interpreter. Stop checks saved owner and source relation without requiring live
+execution grants, so revocation/deletion cannot prevent safe cleanup. The host
+lifecycle guard applies to both methods. Only the native managed Automations
+controller, security tests and Docker fixtures call these members. Stabilization
+requires the remaining personal script API/SDK/CLI/UI contract and full lifecycle
+acceptance, not a public general-purpose process API.

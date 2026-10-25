@@ -950,14 +950,16 @@ export function createUserThreadFixture({ db, users }) {
         revokedSendDeniedBeforeEvents: true,
       };
     },
-    async beforeCrash() {
+    async beforeCrash(serverPid) {
       await saved.workflows.beforeCrash();
+      await saved.automations.beforeCrash(serverPid);
     },
     async afterCrashShutdown() {
       await saved.workflows.afterCrashShutdown();
     },
     async afterCrash() {
-      return saved.workflows.afterCrash();
+      const workflowProof = await saved.workflows.afterCrash();
+      return { ...workflowProof, ...(await saved.automations.afterCrash()) };
     },
     async beforeRestart() {
       await saved.workflows.beforeRestart();

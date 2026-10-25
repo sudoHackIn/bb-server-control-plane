@@ -57,16 +57,20 @@ export default async function plugin(bb: BbPluginApi) {
   bb.background.service("automation-sweep", {
     async start(signal) {
       if (service.managedTick) {
-        await service.managedTick(true, signal);
-        while (!signal.aborted) {
-          try {
-            await service.managedTick(false, signal);
-          } catch (error) {
-            bb.log.error(
-              `Managed automation sweep failed: ${errorMessage(error)}`,
-            );
+        try {
+          await service.managedTick(true, signal);
+          while (!signal.aborted) {
+            try {
+              await service.managedTick(false, signal);
+            } catch (error) {
+              bb.log.error(
+                `Managed automation sweep failed: ${errorMessage(error)}`,
+              );
+            }
+            await sleep(500, signal);
           }
-          await sleep(500, signal);
+        } finally {
+          await service.managedShutdown?.();
         }
         return;
       }

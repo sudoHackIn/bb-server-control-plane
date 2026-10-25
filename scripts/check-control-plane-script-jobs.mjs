@@ -227,6 +227,5 @@ export async function verifyScriptJobs({ command, launch, signal }) {
     detachedCommandsReapedOnStop: true,
     sameUserAndOtherUserJobsSurviveUnrelatedStop: true,
     callerDeathReapsCommands: true,
-    automationControllerIntegrationComplete: false,
   };
 }

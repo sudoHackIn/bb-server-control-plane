@@ -2022,6 +2022,30 @@ export interface InternalDoNotUseBackgroundJobs {
     completedSequence: number,
   ): Promise<boolean>;
   archiveWorker(id: string, threadId: string): Promise<void>;
+  /** Builtin Automations only. Runs inline Node ESM using the saved automation-run UUID as the process job identity. */
+  runAutomationScript(
+    id: string,
+    input: { source: string; timeoutMs: number },
+    signal: AbortSignal,
+  ): Promise<{
+    jobId: string;
+    status:
+      | "succeeded"
+      | "failed"
+      | "cancelled"
+      | "timed_out"
+      | "output_limit"
+      | "authority_revoked"
+      | "invalid_output";
+    exitCode: number | null;
+    signal: string | null;
+    stdout: string;
+    stderr: string;
+    outputBytes: number;
+    truncated: boolean;
+  }>;
+  /** Builtin Automations only. Acknowledges cleanup under saved ownership even after execution grants are revoked. */
+  stopAutomationScript(id: string): Promise<void>;
   /** Runs the fixed isolated workflow evaluator under current saved authority. No command or environment overrides. */
   evaluateWorkflow(
     id: string,

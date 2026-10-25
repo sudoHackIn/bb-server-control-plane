@@ -12,6 +12,7 @@ import {
   deleteAutomation,
   getAutomation,
   getAutomationRun,
+  getRunningAutomationRun,
   listAutomationRuns,
   listDueAutomations,
   listRunningAutomationRuns,
@@ -33,6 +34,7 @@ import {
   type AutomationExecution,
   type AutomationTrigger,
 } from "./rpc-types.js";
+import { createManagedScripts } from "./managed-scripts.js";
 import { createAutomationId } from "./ids.js";
 import {
   computeInitialNextRunAt,
@@ -82,6 +84,7 @@ export function createManagedAutomationService({
   let ticking = false;
   let lifecycleSignal: AbortSignal | undefined;
   const cancelTasks = new Map<string, Promise<boolean>>();
+  const scripts = createManagedScripts(db, jobs, emit);
   function head(row: AutomationRow) {
     const raw = db
       .prepare(
@@ -134,10 +137,25 @@ export function createManagedAutomationService({
     const origin = jobs.readOrigin(row.createdByThreadId);
     if (origin.projectId !== row.projectId)
       throw new Error("Automation origin project mismatch");
-    if (value.mode !== "agent")
-      throw new Error(
-        "Managed script automations require the isolated script launcher",
-      );
+    if (value.mode === "script") {
+      if (
+        !value.script ||
+        value.scriptFile !== undefined ||
+        value.interpreter !== "node" ||
+        value.workingDirectory.type !== "project" ||
+        value.env !== undefined
+      )
+        throw new Error(
+          "Managed scripts require inline Node ESM, project cwd and no environment overrides",
+        );
+      if (origin.permissionMode !== "full")
+        throw new Error(
+          "Managed scripts require an approved full-permission origin profile",
+        );
+      if (Buffer.byteLength(value.script) > 262144)
+        throw new Error("Script source exceeds 256 KiB");
+      return value;
+    }
     if (value.targetThreadId !== undefined)
       throw new Error("Managed target-thread automations are not supported");
     if (value.serviceTier !== undefined)
@@ -260,6 +278,17 @@ export function createManagedAutomationService({
         db.prepare(
           "UPDATE automation_run_authorities SET binding_id=? WHERE run_id=? AND binding_id IS NULL",
         ).run(binding.id, run.id);
+        if (selected.mode === "script") {
+          if (!selected.script) throw new Error("Missing script source");
+          scripts.launch(
+            row,
+            run,
+            binding.id,
+            { source: selected.script, timeoutMs: selected.timeoutMs },
+            lifecycleSignal,
+          );
+          return;
+        }
         const worker = await jobs.startWorker(
           binding.id,
           {
@@ -362,7 +391,7 @@ export function createManagedAutomationService({
       const run = getAutomationRun(db, runId, row.id);
       if (!run || run.status !== "running") return false;
       const saved = runHead(runId);
-      if (!saved?.bindingId || !run.threadId)
+      if (!saved?.bindingId || (!run.threadId && !scripts.has(runId)))
         throw new Error("Automation cancellation has no attached worker");
       const root = head(row);
       const parent = jobs.get(saved.bindingId);
@@ -377,7 +406,9 @@ export function createManagedAutomationService({
       )
         throw new Error("Automation run authority mismatch");
       await jobs.setEnabled(saved.bindingId, false);
-      await jobs.stopWorker(saved.bindingId, run.threadId);
+      if (scripts.has(runId)) await scripts.stop(row, run);
+      else if (run.threadId)
+        await jobs.stopWorker(saved.bindingId, run.threadId);
       closeAutomationRun(db, { runId, status: "cancelled", now: Date.now() });
       emit(row);
       return true;
@@ -387,6 +418,27 @@ export function createManagedAutomationService({
       return await task;
     } finally {
       if (cancelTasks.get(runId) === task) cancelTasks.delete(runId);
+    }
+  }
+  async function stopScriptsForSource(row: AutomationRow) {
+    const run = getRunningAutomationRun(db, row.id);
+    if (run?.runMode === "script") {
+      if (dispatching.has(run.id) || !scripts.has(run.id))
+        throw new experimental_PluginRpcRefusal({
+          code: "conflict",
+          message: "Script process is still being attached",
+        });
+      db.prepare(
+        "UPDATE automation_run_authorities SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE run_id=?",
+      ).run(Date.now(), run.id);
+      try {
+        await finishCancellation(row, run.id);
+      } catch {
+        throw new experimental_PluginRpcRefusal({
+          code: "conflict",
+          message: "Script cancellation remains pending cleanup",
+        });
+      }
     }
   }
   async function reconcileCancellation(row: AutomationRow, runId: string) {
@@ -419,6 +471,10 @@ export function createManagedAutomationService({
       const saved = runHead(run.id);
       const row = getAutomation(db, run.automationId);
       if (!row) continue;
+      if (scripts.has(run.id) && !cancellationRequested(run.id)) {
+        await scripts.reconcile(row, run);
+        continue;
+      }
       if (cancellationRequested(run.id)) {
         await reconcileCancellation(row, run.id);
         continue;
@@ -503,6 +559,7 @@ export function createManagedAutomationService({
     }
   }
   return {
+    managedShutdown: () => scripts.shutdown(),
     async managedTick(startup, signal) {
       if (jobs.userId !== null)
         throw new Error("Managed automation sweep requires service scope");
@@ -639,7 +696,7 @@ export function createManagedAutomationService({
                 ...input,
                 id,
                 execution: value,
-                runMode: "agent",
+                runMode: value.mode,
                 createdByThreadId: input.createdByThreadId ?? null,
                 nextRunAt: computeInitialNextRunAt({
                   trigger: input.trigger,
@@ -677,7 +734,7 @@ export function createManagedAutomationService({
       const canonical = toAutomationResponse(row);
       if (input.script)
         throw new Error(
-          "Managed script automations require the isolated script launcher",
+          "Use the complete execution object to update a managed script",
         );
       const value = execution(
         row,
@@ -732,8 +789,11 @@ export function createManagedAutomationService({
       const raw = db
         .prepare("SELECT 1 FROM automation_authorities WHERE automation_id=?")
         .get(row.id);
-      if (raw) await jobs.remove(head(row).bindingId);
-      else if (jobs.userId !== null) throw new Error("Automation not found");
+      if (raw) {
+        await jobs.setEnabled(head(row).bindingId, false);
+        await stopScriptsForSource(row);
+        await jobs.remove(head(row).bindingId);
+      } else if (jobs.userId !== null) throw new Error("Automation not found");
       deleteAutomation(db, input);
       emit(row);
       return { ok: true };
@@ -746,6 +806,7 @@ export function createManagedAutomationService({
         enabled: false,
         nextRunAt: null,
       });
+      await stopScriptsForSource(row);
       if (!next) throw new Error("Automation not found");
       emit(next);
       return toAutomationResponse(next);
@@ -805,7 +866,11 @@ export function createManagedAutomationService({
         });
       if (run.status !== "running") return { stopped: false };
       const saved = runHead(run.id);
-      if (dispatching.has(run.id) || !saved?.bindingId || !run.threadId)
+      if (
+        dispatching.has(run.id) ||
+        !saved?.bindingId ||
+        (!run.threadId && !scripts.has(run.id))
+      )
         throw new experimental_PluginRpcRefusal({
           code: "conflict",
           message: "Automation worker is still being attached",

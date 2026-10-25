@@ -242,6 +242,13 @@ export const migrations = [
      runtime_retained INTEGER NOT NULL DEFAULT 0
    );`,
   `ALTER TABLE automation_run_authorities ADD COLUMN cancel_requested_at INTEGER;`,
+  `CREATE TABLE automation_script_attempts (
+     run_id TEXT PRIMARY KEY REFERENCES automation_runs(id) ON DELETE CASCADE,
+     job_id TEXT NOT NULL UNIQUE,
+     result_json TEXT,
+     outcome_error TEXT,
+     cleanup_error TEXT
+   );`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {

@@ -30,6 +30,10 @@ import {
   BUILTIN_WORKFLOWS_PLUGIN_ID,
   BUILTIN_AUTOMATIONS_PLUGIN_ID,
 } from "../services/plugins/builtin-registry.js";
+import {
+  runControlPlaneAutomationScript,
+  stopControlPlaneAutomationScript,
+} from "./automation-script-runner.js";
 import { evaluateControlPlaneWorkflow } from "./workflow-evaluator.js";
 import { withControlPlaneJobAuthority } from "./job-authority.js";
 
@@ -183,6 +187,27 @@ export function createControlPlaneBackgroundJobs(
           : null,
         id,
       );
+    },
+    runAutomationScript(id, input, signal) {
+      if (
+        pluginId !== BUILTIN_AUTOMATIONS_PLUGIN_ID ||
+        required(id).kind !== "automation-run"
+      )
+        return denied();
+      const parsed = z
+        .object({ source: z.string(), timeoutMs: z.number() })
+        .strict()
+        .parse(input);
+      return runControlPlaneAutomationScript(
+        db,
+        id,
+        { ...parsed, jobId: id },
+        signal,
+      );
+    },
+    stopAutomationScript(id) {
+      if (pluginId !== BUILTIN_AUTOMATIONS_PLUGIN_ID) return denied();
+      return stopControlPlaneAutomationScript(db, id);
     },
     listWorkers(input) {
       if (!workers) return denied();

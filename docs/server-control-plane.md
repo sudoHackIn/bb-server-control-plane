@@ -44,6 +44,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add the personal Automations workspace using the limited API: revision-protected editor, once/cron schedules, pause/resume, manual run, paginated history, individual cancellation, conversation links and confirmed deletion; verify both users in a real browser.
 - [x] Add and verify a private fixed Node ESM script launcher under registered UID/HOME/cwd, including process namespaces, stop fences and descendant cleanup. Managed automation/API integration remains pending.
 - [x] Add a private bounded TypeScript script runner with saved automation authority, live grant rechecks, shared output budget and acknowledged cancellation/deadline cleanup. Durable controller and public script surfaces remain pending.
+- [x] Integrate supported inline Node scripts with native Automations persistence, saved UUID execution, pending cancellation/cleanup retry, pause/delete and interrupted-run recovery. Personal script definition/output contracts remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -2113,3 +2114,48 @@ formatting and all 63 normal Docker tasks in 7 minutes 35 seconds. The final
 image/helper and changed QA file hashes match the project. No watchdog was
 increased. `control-plane-phase-49-verification.json` records the full deployment
 proof and remaining work.
+
+## Fiftieth increment: durable native script Automations
+
+Builtin Automations now uses its internal authority facade to launch the bounded
+core Node ESM runner. The native attempt records the saved automation-run binding
+UUID as launcher job UUID before execution and stores bounded result JSON with
+terminal state atomically. Native script runs have no fabricated thread ID.
+Execution requires an approved full-permission origin, inline source, explicit
+Node interpreter and project cwd; unsupported interpreters/files/cwd/environment
+settings reject before spawn. Agent execution is unchanged.
+
+Individual stop persists intent and awaits exact-job cleanup. Pause/delete fence
+source admission and await script cleanup; errors retain pending state for sweep
+and restart retries. The service shutdown path aborts and awaits active scripts; the host
+hung-service timeout and forced-unload acceptance remain part of the broader
+lifecycle audit.
+A controller restart cleans up the saved process and settles cancellation or an
+interrupted failure without relaunching possibly side-effecting script code.
+Immutable source revisions and existing native once/cron/single-flight/idempotency
+persistence apply to scripts as well. Internal SDK plumbing is restricted to the
+builtin plugin, lifecycle guarded and inventoried in the Plugin Guide/audit.
+
+Native RPC/SDK plugin RPC/CLI support the subset; personal metadata/history can
+read native script rows without exposing output/source. The prompt-only personal
+definition editor explicitly rejects script definitions. The dedicated limited
+personal script definition/output API/SDK/CLI/UI remains subsequent work. Only
+the native controller checklist item closes; composite background and complete
+shared-server acceptance remain open.
+
+The crash fixture stages two real native script jobs, freezes the server before
+SIGKILL and writes one pending cancel intent directly into the native database.
+This explicitly injects the durable crash window; it is not a claim that the
+HTTP cancellation response was lost. Normal RPC stop/pause/delete separately
+exercise actual live cleanup. After restart cancellation must settle, the other
+attempt must fail as interrupted without a new run/process, and detached commands
+must be absent. Offline schedule verification requires zero claims after shutdown
+before observing its single execution on restart.
+
+Verification passes 9 real-SQLite server tests, 145 Automations tests, 277
+Workflows tests, the SDK version-alignment test, three-package typecheck, lint
+and formatting. The final full Docker deployment passes 63/63 tasks in 7 minutes
+54 seconds, including pending-cancel SIGKILL recovery and offline script schedule
+execution. SDK package and canonical compatibility version are both 0.6.80; an
+intermediate mismatch was caught by deployment and corrected before commit.
+`control-plane-phase-50-verification.json` records the full proof and limitations.

@@ -131,10 +131,13 @@ export function createControlPlaneAutomationService(
       .array(
         controlPlaneAutomationMutationSchema
           .extend({
-            execution: z.object({
-              mode: z.literal("agent"),
-              prompt: controlPlaneAutomationDetailSchema.shape.prompt,
-            }),
+            execution: z.discriminatedUnion("mode", [
+              z.object({
+                mode: z.literal("agent"),
+                prompt: controlPlaneAutomationDetailSchema.shape.prompt,
+              }),
+              z.object({ mode: z.literal("script") }),
+            ]),
           })
           .strip(),
       )
@@ -170,6 +173,12 @@ export function createControlPlaneAutomationService(
   }
   async function definition(userId: string, id: string) {
     const row = (await read(userId, [id]))[0] ?? missing();
+    if (row.execution.mode !== "agent")
+      throw new ApiError(
+        400,
+        "automation_script_contract_pending",
+        "Use native Automations for script definitions and output",
+      );
     return {
       ...controlPlaneAutomationMutationSchema.strip().parse(row),
       prompt: row.execution.prompt,

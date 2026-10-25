@@ -88,6 +88,7 @@ export interface AutomationService {
     automationId: string;
     runId: string;
   }): Promise<{ stopped: boolean }>;
+  managedShutdown?(): Promise<void>;
   managedTick?(startup: boolean, signal: AbortSignal): Promise<void>;
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: ListAutomationsInput): AutomationReadResult[];

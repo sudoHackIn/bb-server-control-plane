@@ -1,3 +1,4 @@
+import { verifyScriptAutomations } from "./check-control-plane-script-automations.mjs";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { get } from "node:https";
@@ -53,6 +54,16 @@ export async function verifyNativeAutomations({
     );
   await login();
   await cli(["plugin", "enable", "automations", "--json"]);
+  await wait(async () => {
+    const plugin = (await cli(["plugin", "list", "--json"])).plugins.find(
+      (value) => value.id === "automations",
+    );
+    if (plugin?.status === "error" || plugin?.status === "incompatible")
+      throw new Error(
+        `Automations activation failed: ${JSON.stringify(plugin)}`,
+      );
+    return plugin?.status === "running";
+  }, "native Automations activates before opening its database");
   async function rpc(method, input) {
     const path = `/tmp/bb-automation-input-${randomUUID()}.json`;
     await writeFile(path, JSON.stringify(input), { mode: 0o600, flag: "wx" });
@@ -506,7 +517,7 @@ export async function verifyNativeAutomations({
             timeoutMs: 1000,
           },
         }),
-      /isolated script launcher/u,
+      /inline Node ESM/u,
     );
     const scheduled = await Promise.all(
       subjects.map((subject) =>
@@ -698,6 +709,14 @@ export async function verifyNativeAutomations({
       storage.prepare("SELECT count(*) AS count FROM automations").get().count,
       beforeOversized,
     );
+    const scriptAutomation = await verifyScriptAutomations({
+      subjects,
+      rpc,
+      storage,
+      wait,
+      commandProcesses,
+      userRequest,
+    });
     const boundedRunner = launch([
       "script-runner-check.mjs",
       JSON.stringify(
@@ -737,9 +756,11 @@ export async function verifyNativeAutomations({
       );
     }
     let offline;
+    let offlineScript;
     return {
       verification: {
         ...boundedProof,
+        ...scriptAutomation.verification,
         boundedScriptRunnerDetachedDescendantsReaped: true,
         personalAutomationCrudAndRevisionCas: true,
         personalAutomationOriginProfileDerivedByServer: true,
@@ -766,16 +787,23 @@ export async function verifyNativeAutomations({
         nativeTwoUserOnceSchedulesSingleFire: true,
         nativeAutomationPauseStopsActiveWorker: true,
         nativeAutomationPauseKillsActualCommandProcesses: true,
-        managedScriptAutomationRejectedBeforeServiceSpawn: true,
+        unsupportedScriptAutomationRejectedBeforeServiceSpawn: true,
         automationOriginProjectMismatchDenied: true,
       },
+      beforeCrash: (serverPid) => scriptAutomation.beforeCrash(serverPid),
+      async afterCrash() {
+        await login();
+        return scriptAutomation.afterCrash();
+      },
       async beforeRestart() {
+        offlineScript = await scriptAutomation.beforeRestart();
         offline = await rpc(
           "automations_create",
           payload(bob, "automation-offline-bob", Date.now() + 5000),
         );
       },
       async afterShutdown() {
+        scriptAutomation.afterShutdown(offlineScript);
         if (offline) {
           while (Date.now() < offline.trigger.runAt) {
             signal.throwIfAborted();
@@ -853,8 +881,11 @@ export async function verifyNativeAutomations({
             .get(offline.id).total,
           1,
         );
+        const scriptRestartProof =
+          await scriptAutomation.afterRestart(offlineScript);
         storage.close();
         return {
+          ...scriptRestartProof,
           personalAutomationActiveOwnerReadsAfterRestart: true,
           personalAutomationLoggedOutOwnerDeniedAfterRestart: true,
           nativeAutomationOwnerAndHistorySurviveRestart: true,

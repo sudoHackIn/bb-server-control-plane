@@ -609,7 +609,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         .get(created[0].threadId).qwen_session_id,
       created[0].sessionId,
     );
-    await personal.beforeCrash();
+    await personal.beforeCrash(child.pid);
     let daemonPid;
     for (const name of await readdir("/proc")) {
       if (!/^\d+$/u.test(name)) continue;

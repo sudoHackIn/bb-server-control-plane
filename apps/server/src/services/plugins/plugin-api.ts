@@ -1127,6 +1127,14 @@ export function createPluginApi(options: {
         assertLive();
         return source.archiveWorker(id, threadId);
       },
+      runAutomationScript(id, input, signal) {
+        assertLive();
+        return source.runAutomationScript(id, input, signal);
+      },
+      stopAutomationScript(id) {
+        assertLive();
+        return source.stopAutomationScript(id);
+      },
       evaluateWorkflow(id, input, signal, onEvent, onAgent) {
         assertLive();
         return source.evaluateWorkflow(

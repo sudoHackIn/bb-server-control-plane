@@ -1,8 +1,15 @@
 # Automation script runtime
 
-Configured shared-server mode currently rejects script automations before any
-shared-service spawn. The following runtime contract applies to standalone BB;
-managed execution must first use the registered UID/HOME/project launcher.
+Configured shared-server mode supports only inline Node ESM with
+`--interpreter node --working-directory project` and a registered owned origin
+thread using an approved full-permission profile. It runs under that user's
+UID/HOME/project cwd. Script files, custom directories and environment overrides
+reject before spawn. Native run output contains bounded JSON with stdout/stderr,
+exit outcome and truncation metadata. Cancel/pause/delete await process cleanup;
+failed cleanup remains pending. Restart cleans up and marks interrupted scripts
+failed without automatically repeating their side effects. Use a new explicit
+manual run to retry. The dedicated limited personal script editor/API remains
+pending. The remaining file/storage/shell contracts below apply to standalone BB.
 
 Read this file before you use a script file or depend on the script runtime.
 
