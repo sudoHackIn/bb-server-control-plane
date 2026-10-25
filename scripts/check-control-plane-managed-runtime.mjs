@@ -1,3 +1,4 @@
+import { createMessageSourceFixture } from "./check-control-plane-message-sources.mjs";
 import { createDaemonRequestFixture } from "./check-control-plane-daemon-requests.mjs";
 import assert from "node:assert/strict";
 import { createUserThreadFixture } from "./check-control-plane-user-threads.mjs";
@@ -36,6 +37,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   const approvals = createApprovalFixture({ db, users });
   const personal = createUserThreadFixture({ db, users });
   const daemonRequests = createDaemonRequestFixture({ db });
+  const messageSources = createMessageSourceFixture({ db, users });
+  let messageSourceVerification, messageSourceRestartVerification;
   let daemonRequestVerification;
   let personalVerification, personalRestartVerification;
   let approvalVerification;
@@ -47,6 +50,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     for await (const part of req) text += part;
     const body = JSON.parse(text);
     if (
+      messageSources.handle(body, res) ||
       daemonRequests.handle(body, res) ||
       approvals.handle(body, res) ||
       personal.handle(body, res)
@@ -485,6 +489,13 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       token,
       created,
     });
+    messageSourceVerification = await messageSources.verify({
+      send,
+      wait,
+      token,
+      created,
+    });
+    stage("message-sources-complete");
     stage("native-dispatch-complete");
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
@@ -694,6 +705,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     );
     token = await start();
     personalRestartVerification = await personal.afterRestart();
+    messageSourceRestartVerification = await messageSources.afterRestart(token);
+    stage("message-sources-restart-complete");
     const secondSession = await wait(
       connected,
       "daemon reconnect after restart",
@@ -885,6 +898,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       nativeUidHomeTools: true,
       nativeTimeline: true,
       ...daemonRequestVerification,
+      ...messageSourceVerification,
+      ...messageSourceRestartVerification,
       managedDaemonShutdownRefusesToolsAndApprovals: true,
       quiescenceDoesNotClaimNextDuePluginSchedule: true,
       managedShutdown: true,

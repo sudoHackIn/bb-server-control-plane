@@ -1,0 +1,141 @@
+{
+  "scope": "Current managed sender/requester and retry-source authority at queue admission, consumption and exact durable request transport, including idle-session provenance and managed-only grouping",
+  "previousStageCommit": "b0e43baf6",
+  "centralDatabaseMigration": null,
+  "nativeDatabaseMigration": null,
+  "hostDaemonProtocol": {
+    "version": 253,
+    "changed": false,
+    "compatibilityDeliberatelyPreserved": true,
+    "newWireFields": []
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "sourceMustBeCurrentManagedThreadOfSameOwner": true,
+    "sourceProjectProfileAndJobAncestryRechecked": true,
+    "sourceMayBeIdleButNotArchivedOrDeleted": true,
+    "checkBeforeClearAndOrdinarySend": true,
+    "queueWritesAndWaitsRecheckSources": true,
+    "eachClaimedRowRecheckedBeforeConsumption": true,
+    "requestTransactionRechecksSenderAndRetrySource": true,
+    "transportRechecksExactSavedRequestAfterReconnect": true,
+    "systemRetriesRetainOriginalRequestSourceAuthority": true,
+    "requestAncestryLimit": 32,
+    "missingMalformedCyclicOrPrunedRequestAncestryDenied": true,
+    "idleSessionDispatchPreservesRequesterAndRetryMarker": true,
+    "managedGroupingPreservesOriginalRequester": true,
+    "legacyMixedManagedGroupSplitsOnClaim": true,
+    "unmanagedGroupingContractUnchanged": true,
+    "explicitRefusalReleasesClaimRetainsInputAndDoesNotAppendRequest": true,
+    "automaticRefusalUsesExistingFailureAndBackoffPolicy": true,
+    "alreadyAcceptedRequestNotRolledBackOnLaterTransportRefusal": true,
+    "browserTokenNotPersistedAsJobAuthority": true,
+    "managedGroupingPreservesOriginalRetryRequest": true,
+    "sourceNeedNotHaveLiveQwenRuntime": true
+  },
+  "verification": {
+    "serverTests": 897,
+    "serverTestFiles": 98,
+    "databaseTests": 43,
+    "databaseTestFiles": 2,
+    "realMigratedSqliteUsed": true,
+    "typecheckTasks": 7,
+    "typecheckPackages": ["@bb/server", "@bb/db"],
+    "strictLintNewModulesAndOtherChangedServerScriptsPassed": true,
+    "legacyStrictLint": {
+      "passed": false,
+      "file": "packages/db/src/data/queued-thread-messages.ts",
+      "rule": "bb/no-comments",
+      "currentViolations": 42,
+      "headBaselineViolations": 42,
+      "newCommentsAdded": false,
+      "repositoryRuleConfigurationChanged": false
+    },
+    "formattingMatchedServerScriptsAndDocsPassed": true,
+    "legacyDbFilesUseExistingRootFormatterIgnore": true,
+    "diffCheckPassed": true,
+    "deploymentCommand": "pnpm exec turbo run test:control-plane-deployment --filter=@bb/server",
+    "deploymentStatus": "passed",
+    "deploymentWatchdogsChangedThisIncrement": true,
+    "browserRerunThisIncrement": false,
+    "unchangedUiBrowserBaselineIncrement": 51,
+    "imageMatchesHostSha256": {
+      "apps/server/dist/start-server.js": "b9938d9ac4b955e84fbaa72063d35040c6bbef544f03352f916e0c420b71f918",
+      "scripts/check-control-plane-message-sources.mjs": "008df3cce2148a14c1edb2e7b5a0471a2aa04924dc3c5d2998a6b086f7019c8b",
+      "scripts/check-control-plane-managed-runtime.mjs": "c52ae2d865baa6aa022b3b0f6950bfdbe34c9bc9b334e10f87ba7d0704ad24a7",
+      "scripts/check-control-plane-deployment.mjs": "44040894fec721e3da8183087f9895dd6ae3715fee6ce6f9bd2f68c33301cc1f"
+    },
+    "testCorrections": [
+      "New fixtures use encoded event data, current protocol command fields and a time wait for scheduled rows.",
+      "A broad requester grouping restriction initially broke 20 existing unmanaged grouped-author cases; restriction is now managed-only and those assertions remain unchanged.",
+      "The existing service-tier queue test raced its own automatic wake against manual draining; it now explicitly suppresses the automatic wake in that unit test while retaining all execution-tier, outbound-command and remaining-row assertions.",
+      "Source fixture now explicitly stops its three idle Qwen runtimes while retaining thread metadata and delayed input; prior deployment attempts reported environment OOM kills, whose victim/cause was not established."
+    ],
+    "normalDeploymentWatchdogs": {
+      "innerMs": 540000,
+      "outerMs": 570000,
+      "previousInnerMs": 480000,
+      "previousOuterMs": 510000,
+      "browserUnchanged": true,
+      "individualOperationDeadlinesUnchanged": true
+    },
+    "earlierDeployment": {
+      "result": "Aggregate 480000ms abort in final crash-recovery workflow fixture after restart source verification passed",
+      "totalTurboDuration": "8m12.68s",
+      "stagesMs": {
+        "nativeDispatch": 7158,
+        "personal": 387348,
+        "restart": 422423
+      },
+      "memoryEventsOomKill": 1,
+      "memoryPressureCauseNotEstablished": true,
+      "sourceChecksPassedBeforeRestartCompleteMarker": true
+    },
+    "intermediateDeployment": {
+      "result": "passed before final original-retry grouping guard and source-fixture runtime release",
+      "tasks": 63,
+      "duration": "9m0.157s",
+      "stagesMs": {
+        "nativeDispatch": 9270,
+        "personal": 414531,
+        "restart": 451133,
+        "crashRecovery": 476430
+      },
+      "memoryEventsOomKillObservedBeforeCompletion": 2
+    },
+    "finalDeploymentMemoryEventsOomKillDuringPersonalSample": 0,
+    "deploymentTasks": {
+      "successful": 63,
+      "total": 63,
+      "cached": 58,
+      "duration": "8m25.092s"
+    },
+    "finalStagesMs": {
+      "messageSources": 6918,
+      "nativeDispatch": 6920,
+      "personal": 370838,
+      "messageSourcesAfterRestart": 416064,
+      "restart": 416695,
+      "crashRecovery": 441849
+    },
+    "finalDeploymentFlags": {
+      "managedQueueForeignSenderDenied": true,
+      "managedQueueSourceGrantRecheckedBeforeConsumption": true,
+      "managedQueueSourceSurvivesRestart": true,
+      "managedQueueRegrantDeliversSavedInputOnce": true
+    },
+    "fullDeploymentRestartAndCrashAssertionsPreserved": true
+  },
+  "remainingAcceptance": [
+    "Independent workflow notification job-binding provenance at actual retry/transport",
+    "Deferred first-turn and all parent/system-message source variants",
+    "Complete machine operation and artifact authority audit",
+    "Full composite background lifecycle and legacy ownership acceptance",
+    "Supported provider/profile translation and resume behavior",
+    "Project MCP connections and per-user credentials",
+    "Reusable agent catalog/editor and selection",
+    "Complete identity-switch, native UI and central plugin boundary acceptance",
+    "Actual corporate Qwen browser-certificate SDK contract remains unverified"
+  ]
+}

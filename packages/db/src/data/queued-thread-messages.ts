@@ -50,6 +50,7 @@ import type {
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
+  controlPlaneThreads,
   events,
   queuedThreadMessages,
   threads,
@@ -386,6 +387,7 @@ class ReorderQueuedThreadMessageRollback extends Error {
 
 function collectLeadGroupIds(
   queuedMessages: readonly QueuedThreadMessageRow[],
+  preserveSources: boolean,
 ): string[] {
   const ids: string[] = [];
   const firstQueuedMessage = queuedMessages[0] ?? null;
@@ -398,6 +400,7 @@ function collectLeadGroupIds(
       !queuedMessageGroupingEnvelopeMatches(
         firstQueuedMessage,
         nextQueuedMessage,
+        preserveSources,
       )
     ) {
       break;
@@ -418,11 +421,15 @@ function collectLeadGroupIds(
  */
 function partitionQueuedMessageGroups(
   queuedMessages: readonly QueuedThreadMessageRow[],
+  preserveSources: boolean,
 ): QueuedThreadMessageRow[][] {
   const groups: QueuedThreadMessageRow[][] = [];
   let index = 0;
   while (index < queuedMessages.length) {
-    const size = collectLeadGroupIds(queuedMessages.slice(index)).length;
+    const size = collectLeadGroupIds(
+      queuedMessages.slice(index),
+      preserveSources,
+    ).length;
     groups.push(queuedMessages.slice(index, index + size));
     index += size;
   }
@@ -495,13 +502,31 @@ function stringArraysEqual(
   );
 }
 
+function isManagedQueue(db: DbQueryConnection, threadId: string): boolean {
+  return (
+    db
+      .select({ threadId: controlPlaneThreads.threadId })
+      .from(controlPlaneThreads)
+      .where(eq(controlPlaneThreads.threadId, threadId))
+      .get() !== undefined
+  );
+}
+
 function queuedMessageGroupingEnvelopeMatches(
   firstQueuedMessage: QueuedThreadMessageRow | null,
   queuedMessage: QueuedThreadMessageRow,
+  preserveSources: boolean,
 ): boolean {
   return (
     firstQueuedMessage !== null &&
     queuedMessage.senderThreadId === firstQueuedMessage.senderThreadId &&
+    (!preserveSources ||
+      (queuedMessage.requestedByThreadId ===
+        firstQueuedMessage.requestedByThreadId &&
+        queuedMessage.requestedByInitiator ===
+          firstQueuedMessage.requestedByInitiator &&
+        queuedMessage.retryOfTurnRequestId ===
+          firstQueuedMessage.retryOfTurnRequestId)) &&
     queuedMessage.model === firstQueuedMessage.model &&
     queuedMessage.reasoningLevel === firstQueuedMessage.reasoningLevel &&
     queuedMessage.permissionMode === firstQueuedMessage.permissionMode &&
@@ -727,6 +752,7 @@ function applyQueuedThreadMessageGroupBoundary(
         !queuedMessageGroupingEnvelopeMatches(
           firstQueuedMessage,
           queuedMessage,
+          isManagedQueue(db, threadId),
         ),
     );
     if (hasMixedExecutionOptions) {
@@ -1234,9 +1260,10 @@ export function claimQueuedThreadMessageGroup(
 
       const queuedMessages = listQueuedThreadMessages(tx, existing.threadId);
       const group =
-        partitionQueuedMessageGroups(queuedMessages).find((rows) =>
-          rows.some((row) => row.id === id),
-        ) ?? null;
+        partitionQueuedMessageGroups(
+          queuedMessages,
+          isManagedQueue(tx, existing.threadId),
+        ).find((rows) => rows.some((row) => row.id === id)) ?? null;
       if (group === null) {
         return null;
       }
@@ -1291,6 +1318,7 @@ export function claimNextQueuedThreadMessageGroup(
       const now = Date.now();
       const drainableGroups = partitionQueuedMessageGroups(
         queuedMessages,
+        isManagedQueue(tx, threadId),
       ).filter((rows) => rows.some(isIdleDrainableQueuedMessage));
       const editHeldIndex = drainableGroups.findIndex((rows) =>
         isQueuedThreadMessageGroupEditHeld(rows, now),
@@ -1368,7 +1396,10 @@ export function reorderQueuedThreadMessage({
         }
 
         const currentQueuedMessages = listQueuedThreadMessages(tx, threadId);
-        const originalLeadGroupIds = collectLeadGroupIds(currentQueuedMessages);
+        const originalLeadGroupIds = collectLeadGroupIds(
+          currentQueuedMessages,
+          isManagedQueue(tx, threadId),
+        );
         const currentIndex = currentQueuedMessages.findIndex(
           (queuedMessage) => queuedMessage.id === queuedMessageId,
         );

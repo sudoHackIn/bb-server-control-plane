@@ -51,6 +51,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Fence managed Automations and private background execution during quiescence/disposal, await in-flight attachment and active script cleanup, and retain plugin storage/artifacts across a hung service stop until teardown completes. Universal HTTP/SDK/queue admission remains pending.
 - [x] Close core thread/turn/queue/background execution admission at server shutdown, repeat checks after asynchronous preparation and before each daemon RPC attempt, preserve queued input and retry budgets, and keep explicit cleanup available. See [shutdown admission](control-plane-execution-admission.md); the full machine/source audit remains pending.
 - [x] Bind managed daemon tool/approval requests to the current turn and saved native Qwen session, recheck approval authority and exact receipt/environment/host before dispatch, and stop further plugin cron claims after quiescence. The complete machine/source audit remains pending.
+- [x] Recheck saved cross-thread sender/requester authority for managed messages and queues, preserve retry/requester provenance through idle session continuation, and recheck the exact stored request before daemon transport. Verify retained source references and revoked delivery after restart. The complete queue/notification context audit remains pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -79,7 +80,9 @@ than treating a target increment number as acceptance.
 1. Complete current user/project/profile/source authorization across machine RPC,
    queues and retries. Core thread/turn shutdown admission is implemented in 53;
    managed inbound tool/interaction current-turn/session checks are implemented
-   in 54. The remaining machine/action and recovery/source audit stays open.
+   in 54; saved message-source and exact-request transport checks are implemented
+   in 55. The remaining machine/action, deferred-input and notification-binding
+   recovery/source audit stays open.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -2388,3 +2391,67 @@ restart/single-fire assertions. Watchdogs are unchanged. The UI is unchanged;
 the increment 51 browser baseline remains. `control-plane-phase-54-verification.json`
 records proof, fixture corrections, the changed early-revocation contract and
 remaining acceptance.
+
+## Fifty-fifth increment: durable message-source admission
+
+Managed cross-thread messages now require a current same-owner source thread,
+including its project, pinned profile and background job ancestry. Existence of
+`senderThreadId` alone is insufficient. The check covers ordinary send and clear,
+queue creation/waits, dispatch after asynchronous hooks, each claimed row and the
+request transaction. A foreign, archived, deleted or revoked source receives
+403 `message_source_not_authorized`; target-thread authorization still applies.
+No browser token or caller-supplied Unix identity is saved as queue authority.
+
+Before each actual `thread.start` / `turn.submit` transport attempt, core resolves
+the exact durable request ID on that thread and checks its saved sender and retry
+ancestry. Missing, malformed, cyclic or more than 32 request references fail closed.
+A system retry therefore cannot discard the source of its original request.
+The idle provider-session continuation path now preserves requester attribution
+and retry markers, matching ordinary dispatch. Managed groups cannot combine
+different original requesters or original retry requests; an older mixed group
+is split when claimed.
+Ordinary unmanaged BB grouping remains unchanged.
+
+Explicit denied delivery releases its claim and retains input without appending
+a turn. Automatic dispatch retains its existing failure/status/backoff policy;
+this increment does not promise that every refusal leaves its retry counter
+unchanged. Already accepted turn requests remain normal durable history if a
+later transport recheck fails; acceptance is not proof of delivery.
+
+Docker creates independent source profiles and native Qwen sessions for both
+owners, denies a foreign source, persists an authorized delayed message, revokes
+only its source profile and checks refusal before and after server restart.
+Restoring the source grant delivers the saved input once in the acceptance case.
+This is not an exactly-once side-effect guarantee. Existing graceful shutdown,
+forced-crash, offline schedule and workflow checks remain enabled.
+
+The source references already exist in queue rows and turn events; no database
+migration, public API/SDK field or daemon wire field is introduced. Protocol 253
+is deliberately retained and exercised by the packaged existing daemon. The
+full notification job-binding, deferred-input, parent/system-message and machine/action audit,
+project MCP and remaining product requirements stay open.
+
+The expanded normal Docker acceptance uses a 9-minute inner / 9.5-minute outer
+aggregate watchdog (previously 8 / 8.5 minutes); individual operation deadlines
+and the browser budgets are unchanged. The initial run passed source recovery
+and reached the final forced-crash workflow recovery before the overall timeout.
+The rerun must finish all original assertions; exceeding the earlier aggregate
+budget is not treated as a successful deployment.
+
+The source fixture releases its three idle Qwen runtimes after the relevant
+assertions while retaining the source threads and delayed message. Later delivery
+therefore does not require a live source process. Earlier acceptance attempts
+reported OOM kills in the shared test environment; the fixture avoids retaining
+unneeded sessions rather than removing lifecycle assertions or raising memory
+limits. The OOM victim/cause was not established from the captured counters.
+
+Final verification passes 897 selected server tests in 98 files and 43 database
+tests in two files, with real migrated SQLite, seven typecheck tasks, lint for
+new modules and changed server/scripts, formatting and all 63 final Docker tasks
+in 8 minutes 25.092 seconds. The intermediate pre-final image also passed 63
+Docker tasks. The new source/retry grouping guard and runtime-release fixture
+are included in the final image. Existing 42 `bb/no-comments` findings in the
+legacy database queue file match HEAD; no comments or lint-rule exceptions were
+added. The UI is unchanged and retains the increment 51 browser baseline.
+`control-plane-phase-55-verification.json` records final proof, matching image
+hashes, aggregate-budget changes, earlier attempts and remaining acceptance.

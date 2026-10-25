@@ -125,3 +125,16 @@ transport and keeps cleanup interrupt available after revocation/shutdown. Trust
 plugin cron sweeps stop claiming remaining due rows after quiescence, including an
 already-running sweep. The enrolled host remains trusted for its reported events;
 this does not close the complete machine action, artifact or source/recovery audit.
+
+### Increment 55: saved message-source checks
+
+Queue sender/requester IDs and retry request IDs are now checked as current
+execution-context references, including same-owner source project/profile/job
+ancestry. Core repeats checks at writes, claimed-row consumption and exact-request
+daemon delivery after reconnect. The idle session path preserves requester and
+retry provenance. Managed grouping preserves requester and original retry boundaries; pre-existing
+mixed groups split on claim. Unmanaged grouping is unchanged. SQLite tests and
+Docker cover foreign/revoked sources, retained input, restart and regrant.
+Explicit refusal does not consume input; automatic failure/backoff semantics stay
+unchanged. A notification's independent job binding, parent/system-message
+variants and the full machine/action inventory remain open.

@@ -1614,6 +1614,9 @@ describe("service tier execution lifecycle", () => {
   );
 
   it("keeps queued choices separate until dispatch and preserves the next row", async () => {
+    vi.spyOn(queuedDispatch, "requestQueuedMessageDispatch").mockImplementation(
+      () => {},
+    );
     await withTestHarness(async (harness) => {
       const { thread } = seedProviderThreadFixture({
         harness,

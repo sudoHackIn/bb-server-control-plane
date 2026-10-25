@@ -18,6 +18,10 @@ try {
   );
   for (const [source, target] of [
     [
+      "scripts/check-control-plane-message-sources.mjs",
+      "check-control-plane-message-sources.mjs",
+    ],
+    [
       "scripts/check-control-plane-daemon-requests.mjs",
       "check-control-plane-daemon-requests.mjs",
     ],

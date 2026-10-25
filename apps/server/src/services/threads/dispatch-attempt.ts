@@ -1,3 +1,4 @@
+import { assertControlPlaneMessageSources } from "../../control-plane/message-source-authority.js";
 import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { requestQueuedMachineReadiness } from "./queued-message-dispatch.js";
 import {
@@ -256,6 +257,11 @@ async function runDispatchAttempt(
   assertExecutionAdmission(deps.db);
   ensureThreadIsWritable(thread, true);
   requireControlPlaneThreadDispatch(deps.db, thread.id);
+  assertControlPlaneMessageSources(deps.db, thread.id, {
+    senderThreadId: payload.senderThreadId,
+    requestedByThreadId: args.startedOnBehalfOf?.senderThreadId,
+    retryOfRequestId: args.retryOf?.requestId,
+  });
   assertThreadHostAcceptsWork(deps.db, thread);
   if (
     payload.mode === "queue-if-active" &&
@@ -364,6 +370,11 @@ async function runDispatchAttempt(
   const continueThroughCoreWaits = async (): Promise<void> => {
     assertExecutionAdmission(deps.db);
     requireControlPlaneThreadDispatch(deps.db, thread.id);
+    assertControlPlaneMessageSources(deps.db, thread.id, {
+      senderThreadId: payload.senderThreadId,
+      requestedByThreadId: args.startedOnBehalfOf?.senderThreadId,
+      retryOfRequestId: args.retryOf?.requestId,
+    });
     const sendAt = payload.sendAt ?? null;
     if (!sendNow && sendAt !== null && sendAt > Date.now()) {
       continued.outcome = waitOn({ kind: "time" }, sendAt);

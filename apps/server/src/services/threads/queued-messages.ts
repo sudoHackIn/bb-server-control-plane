@@ -1,3 +1,5 @@
+import { resolveDispatchAuthor } from "./dispatch-author.js";
+import { assertControlPlaneMessageSources } from "../../control-plane/message-source-authority.js";
 import { assertExecutionAdmission } from "../system/execution-admission.js";
 import {
   getLatestThreadSequence,
@@ -31,7 +33,6 @@ import type {
   QueuedMessageWaitingOn,
   Thread,
   ThreadQueuedMessage,
-  ThreadTurnInitiator,
 } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
@@ -259,6 +260,7 @@ export async function createQueuedMessageForThread(
           throw new ApiError(404, "thread_not_found", "Thread not found");
         }
         const { hasProviderSession } = admitQueuedMessage(tx, currentThread);
+        assertControlPlaneMessageSources(tx, thread.id, { senderThreadId });
         const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
           threadId: thread.id,
           content: input,
@@ -507,8 +509,14 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     args.mode,
     senderThreadId,
   );
-  const initiator: ThreadTurnInitiator =
-    senderThreadId === null ? "user" : "agent";
+  const author = resolveDispatchAuthor({
+    retrying: queuedMessage.payload.kind === "retry",
+    senderThreadId,
+    startedOnBehalfOf: storedQueuedThreadMessageRequestedBy(
+      args.queuedMessages[0]!,
+    ),
+  });
+  const initiator = author.initiator;
 
   if (initiator === "user" && queuedMessage.payload.kind !== "retry") {
     await recoverThreadModelOverride(deps, {
@@ -555,6 +563,12 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         });
       }
       requireControlPlaneThreadDispatch(tx, thread.id);
+      for (const row of args.queuedMessages)
+        assertControlPlaneMessageSources(tx, thread.id, {
+          senderThreadId: row.senderThreadId,
+          requestedByThreadId: row.requestedByThreadId,
+          retryOfRequestId: row.retryOfTurnRequestId,
+        });
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
         queuedMessages: args.queuedMessages,
       });
@@ -568,7 +582,15 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         input,
         ...(inputGroups.length > 1 ? { inputGroups } : {}),
         requestMethod: "turn/start",
-        senderThreadId,
+        senderThreadId: author.senderThreadId,
+        ...(queuedMessage.payload.kind === "retry"
+          ? {
+              retryOf: {
+                requestId: queuedMessage.payload.retryOfTurnRequestId,
+                attempt: queuedMessage.payload.attempt,
+              },
+            }
+          : {}),
         source: "tell",
         target: { kind: "new-turn" },
         threadId: thread.id,
@@ -665,6 +687,12 @@ async function sendClaimedQueuedMessageForThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage> {
+  for (const row of args.queuedMessages)
+    assertControlPlaneMessageSources(deps.db, args.thread.id, {
+      senderThreadId: row.senderThreadId,
+      requestedByThreadId: row.requestedByThreadId,
+      retryOfRequestId: row.retryOfTurnRequestId,
+    });
   const notice = await sendClaimedSystemNotice(deps, args);
   if (notice) {
     return notice;

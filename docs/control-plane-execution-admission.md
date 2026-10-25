@@ -105,3 +105,32 @@ uses the actual periodic sweep, two fixture-owned cron rows and a file barrier.
 Only those disposable rows' due timestamps are advanced by the test; callback
 dispatch and claim/settlement run through production code. After shutdown begins,
 the first callback settles and the second remains unclaimed.
+
+## Durable message sources
+
+Managed messages use the saved source thread as an execution-context reference.
+Core requires its current owner to equal the target owner, then checks its current
+project/profile and any workflow/automation binding ancestry. This does not
+require the source agent to be actively running, but archived/deleted sources
+cannot initiate queued work. Same-owner cross-project messages require current
+execution authority in both projects.
+
+The guard runs before source-bearing queue writes, after dispatch preparation,
+inside the request/queue-consumption transaction, and immediately before daemon
+transport. The transport check resolves the exact stored request ID, including
+system retries' original request references; missing/pruned or cyclic ancestry
+is refused, bounded at 32 references. Retry markers and original requester
+attribution survive the idle-session fast path. Managed queue grouping cannot
+collapse distinct requesters or original retry requests, including groups saved
+by an earlier version;
+unmanaged single-user grouping keeps its existing behavior.
+
+A denied explicit send releases its claim and retains the queued input. Automatic
+wakes still use ordinary failure/backoff handling. If transport authority changes
+after request acceptance, the accepted history is retained and normal command
+failure handling records the failure. This is not an atomic delivery guarantee.
+An original workflow notification binding not represented by a source thread,
+deferred first-turn input provenance, all parent/system-message variants and every
+machine operation still need their
+separate source/recovery audit. No claim is made that this increment completes
+that audit or continuously retracts already delivered model input.

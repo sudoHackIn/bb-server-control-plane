@@ -1,3 +1,4 @@
+import { assertControlPlaneMessageSources } from "../../control-plane/message-source-authority.js";
 import {
   clearQueuedThreadMessageWaitingOn,
   requireControlPlaneThreadDispatch,
@@ -90,6 +91,14 @@ export function recordQueuedMessageWait(
       (tx) => {
         assertThreadHostAcceptsWork(tx, args.thread);
         requireControlPlaneThreadDispatch(tx, args.thread.id);
+        assertControlPlaneMessageSources(tx, args.thread.id, {
+          senderThreadId: args.message.senderThreadId,
+          requestedByThreadId: args.message.requestedBy?.senderThreadId,
+          retryOfRequestId:
+            args.message.payload.kind === "retry"
+              ? args.message.payload.retryOfTurnRequestId
+              : null,
+        });
         return createQueuedThreadMessageInTransaction(tx, {
           threadId: args.thread.id,
           content: args.message.input,

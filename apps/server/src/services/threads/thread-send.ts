@@ -1,3 +1,4 @@
+import { assertControlPlaneMessageSources } from "../../control-plane/message-source-authority.js";
 import { assertExecutionAdmission } from "../system/execution-admission.js";
 import {
   getEnvironment,
@@ -283,6 +284,9 @@ export function resolveMessageSenderThreadId(
     return null;
   }
 
+  assertControlPlaneMessageSources(deps.db, args.targetThread.id, {
+    senderThreadId: args.senderThreadId,
+  });
   const senderThread = getThread(deps.db, args.senderThreadId);
   if (!senderThread) {
     throwSenderThreadInvalid("not_found");
@@ -415,6 +419,10 @@ export function appendAndQueueSendThreadMessageInTransaction({
       assertThreadHostAcceptsWork(tx, thread);
       beforeAppendInTransaction?.({ tx });
       requireControlPlaneThreadDispatch(tx, thread.id);
+      assertControlPlaneMessageSources(tx, thread.id, {
+        senderThreadId,
+        retryOfRequestId: retryOf?.requestId,
+      });
       const appended =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
@@ -464,6 +472,10 @@ export async function sendThreadMessage(
   args: SendThreadMessageArgs,
 ): Promise<void> {
   assertExecutionAdmission(deps.db);
+  assertControlPlaneMessageSources(deps.db, args.thread.id, {
+    senderThreadId: args.payload.senderThreadId,
+    retryOfRequestId: args.retryOf?.requestId,
+  });
   if (isStandaloneBuiltinClearCommand(args.payload.input)) {
     await clearThreadContext(deps, {
       environment: args.environment,

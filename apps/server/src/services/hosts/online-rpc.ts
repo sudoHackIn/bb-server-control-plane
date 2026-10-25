@@ -1,3 +1,4 @@
+import { assertControlPlaneTurnRequestSources } from "../../control-plane/message-source-authority.js";
 import { assertExecutionAdmission } from "../system/execution-admission.js";
 import { assertControlPlaneInteractionResolution } from "../../control-plane/daemon-request-authority.js";
 import { hostCommandMayWake } from "./wake-policy.js";
@@ -8,7 +9,6 @@ import {
   getLatestSessionForHost,
   getSessionById,
   getThread,
-  requireControlPlaneThreadDispatch,
 } from "@bb/db";
 import { randomUUID } from "node:crypto";
 import {
@@ -417,7 +417,11 @@ function requestHostOnlineRpcResponse(
     args.command.type === "thread.start" ||
     args.command.type === "turn.submit"
   )
-    requireControlPlaneThreadDispatch(deps.db, args.command.threadId);
+    assertControlPlaneTurnRequestSources(
+      deps.db,
+      args.command.threadId,
+      args.command.requestId,
+    );
   if (args.command.type === "environment.inspect_cleanup") {
     const sessionId = deps.hub.getDaemonSessionIdForHost(args.hostId);
     const session = sessionId ? getSessionById(deps.db, { sessionId }) : null;
