@@ -17,6 +17,7 @@ machine key nor the private service SDK transport.
 | Events and reconciliation                | Stored thread/environment assignment selects the host. Managed server-authored command/operation/provisioning events and interaction lifecycle events cannot be injected as provider events. Reconciliation is host-scoped.                              | Internal event ownership/envelope/tool/lifecycle and background reconciliation tests.                       |
 | Tools and provider interactions          | Current saved owner/project/profile, current root turn, private-resolver-bound native session and provider identity. User fields inside tool arguments are not principals. Resolutions repeat these checks against the exact saved receipt and decision. | Stage 54 current-turn/session tests and native two-user Docker checks.                                      |
 | Project attachment content               | Requested project must match the thread; environment must belong to the authenticated host. Managed execution authority is checked before reading bytes and again before responding.                                                                     | Real-SQLite route tests; two native users, profile revoke/regrant and independent owner download in Docker. |
+| Registered workspace operations | Private exact-cwd resolver derives UID from current SQLite authority; fixed immutable worker runs HostWorkspace and four inspection/context commands under that identity. Unknown registered namespace paths fail closed. | Increment 59 native two-user Git hooks, denial, active revocation/regrant, cleanup and restart. |
 | Environment and plugin-host signals      | Environment host/path and active plugin-host identity/generation select what can change.                                                                                                                                                                 | Internal environment-change and plugin-host-event tests.                                                    |
 | Central plugin artifacts and skill trees | Validated content identifiers resolve only centrally registered operator artifacts. These are shared installed code, not personal result storage.                                                                                                        | Internal artifact and skill-tree tests.                                                                     |
 | Server move                              | Pending bootstrap is loopback-only; downloads bind to the selected destination host and active move.                                                                                                                                                     | Existing server-move tests.                                                                                 |
@@ -75,29 +76,32 @@ unmanaged directory; its ID alone is not ownership or authority. This is checked
 before creation and at dispatch. Managed environment attachment must match the
 registry path/host, cannot request a service-account setup script and verifies a
 supplied initiating thread. The generic hook command also refuses setup and
-teardown paths inside any registered user's HOME, including normalized `..`
+teardown paths inside any registered user's HOME or projects root, including normalized `..`
 paths. Cleanup cancellation remains available.
 
 This does not implement user-authored environment hooks. Tenant-authored scripts
 must use an execution path with the registered Unix identity, not the common
 service account. Normal non-managed operator environments retain their hooks.
 
-## Remaining workspace execution audit
+## Registered workspace execution and remaining audit
 
-Qwen commands and managed workflow/automation scripts already use the registered
-Unix identity. Daemon-side workspace inspection and Git are a different path:
-`RuntimeManager.provisionHostWorkspace` calls `@bb/host-workspace`, whose buffered
-and streaming Git runners use the daemon's process identity. Current managed
-workspaces grant the service access through the provisioning helper's ACLs.
-Those ACLs do not make Git execute under the project owner's UID/HOME.
+Increment 59 routes the native HostWorkspace implementation and the four
+registered project inspection/context commands through a fixed worker under the
+saved UID/HOME/cwd. The private SQLite resolver refuses unknown registered
+namespace paths and revoked managed roots without an operator fallback. Cold
+managed provisioning bypasses central checkout callbacks. Generic service hooks
+also refuse the sibling projects root, not only HOME.
 
-The next workspace increment must address this path, including Git-configured
-commands, status/diff/commit, restart and cleanup. It must preserve the native
-workspace behavior under the registered identity rather than treating Git trust
-configuration or successful Qwen isolation as proof. This source finding alone
-does not establish that a particular repository has already executed a hostile
-hook. Keep the overall machine/action and tenant workspace execution requirements
-open until the actual path is implemented and tested.
+Actual two-user Docker status/diff/commit hooks verify numeric identity, denied
+foreign/service reads, descendant cleanup, live revocation, regrant and restart.
+See [managed workspace execution](control-plane-workspace-execution.md) for the
+full path, deadlines, immutable artifact installation and limitations.
 
-Host daemon protocol 253 and Plugin SDK 0.6.80 are unchanged in this increment.
-No new command fields or tenant-supplied identity parameters are introduced.
+This does not complete the machine/action inventory: legacy provider recovery,
+arbitrary centrally installed provider callbacks and the composite background
+source/recovery acceptance remain separate work. Trusted operator code and
+commands outside registered namespaces retain their existing semantics. This is
+not a filesystem jail, network boundary or isolation from a compromised daemon.
+
+Host daemon protocol is now 254 for the private workspace execution contract.
+Plugin SDK remains 0.6.80; no public tenant-supplied identity fields are added.

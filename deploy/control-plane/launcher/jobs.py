@@ -133,8 +133,8 @@ def stop_job(user_id, uid, session_id, lock):
 
 def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, launch_policy=None, runtime='qwen'):
     path = lease_path(session_id)
-    entry = policy.get('workflowEvaluator') if runtime == 'workflow' else policy.get('cli')
-    if runtime not in ('qwen', 'workflow', 'script') or not policy.get('node'):
+    entry = policy.get('workspaceWorker') if runtime == 'workspace' else policy.get('workflowEvaluator') if runtime == 'workflow' else policy.get('cli')
+    if runtime not in ('qwen', 'workflow', 'script', 'workspace') or not policy.get('node'):
         raise ValueError('Agent execution is not configured')
     if runtime == 'script':
         if policy.get('scriptRuntime') != 'node-esm':
@@ -143,7 +143,7 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
             raise ValueError('Script interpreter arguments cannot be overridden')
     elif not entry:
         raise ValueError('Agent execution is not configured')
-    if runtime == 'workflow':
+    if runtime in ('workflow', 'workspace'):
         if arguments or launch_policy is not None:
             raise ValueError('Workflow evaluator arguments cannot be overridden')
         current = entry
@@ -156,8 +156,15 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
                 break
             current = parent
         with open(entry, 'rb') as artifact:
-            if hashlib.sha256(artifact.read()).hexdigest() != policy.get('workflowEvaluatorSha256'):
+            if hashlib.sha256(artifact.read()).hexdigest() != policy.get('workspaceWorkerSha256' if runtime == 'workspace' else 'workflowEvaluatorSha256'):
                 raise ValueError('Workflow evaluator artifact changed')
+    if runtime == 'workspace':
+        for item in os.scandir(JOBS):
+            if item.name.endswith('.json'):
+                with open(item.path, encoding='utf8') as file:
+                    previous = json.load(file)
+                if previous.get('runtime') == 'workspace' and previous.get('userId') == user_id and previous.get('cwd') == cwd:
+                    raise ValueError('Previous workspace operation or cleanup is pending')
     if os.path.exists(path):
         with open(path, encoding='utf8') as file:
             old = json.load(file)
@@ -175,6 +182,8 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
     if not info:
         raise RuntimeError('Could not identify supervisor')
     lease = {'userId': user_id, 'uid': uid, 'pid': pid, 'start': info['start']}
+    if runtime == 'workspace':
+        lease.update({'runtime': runtime, 'cwd': cwd})
     temporary = path + '.tmp'
     with open(temporary, 'w', encoding='utf8') as file:
         os.chmod(temporary, 0o600)
@@ -214,7 +223,7 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
                                   '--clear-groups', '--no-new-privs', '--', '/usr/bin/unshare',
                                   '--user', '--map-user=' + str(uid), '--map-group=' + str(uid),
                                   '--pid', '--fork', '--mount-proc', policy['node'],
-                                  '--dns-result-order=ipv4first', *preloads, *(['--max-old-space-size=128'] if runtime in ('workflow', 'script') else []), *runtime_arguments],
+                                  '--dns-result-order=ipv4first', *preloads, *(['--max-old-space-size=128'] if runtime in ('workflow', 'script', 'workspace') else []), *runtime_arguments],
                                  env=env, close_fds=True, start_new_session=True)
         while clients_alive(clients):
             try:

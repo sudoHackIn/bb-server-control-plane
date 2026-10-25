@@ -43,7 +43,12 @@ try {
     ["apps/app/dist", "app"],
     ["apps/cli/dist", "cli"],
     ["apps/host-daemon/dist", "host-daemon"],
+    ["apps/host-daemon/dist/workspace-worker.mjs", "workspace-worker.mjs"],
     ["scripts/check-control-plane-deployment.mjs", "deployment-check.mjs"],
+    [
+      "scripts/check-control-plane-workspace.mjs",
+      "check-control-plane-workspace.mjs",
+    ],
     [
       "scripts/check-control-plane-namespace-denial.mjs",
       "namespace-denial.mjs",

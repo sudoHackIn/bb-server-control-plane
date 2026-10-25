@@ -1,0 +1,201 @@
+{
+  "scope": "Registered native daemon workspace and Git execution under saved UID/HOME/cwd",
+  "previousStageCommit": "a119b876c",
+  "centralDatabaseMigration": null,
+  "hostDaemonProtocol": {
+    "version": 254,
+    "changed": true,
+    "reason": "Private workspace authority response and immutable worker IPC contract require coordinated server/daemon upgrade",
+    "previousVersion253Compatible": false
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "exactCanonicalProjectRootRequired": true,
+    "identityDerivedFromSqliteNotCallerFields": true,
+    "currentUserProjectExecutionGrantRequired": true,
+    "unknownRegisteredHomeOrProjectsPathDenied": true,
+    "revokedManagedRootCannotFallBackToOperator": true,
+    "allNativeHostWorkspaceMethodsUseRegisteredUid": true,
+    "fourProjectInspectionAndContextCommandsForwarded": true,
+    "coldManagedProvisioningBypassesCentralCheckoutCallback": true,
+    "genericServiceHooksDenyHomeAndSiblingProjectsRoot": true,
+    "immutableRootOwnedHashPinnedWorker": true,
+    "cleanEnvironmentWithoutServiceOrModelCredentials": true,
+    "perCwdSerializationAndSharedVcsBudget": true,
+    "rootLeaseFencesUnconfirmedCleanup": true,
+    "authorityRecheckedBeforeExecutionDuringWorkAndBeforeResult": true,
+    "authorityPollMs": 250,
+    "authorityRequestDeadlineMs": 2000,
+    "operationDeadlineMs": 30000,
+    "cleanupAckDeadlineMs": 12000,
+    "inputBytes": 131072,
+    "combinedOutputBytes": 16777216,
+    "workerOldSpaceMiB": 128,
+    "utf8DecodedAfterByteConcatenation": true,
+    "nativeCommitNoVerifySemanticsPreserved": true,
+    "ordinaryOperatorWorkspaceBehaviorPreserved": true
+  },
+  "verification": {
+    "serverTests": 951,
+    "serverTestFiles": 105,
+    "newServerWorkspaceTests": 3,
+    "fullDaemonTestsPassed": 819,
+    "daemonTestsSkipped": 12,
+    "daemonTestFiles": 77,
+    "fullDaemonContractTests": 76,
+    "daemonContractTestFiles": 5,
+    "fullDatabaseTests": 658,
+    "databaseTestFiles": 59,
+    "realMigratedSqliteUsed": true,
+    "typecheckTasks": 8,
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/internal test/security test/hosts test/threads test/environments test/services/plugins/plugin-background.test.ts test/services/plugins/plugin-tool-calls.test.ts",
+      "BB_FRP_CACHE_DIR=/private/tmp/bb-stage59-frp-cache pnpm exec turbo run test --filter=@bb/host-daemon --filter=@bb/host-daemon-contract --env-mode=loose",
+      "pnpm exec turbo run test --filter=@bb/db",
+      "pnpm exec turbo run typecheck --filter=@bb/server --filter=@bb/host-daemon --filter=@bb/host-daemon-contract",
+      "pnpm exec turbo run test:control-plane-deployment --filter=@bb/server"
+    ],
+    "findings": [
+      {
+        "kind": "implementation",
+        "reason": "Private workspace resolver wrote HTTP success headers before evaluating authority, preventing an error response on revoked access",
+        "fix": "Evaluate authority before writeHead; test actual socket revoke and identity injection"
+      },
+      {
+        "kind": "implementation",
+        "reason": "Decoding each streamed stdin chunk independently can corrupt multibyte UTF-8",
+        "fix": "Bound raw bytes and decode once; real Git commit test streams a large Cyrillic message across byte boundaries"
+      },
+      {
+        "kind": "testFixture",
+        "reason": "Existing native commit intentionally uses noVerify, so a pre-commit fixture does not execute",
+        "fix": "Use prepare-commit-msg without changing native commit behavior; require a real descendant heartbeat before cleanup assertions"
+      },
+      {
+        "kind": "testFixture",
+        "reason": "Full macOS test sandbox made the Unix socket pathname exceed its platform length limit, producing listen EINVAL and a pending listener Promise",
+        "fix": "Use a short sandbox-relative socket path and reject listen errors; retain normal timeouts"
+      },
+      {
+        "kind": "testEnvironment",
+        "reason": "FRP fixture cache default points outside writable test roots",
+        "fix": "Use the existing BB_FRP_CACHE_DIR option with a temporary directory and Turbo loose env mode; retain all tests"
+      },
+      {
+        "kind": "testCompatibility",
+        "reason": "Exact gzip byte counts depend on Node/zlib; contract baseline also expected protocol 252 before this increment",
+        "fix": "Keep exact JSON wire sizes, assert bounded compression and grouped savings, and explicitly test protocol 254 compatibility"
+      },
+      {
+        "kind": "supersededDeploymentRuns",
+        "reason": "Earlier passing deployments predated stronger native Git/descendant checks or final IPC/client fixes",
+        "fix": "Use one complete rebuilt deployment for final evidence; remove only its exact superseded disposable lab"
+      }
+    ],
+    "imageHashes": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "749c1fc4e03f71b6006f72745bec08a3b95f0481133826a8f00159515e0a8a93"
+      },
+      "apps/host-daemon/dist/start-host-daemon.js": {
+        "imagePath": "/opt/bb/apps/host-daemon/dist/start-host-daemon.js",
+        "sha256HostAndImage": "efff2745df65ea70fd8db0ac33195c6ef3191fc84462ff73d503c7ae9489cf15"
+      },
+      "apps/host-daemon/dist/workspace-worker.mjs": {
+        "imagePath": "/opt/bb-control-plane/workspace-worker.mjs",
+        "sha256HostAndImage": "8dcdae75651fc36062a75278fdeb346e7d4f98c8ef676921e2ed2cc504d40a3b"
+      },
+      "scripts/check-control-plane-workspace.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-workspace.mjs",
+        "sha256HostAndImage": "5f60a4d85e3602d4af14e862831c4efa08c225b99e22a607c451983bae2290f3"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "f18344937c97a36576799454d7cf6927129849091c26c2982584ba5604a9c5e4"
+      },
+      "deploy/control-plane/launcher/helper.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/helper.py",
+        "sha256HostAndImage": "ec8ef2cc29c05eac597112101da7614dbb989b2f9dfcb919b40f7bf3fe25814a"
+      },
+      "deploy/control-plane/launcher/jobs.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/jobs.py",
+        "sha256HostAndImage": "4377898ca925971a192b3cc0e3c1323660a67f9b624d748b3417a4428cc63e60"
+      },
+      "deploy/control-plane/launcher/install.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/install.py",
+        "sha256HostAndImage": "b96b59c58bd701cb1cf83ce40dd05ab9708aa6497b45f1401d1a3cab9ac3dd50"
+      }
+    },
+    "strictLintChangedCodePassed": true,
+    "formatChangedCodePassed": true,
+    "changedCodeFilesChecked": 22,
+    "lintRuleExceptionsAdded": false,
+    "pythonSyntaxPassedWithoutWritingCaches": true,
+    "absoluteAuthorityDeadlineWithStalledRealSocketPassed": true,
+    "expandedExistingHookRootTestsPassed": 9,
+    "docker": {
+      "status": "passed",
+      "budgetsChanged": false,
+      "tasks": 63,
+      "cachedTasks": 60,
+      "duration": "9m13.995s",
+      "stageTimings": [
+        {
+          "controlPlaneStage": "message-sources-complete",
+          "elapsedMs": 18686
+        },
+        {
+          "controlPlaneStage": "native-dispatch-complete",
+          "elapsedMs": 18686
+        },
+        {
+          "controlPlaneStage": "workspace-complete",
+          "elapsedMs": 22154
+        },
+        {
+          "controlPlaneStage": "personal-and-browser-complete",
+          "elapsedMs": 413096
+        },
+        {
+          "controlPlaneStage": "message-sources-restart-complete",
+          "elapsedMs": 457828
+        },
+        {
+          "controlPlaneStage": "restart-complete",
+          "elapsedMs": 458639
+        },
+        {
+          "controlPlaneStage": "crash-recovery-complete",
+          "elapsedMs": 485204
+        }
+      ],
+      "assertions": {
+        "managedWorkspaceNativeGitStatusDiffCommitUnderTwoUids": true,
+        "managedWorkspaceHookCannotReadServiceOrForeignFiles": true,
+        "managedWorkspaceNoServiceModelCredentials": true,
+        "managedWorkspaceDescendantsReaped": true,
+        "managedWorkspaceActiveProjectRevocationStopsCommit": true,
+        "managedWorkspaceRegrantAllowsNextCommit": true,
+        "managedWorkspaceGitIdentitySurvivesRestart": true,
+        "nativeUidHomeTools": true,
+        "resumedThreadAfterRestart": true,
+        "crashRecoveryRetainsIdentityAndThreads": true,
+        "coreShutdownAdmissionRejectsCreateSendAndQueue": true,
+        "machineCredentialNotFullPublicApi": true
+      },
+      "nativeTwoOwnerStartResumeAndColdProvisioningPassed": true,
+      "stockNativeQwenWithDeterministicLocalModelBackend": true,
+      "shutdownAndCrashRecoveryPassed": true
+    }
+  },
+  "limitations": [
+    "Only registered native workspace paths and the four named commands are covered; arbitrary central plugins and legacy custom-provider recovery remain audited separately.",
+    "Daemon, root helper and centrally installed plugins remain trusted for assigned runtimes.",
+    "Authority polling and cancellation do not roll back completed Git/filesystem effects or provide exactly-once execution.",
+    "Process UID/namespaces are not a filesystem jail, network isolation or a total host memory quota.",
+    "Stock Qwen SDK/CLI with deterministic local backend does not verify the corporate certificate SDK contract.",
+    "No UI change; browser baseline remains increment 51.",
+    "Composite background acceptance, full machine/action audit, profile translation, project MCP, reusable agents and wider UI requirements remain open."
+  ]
+}

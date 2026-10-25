@@ -1,3 +1,4 @@
+import { controlPlaneWorkspaceProvisioner } from "./control-plane-workspace.js";
 import path from "node:path";
 import { HOST_DAEMON_RESTART_EXIT_CODE } from "@bb/config/machine-service";
 import { startDesktopBrowserBroker } from "./desktop-browser-broker.js";
@@ -534,6 +535,13 @@ export async function createHostDaemonApp(
     },
   });
   runtimeManager = new RuntimeManager({
+    ...(process.env.QWEN_SERVER_CONTEXT_SOCKET
+      ? {
+          provisionWorkspace: controlPlaneWorkspaceProvisioner(
+            process.env.QWEN_SERVER_CONTEXT_SOCKET,
+          ),
+        }
+      : {}),
     bridgeBundleDir: options.bridgeBundleDir,
     createRuntime: options.createRuntime,
     dataDir: options.dataDir,

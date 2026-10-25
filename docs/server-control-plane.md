@@ -54,7 +54,8 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Recheck saved cross-thread sender/requester authority for managed messages and queues, preserve retry/requester provenance through idle session continuation, and recheck the exact stored request before daemon transport. Verify retained source references and revoked delivery after restart. The complete queue/notification context audit remains pending.
 - [x] Persist server-only references for copied deferred input and exact workflow notification requests; check complete request/job ancestry at commit and transport, retain references across restart and refuse unmarked legacy managed requests. Parent/system-message and complete machine/action acceptance remain pending.
 - [x] Enforce same-owner parent mutations and typed system-notice subjects at queue, canonical commit and transport; retain unknown legacy deferred input without execution in shared-server startup. See [system notices](control-plane-system-notices.md). Complete machine/action and composite background acceptance remain pending.
-- [x] Bind outgoing managed thread RPC targets to registered host/environment/project/cwd and native resume identity at every admission checkpoint; reject provider-owned reuse and service-account hooks in user HOME, recheck managed attachment reads, and refuse daemon-authored canonical input/operations. See [machine boundaries](control-plane-machine-boundaries.md). Daemon workspace/Git execution under the registered UID remains pending.
+- [x] Bind outgoing managed thread RPC targets to registered host/environment/project/cwd and native resume identity at every admission checkpoint; reject provider-owned reuse and service-account hooks in user HOME, recheck managed attachment reads, and refuse daemon-authored canonical input/operations. See [machine boundaries](control-plane-machine-boundaries.md). Native daemon workspace/Git execution is covered by increment 59 below; the complete machine/action audit remains open.
+- [x] Execute registered native HostWorkspace and project inspection/context commands under saved UID/HOME/cwd through a fixed immutable worker, with live grant checks, bounded IPC and acknowledged descendant cleanup. Verify two-user Git hooks, active revocation/regrant and restart in Docker. See [workspace execution](control-plane-workspace-execution.md); legacy provider callbacks and the complete machine/action audit remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -88,8 +89,9 @@ than treating a target increment number as acceptance.
    implemented in 56. Parent/system-message subjects and unknown legacy backfill
    refusal are implemented in 57. The remaining machine/action and composite
    recovery/source acceptance stay open. Increment 58 binds outgoing RPC targets
-   and attachment reads; daemon workspace/Git operations still need the registered
-   Unix identity, independently of Qwen execution.
+   and attachment reads; increment 59 implements registered native workspace/Git
+   operations under the saved Unix identity. Legacy provider callbacks and the
+   complete machine/action acceptance remain open.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -293,6 +295,8 @@ For installation without Docker, copy the launcher directory from this repositor
 python3 -I deploy/control-plane/launcher/install.py \
   --service-user bb-service --users-root /srv/agent-users
 ```
+
+For the current managed execution deployment, also install the fixed Qwen, workflow and workspace artifacts with the corresponding installer options. See [workspace worker installation and protocol compatibility](control-plane-workspace-execution.md#installation-and-compatibility); the provisioning-only example above is not the complete execution configuration.
 
 The service account must already exist and the configured `usersRoot` must match the helper policy. The installer writes only fixed launcher/policy/state/sudo-rule locations; it creates no agent accounts. Keep these artifacts root-owned. Install on a Linux filesystem with ACL support.
 
@@ -2613,10 +2617,10 @@ revoking Alice does not revoke Bob and that regrant restores Alice's download.
 
 See [the machine boundary inventory](control-plane-machine-boundaries.md) for
 incoming routes, trust assumptions and evidence. The audit also found that
-`@bb/host-workspace` Git processes still inherit the daemon identity. Service ACL
+`@bb/host-workspace` Git processes still inherited the daemon identity at 58. Service ACL
 access and Qwen isolation do not satisfy registered-UID execution for this
-separate path. Native workspace/Git handling is the next required increment;
-overall machine/action and tenant workspace execution remain unchecked.
+separate path. Native workspace/Git handling is implemented in 59 below; the overall
+machine/action and tenant workspace execution requirements remain unchecked.
 
 This increment adds no wire fields, public SDK members, CLI flags or migration.
 Host daemon protocol remains 253 and Plugin SDK remains 0.6.80. No UI changes
@@ -2653,3 +2657,59 @@ to check actual path ownership without enabling service-account setup scripts.
 A superseded live run was stopped to add the event-forgery checks; final evidence
 comes from the complete replacement run. No test deadlines were extended.
 See [the verification record](control-plane-phase-58-verification.json).
+
+
+## Fifty-ninth increment: native workspace execution under registered UID
+
+Native daemon workspace inspection, status/diff/commit and the four registered
+project/context commands now execute through a fixed root-owned worker under the
+saved UID/HOME/cwd. A private SQLite-backed resolver derives identity from the
+exact registered project root and current grants. Unknown registered namespace
+paths and revoked projects fail closed; ordinary operator paths retain existing
+behavior. Cold managed provisioning bypasses central checkout callbacks and uses
+native attachment under the saved user. Generic service hooks refuse both HOME
+and its sibling projects root.
+
+The worker reuses HostWorkspace behavior, including native commit options.
+Operations serialize per cwd and share the existing VCS concurrency budget.
+Bounded IPC, operation deadlines, live grant polling and acknowledged supervisor
+cleanup prevent unbounded or untracked work. A persistent root lease blocks
+workspace reuse when cleanup is pending. No service/model credentials are passed.
+See [the execution contract and installation](control-plane-workspace-execution.md).
+
+Host daemon protocol advances from 253 to 254 for the private execution contract;
+server and daemon upgrade together. Plugin SDK remains 0.6.80, with no new public
+SDK member, CLI command or database migration. This does not claim arbitrary
+central plugins or legacy provider recovery execute under user UIDs. The wider
+machine/action, composite background and product acceptance requirements remain
+open. Detailed final evidence is recorded in
+[the verification record](control-plane-phase-59-verification.json).
+
+
+Verification passed: 951 selected server tests in 105 files, all 658 database
+tests in 59 files, 819 daemon tests in 77 files (12 existing platform skips),
+all 76 daemon-contract tests in five files, eight typecheck tasks and strict
+lint/formatting for all 22 changed code files. Expanded setup/teardown tests cover
+both HOME and the sibling projects root. A real stalled authority socket verifies
+the absolute deadline. The worker test commits a large Cyrillic message streamed
+across UTF-8 byte boundaries.
+
+The final Docker deployment passed all 63 tasks in 9m13.995s without extending
+test budgets. Native status/diff/commit hooks for two users verify actual numeric
+UID/GID/HOME/cwd, denied foreign HOME/project and service database reads, absence
+of service/model credentials and cleanup of a confirmed live detached descendant.
+Revocation during a held commit preserves HEAD and leaves the other owner
+available; regrant permits the next commit. Native Git state and execution
+identity survive restart. Existing workflow/automation, shutdown and actual crash
+recovery checks also pass. Eight server/daemon/worker/launcher/fixture artifact
+hashes match the final image. No frontend code changed; browser baseline remains
+increment 51.
+
+Initial findings fixed a private socket error-response ordering bug and UTF-8
+chunk decoding. The Git probe uses prepare-commit-msg because native commits
+already skip pre-commit; production commit semantics were preserved. Full macOS
+tests exposed the Unix socket pathname limit, corrected with a short path and
+explicit listener-error handling. Portable compression assertions retain exact
+JSON wire sizes while avoiding Node/zlib-specific gzip byte counts. Earlier
+passing Docker runs were superseded after strengthening descendant checks and
+finalizing IPC/client handling; acceptance uses the complete rebuilt final run.

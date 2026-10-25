@@ -264,7 +264,7 @@ it("checks environment attachment against the registry and refuses service-accou
 });
 
 it.each(["setup", "teardown"] as const)(
-  "never runs a %s script under the service identity in any registered HOME",
+  "never runs a %s script under the service identity in any registered HOME or projects root",
   async (kind) => {
     await withTestHarness(async (harness) => {
       const { alice, bob } = fixture(harness);
@@ -272,6 +272,10 @@ it.each(["setup", "teardown"] as const)(
         alice.user.home,
         `${alice.user.home}/project`,
         `${bob.user.home}/project`,
+        alice.user.projectsRoot,
+        `${alice.user.projectsRoot}/app`,
+        `${bob.user.projectsRoot}/app`,
+        `${alice.user.home}/../projects/app`,
         `${alice.user.home}/../${alice.user.home.split("/").at(-1)}/project`,
       ])
         expect(() =>

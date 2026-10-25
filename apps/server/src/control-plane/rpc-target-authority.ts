@@ -33,7 +33,7 @@ export function assertControlPlaneRpcTarget(
       .select({ id: controlPlaneUsers.id })
       .from(controlPlaneUsers)
       .where(
-        sql`${target} = ${controlPlaneUsers.home} OR substr(${target}, 1, length(${controlPlaneUsers.home}) + 1) = ${controlPlaneUsers.home} || '/'`,
+        sql`${target} = ${controlPlaneUsers.home} OR substr(${target}, 1, length(${controlPlaneUsers.home}) + 1) = ${controlPlaneUsers.home} || '/' OR ${target} = ${controlPlaneUsers.projectsRoot} OR substr(${target}, 1, length(${controlPlaneUsers.projectsRoot}) + 1) = ${controlPlaneUsers.projectsRoot} || '/'`,
       )
       .limit(1)
       .get();
@@ -46,6 +46,15 @@ export function assertControlPlaneRpcTarget(
     ? getControlPlaneProjectOwner(db, environment.projectId)
     : null;
   if (!("threadId" in command)) {
+    if (
+      project &&
+      environment &&
+      "workspaceContext" in command &&
+      (hostId !== project.hostId ||
+        environment.hostId !== hostId ||
+        command.workspaceContext.workspacePath !== project.cwd)
+    )
+      denied();
     if (!project || command.type !== "environment.attach") return;
     const access = getControlPlaneProject(
       db,

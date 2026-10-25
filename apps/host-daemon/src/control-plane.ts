@@ -50,6 +50,8 @@ async function main() {
     );
   });
   const bootstrap = bootstrapSchema.parse(body);
+  if (!process.env.QWEN_SERVER_CONTEXT_SOCKET)
+    throw new Error("Managed workspace authority socket required");
   if (process.ppid !== bootstrap.parentPid)
     throw new Error("Managed parent exited before startup");
   const config = loadHostDaemonEntrypointConfig();

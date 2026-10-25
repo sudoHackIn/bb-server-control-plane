@@ -57,7 +57,7 @@ def main():
     with open(POLICY, encoding='utf8') as file:
         policy = json.load(file)
     operation, user_id, raw_uid, *args = sys.argv[1:]
-    if operation not in ('provision', 'project', 'launch', 'launch-policy', 'launch-workflow', 'launch-script', 'stop'):
+    if operation not in ('provision', 'project', 'launch', 'launch-policy', 'launch-workflow', 'launch-script', 'launch-workspace', 'stop'):
         raise ValueError('Invalid launcher operation')
     if str(uuid.UUID(user_id)) != user_id or not re.fullmatch(r'[0-9]{6}', raw_uid):
         raise ValueError('Invalid identity')
@@ -107,7 +107,7 @@ def main():
     base = os.path.join(root, user_id)
     home = os.path.join(base, 'home')
     projects = os.path.join(base, 'projects')
-    if operation in ('launch', 'launch-policy', 'launch-workflow', 'launch-script', 'stop'):
+    if operation in ('launch', 'launch-policy', 'launch-workflow', 'launch-script', 'launch-workspace', 'stop'):
         jobs_directory = '/var/lib/bb-agent-launcher/jobs'
         try:
             os.mkdir(jobs_directory, 0o700)
@@ -122,14 +122,14 @@ def main():
         if operation == 'stop' and len(args) == 1:
             return jobs['stop_job'](user_id, uid, args[0], lock)
         launch_policy = None
-        if operation in ('launch-workflow', 'launch-script') and len(args) == 2:
+        if operation in ('launch-workflow', 'launch-script', 'launch-workspace') and len(args) == 2:
             args = [*args, '--']
         if operation == 'launch-policy' and len(args) == 2:
             policy_file = '/opt/bb-control-plane/launcher/runtime_policy.py'
             trusted_file(policy_file)
             launch_policy = runpy.run_path(policy_file)['read_policy']()
             args = [*args, '--']
-        if operation not in ('launch', 'launch-policy', 'launch-workflow', 'launch-script') or len(args) < 3 or args[2] != '--':
+        if operation not in ('launch', 'launch-policy', 'launch-workflow', 'launch-script', 'launch-workspace') or len(args) < 3 or args[2] != '--':
             raise ValueError('Expected session, cwd and CLI arguments')
         session_id, cwd, _, *cli_args = args
         if len(cli_args) > 128 or sum(map(len, cli_args)) > 131072:
@@ -155,7 +155,7 @@ def main():
         if os.fstat(fd).st_uid != uid:
             raise ValueError('Project belongs to another identity')
         os.fchdir(fd)
-        return jobs['launch_job'](policy, user_id, uid, home, cwd, session_id, cli_args, lock, launch_policy, {'launch-workflow': 'workflow', 'launch-script': 'script'}.get(operation, 'qwen'))
+        return jobs['launch_job'](policy, user_id, uid, home, cwd, session_id, cli_args, lock, launch_policy, {'launch-workflow': 'workflow', 'launch-script': 'script', 'launch-workspace': 'workspace'}.get(operation, 'qwen'))
     if operation == 'provision' and not args:
 
         base_fd = directory(root_fd, user_id, 0, 0, 0o711)

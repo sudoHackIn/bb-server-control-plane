@@ -1,3 +1,6 @@
+import { workspaceExecutionRequestSchema } from "@bb/host-daemon-contract";
+import { resolveControlPlaneWorkspaceExecution } from "./workspace-execution.js";
+import { ApiError } from "../errors.js";
 import { createServer } from "node:http";
 import {
   chmod,
@@ -99,7 +102,10 @@ export async function startControlPlaneQwenContextService(
   const server = createServer(async (request, response) => {
     response.setHeader("cache-control", "no-store");
     response.setHeader("content-type", "application/json");
-    if (request.method !== "POST" || request.url !== "/resolve") {
+    if (
+      request.method !== "POST" ||
+      !["/resolve", "/workspace/resolve"].includes(request.url ?? "")
+    ) {
       response.writeHead(404).end('{"error":"not_found"}');
       return;
     }
@@ -121,6 +127,19 @@ export async function startControlPlaneQwenContextService(
       } catch {
         body = null;
       }
+      if (request.url === "/workspace/resolve") {
+        const parsed = workspaceExecutionRequestSchema.safeParse(body);
+        if (!parsed.success) {
+          response.writeHead(400).end('{"error":"invalid_request"}');
+          return;
+        }
+        const workspace = resolveControlPlaneWorkspaceExecution(
+          db,
+          parsed.data.cwd,
+        );
+        response.writeHead(200).end(JSON.stringify(workspace));
+        return;
+      }
       const parsed = requestSchema.safeParse(body);
       if (!parsed.success) {
         response.writeHead(400).end('{"error":"invalid_request"}');
@@ -131,7 +150,13 @@ export async function startControlPlaneQwenContextService(
     } catch (error) {
       if (!response.headersSent && !response.destroyed)
         response
-          .writeHead(error instanceof ControlPlaneThreadError ? 404 : 500)
+          .writeHead(
+            error instanceof ApiError
+              ? error.status
+              : error instanceof ControlPlaneThreadError
+                ? 404
+                : 500,
+          )
           .end('{"error":"execution_unavailable"}');
     }
   });

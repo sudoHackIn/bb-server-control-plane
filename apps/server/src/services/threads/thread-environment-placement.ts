@@ -1,5 +1,7 @@
 import {
   getLatestThreadSequence,
+  getControlPlaneProjectOwner,
+  createEnvironment,
   findProjectEnvironmentByHostPath,
   getAppSettings,
   getEnvironment,
@@ -563,6 +565,26 @@ export async function resolveThreadEnvironmentPlacement(
       });
       if (refusal !== null) {
         throw new ApiError(409, "invalid_request", refusal);
+      }
+      if (getControlPlaneProjectOwner(deps.db, args.projectId)) {
+        const existing = findProjectEnvironmentByHostPath(
+          deps.db,
+          args.projectId,
+          resolvedEnvironment.hostId,
+          resolvedEnvironment.unmanagedPath,
+        );
+        return reuseEnvironmentPlacement(
+          deps,
+          existing ??
+            createEnvironment(deps.db, deps.hub, {
+              projectId: args.projectId,
+              hostId: resolvedEnvironment.hostId,
+              path: resolvedEnvironment.unmanagedPath,
+              providerOwnsPath: false,
+              status: "provisioning",
+              environmentProvider: null,
+            }),
+        );
       }
       return providerPlacement(
         deps,

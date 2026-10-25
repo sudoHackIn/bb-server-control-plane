@@ -1,3 +1,4 @@
+import { forwardControlPlaneWorkspaceCommand } from "./control-plane-workspace.js";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { withVcsProcessPriority } from "@bb/process-utils";
@@ -636,6 +637,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
   "project.inspect": async (command, options) =>
+    (await forwardControlPlaneWorkspaceCommand(command)) ??
     inspectProjectPath(
       command.path,
       userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
@@ -655,14 +657,20 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   },
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
-  "host.read_workspace_agent_context": readWorkspaceAgentContext,
+  "host.read_workspace_agent_context": async (command) =>
+    (await forwardControlPlaneWorkspaceCommand(command)) ??
+    readWorkspaceAgentContext(command),
   "host.delete_skill": deleteHostSkill,
   "host.write_skill": writeHostSkill,
   "host.install_global_skills": installGlobalSkills,
   "host.global_skills_status": async (command) =>
     readGlobalSkillsStatus(command, {}),
-  "host.inspect_git_source": inspectHostGitSource,
-  "host.list_branch_options": listHostBranchOptions,
+  "host.inspect_git_source": async (command, options) =>
+    (await forwardControlPlaneWorkspaceCommand(command)) ??
+    inspectHostGitSource(command, options),
+  "host.list_branch_options": async (command, options) =>
+    (await forwardControlPlaneWorkspaceCommand(command)) ??
+    listHostBranchOptions(command, options),
   "host.read_file": readHostFile,
   "host.read_file_chunk": readHostFileChunk,
   "host.read_file_relative": readHostRelativeFile,

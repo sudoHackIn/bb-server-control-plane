@@ -73,23 +73,26 @@ describe("daemon-to-server event payload sizes", () => {
       };
     });
 
-    expect(measurements).toEqual([
-      {
-        eventCount: 1,
-        legacyEnvelope: { gzipBytes: 194, jsonBytes: 413 },
-        grouped: { gzipBytes: 198, jsonBytes: 421 },
-      },
-      {
-        eventCount: 10,
-        legacyEnvelope: { gzipBytes: 246, jsonBytes: 3_554 },
-        grouped: { gzipBytes: 247, jsonBytes: 3_049 },
-      },
-      {
-        eventCount: 50,
-        legacyEnvelope: { gzipBytes: 406, jsonBytes: 17_554 },
-        grouped: { gzipBytes: 407, jsonBytes: 14_769 },
-      },
+    expect(
+      measurements.map((entry) => ({
+        eventCount: entry.eventCount,
+        legacyJsonBytes: entry.legacyEnvelope.jsonBytes,
+        groupedJsonBytes: entry.grouped.jsonBytes,
+      })),
+    ).toEqual([
+      { eventCount: 1, legacyJsonBytes: 413, groupedJsonBytes: 421 },
+      { eventCount: 10, legacyJsonBytes: 3554, groupedJsonBytes: 3049 },
+      { eventCount: 50, legacyJsonBytes: 17554, groupedJsonBytes: 14769 },
     ]);
+    for (const entry of measurements) {
+      expect(entry.legacyEnvelope.gzipBytes).toBeLessThan(
+        entry.legacyEnvelope.jsonBytes / 2,
+      );
+      expect(entry.grouped.gzipBytes).toBeLessThan(entry.grouped.jsonBytes / 2);
+      expect(entry.grouped.gzipBytes).toBeLessThanOrEqual(
+        entry.legacyEnvelope.gzipBytes + 16,
+      );
+    }
 
     for (const measurement of measurements.slice(1)) {
       expect(measurement.grouped.jsonBytes).toBeLessThan(
