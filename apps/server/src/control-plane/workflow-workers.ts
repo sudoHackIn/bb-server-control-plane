@@ -20,7 +20,11 @@ import {
 import type { AppDeps } from "../types.js";
 import { archiveThreadWithLifecycleEffects } from "../services/threads/thread-archive.js";
 import { ApiError } from "../errors.js";
-import { getLastThreadOutput } from "../services/threads/thread-data.js";
+import {
+  getLastThreadOutput,
+  getLastThreadError,
+  listThreadEventRows,
+} from "../services/threads/thread-data.js";
 import { createControlPlaneThreadService } from "./threads.js";
 import {
   currentControlPlanePrincipal,
@@ -329,8 +333,38 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
     },
     async getWorker(parentId: string, threadId: string) {
       const record = read(parentId, threadId);
+      const completed = listThreadEventRows(deps.db, {
+        threadId,
+        types: ["turn/completed"],
+        limit: 1,
+        order: "desc",
+      })[0];
+      const terminal =
+        completed?.type === "turn/completed" ? completed.data : null;
+      const failure =
+        record.thread.status === "error"
+          ? getLastThreadError(deps.db, threadId)
+          : null;
+      const error =
+        record.thread.status === "error"
+          ? failure && failure.sequence > (completed?.seq ?? 0)
+            ? [failure.message, failure.detail].filter(Boolean).join("\n")
+            : (terminal?.error?.message ??
+              (failure
+                ? [failure.message, failure.detail].filter(Boolean).join("\n")
+                : "Workflow worker failed"))
+          : record.thread.status === "idle" &&
+              terminal &&
+              terminal.status !== "completed"
+            ? terminal.status === "failed"
+              ? (terminal.error?.message ?? "Workflow worker failed")
+              : `Workflow worker interrupted${terminal.error?.message ? `: ${terminal.error.message}` : ""}`
+            : null;
       return {
         threadId,
+        error: error?.slice(0, 8192) ?? null,
+        idleSequence:
+          record.thread.status === "idle" ? (completed?.seq ?? null) : null,
         status: record.thread.status,
         output: getLastThreadOutput(deps.db, threadId),
       };

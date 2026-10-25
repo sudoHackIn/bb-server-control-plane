@@ -1428,3 +1428,46 @@ without changing execution deadlines or namespace/security restrictions.
 Provider retry/correction cases, notifications, personal background APIs/UI,
 legacy assignments, automations and schedules remain open. Pending side effects
 can execute again; successful-prefix replay is not an exactly-once guarantee.
+
+## Thirty-fifth increment: authoritative failures and bounded structured repair
+
+Managed worker polling now reads the canonical terminal error and nullable
+completion sequence through the scoped facade. It compares the latest
+system-error/turn-completion sequences so stale failures do not hide a fresh
+error, includes bounded provider detail and preserves failed/interrupted
+completions even when native status is idle. The existing core error-message
+reader shares the same extraction. No daemon wire field or public worker API is
+added.
+
+The managed controller consumes idle completions monotonically once and ignores
+generic global idle/failed callbacks. It no longer spends multiple structured
+repair turns on the same idle snapshot. Explicit interruption, authorization,
+permanent HTTP status, unknown-model/unsupported-setting and exhausted
+structured-output failures take precedence over transient wording or flags.
+Qualifying transient failures use the existing durable retry/backoff counter and
+fresh scoped workers; all creation/turn operations retain current-grant checks.
+Structured fallback repairs reuse the same worker and session, with at most two
+corrective turns.
+
+Verification: 268 Workflows tests, 402 Plugin SDK tests, 75 Plugin Guide tests and
+30 selected server tests pass. Real database checks verify owning error detail,
+newer completion vs newer system error, idle completion cursors and foreign
+rejection. Classification tests reject mixed auth/transient messages, permanent
+status with a retry flag, and explicit interruption. Strict server/SDK/Workflows/
+Guide typechecks, portable declarations and changed-file lint/format/diff checks
+pass.
+
+Docker injects an SSE failure after opening a response stream and verifies one
+external retry with a different worker. An HTTP 401 with mixed unavailable
+wording creates no retry. A bad structured response is repaired once in the same
+worker; persistent invalid output consumes two corrective turns and fails
+without provider retries. The completed full build/deployment passes all 63
+tasks, including earlier isolation/restart/crash/revocation checks. See
+`control-plane-phase-35-verification.json`.
+
+The tested stock Qwen internally keeps retrying some headless HTTP 503 failures;
+that is separate from external workflow retries. The acceptance fault does not
+pretend to exhaust that internal capacity loop. Corporate-fork behavior,
+remaining retry/revocation combinations, notifications, personal background
+APIs/UI, legacy assignments, automations and schedules remain required. Pending
+side effects may repeat; no overall background-stage completion is claimed.

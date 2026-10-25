@@ -425,6 +425,67 @@ export async function verifyNativeWorkflows({
     });
     await rejectNested("invalid-utf8", /not valid.*utf-8/u);
 
+    for (const marker of [
+      "workflow-retry-alice",
+      "workflow-denied-alice",
+      "workflow-repair-alice",
+      "workflow-invalid-alice",
+    ]) {
+      const structured =
+        marker.includes("repair") || marker.includes("invalid");
+      const script = `export const meta = {name:"managed-provider-repair",description:"Retries and bounded corrective turns"}; return await agent("BB_PERSONAL_${marker}"${structured ? ', {schema:{type:"object",properties:{value:{type:"number"}},required:["value"]}}' : ""});`;
+      const started = await cli(
+        ["workflows", "run", "--script", script, "--json"],
+        alice,
+      );
+      const expected =
+        marker.includes("denied") || marker.includes("invalid")
+          ? "failed"
+          : "succeeded";
+      await wait(() => {
+        const row = agentStorage
+          .prepare("SELECT status,error FROM workflow_runs WHERE id = ?")
+          .get(started.runId);
+        if (expected === "succeeded" && row?.status === "failed")
+          throw new Error(row.error);
+        return row?.status === expected;
+      }, `native ${marker}`);
+      const row = agentStorage
+        .prepare("SELECT * FROM workflow_runs WHERE id = ?")
+        .get(started.runId);
+      const call = agentStorage
+        .prepare("SELECT * FROM workflow_calls WHERE run_id = ?")
+        .get(started.runId);
+      const workers = db
+        .prepare(
+          "SELECT count(*) AS count FROM control_plane_threads t JOIN control_plane_job_bindings b ON b.id = t.job_binding_id WHERE b.source_binding_id = ?",
+        )
+        .get(row.authority_binding_id).count;
+      if (marker.includes("retry")) {
+        assert.equal(call.provider_retry_attempts, 1);
+        assert.equal(workers, 2);
+        assert.equal(
+          JSON.parse(row.result_json),
+          `Personal ${marker} completed`,
+        );
+      } else {
+        assert.equal(call.provider_retry_attempts, 0);
+        assert.equal(workers, 1);
+        if (marker.includes("repair")) {
+          assert.equal(call.repair_attempts, 1);
+          assert.deepEqual(JSON.parse(row.result_json), { value: 42 });
+        }
+        if (marker.includes("invalid")) {
+          assert.equal(call.repair_attempts, 3);
+          assert.match(
+            row.error,
+            /Structured output failed after 2 corrective turns/u,
+          );
+        }
+        if (marker.includes("denied"))
+          assert.match(row.error, /Authentication|401/u);
+      }
+    }
     const beforeReplay = db
       .prepare("SELECT count(*) AS count FROM threads")
       .get().count;
@@ -949,6 +1010,10 @@ export async function verifyNativeWorkflows({
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
       nativeEvaluatorAgentToQwenRoundTrip: true,
+      nativeTransientProviderFailureUsesNewWorkerAttempt: true,
+      nativeAuthenticationFailureIsNotRetried: true,
+      nativeStructuredCorrectionUsesSameWorker: true,
+      nativeStructuredCorrectionExhaustionIsNotProviderRetry: true,
       nestedWorkflowNamedSourceLoadedUnderOwnerUid: true,
       nestedAgentUsesParentAuthorityAndDurableReplay: true,
       nestedSchemasAndNoNodeGlobals: true,

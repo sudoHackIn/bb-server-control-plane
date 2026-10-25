@@ -191,8 +191,14 @@ export function getLastThreadErrorMessage(
   db: DbConnection,
   threadId: string,
 ): string | null {
+  return getLastThreadError(db, threadId)?.message ?? null;
+}
+
+export function getLastThreadError(db: DbConnection, threadId: string) {
   const row = getLatestThreadSystemErrorEventRow(db, { threadId });
   if (!row) return null;
   const eventRow = parseStoredEventRow(row);
-  return eventRow.type === "system/error" ? eventRow.data.message : null;
+  return eventRow.type === "system/error"
+    ? { ...eventRow.data, sequence: eventRow.seq }
+    : null;
 }

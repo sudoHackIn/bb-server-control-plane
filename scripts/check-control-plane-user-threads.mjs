@@ -8,6 +8,7 @@ import { request } from "node:https";
 
 export function createUserThreadFixture({ db, users }) {
   const calls = new Set();
+  const failedWorkers = new Map();
   let resumed = false;
   let saved;
   const sessions = new Map();
@@ -21,6 +22,40 @@ export function createUserThreadFixture({ db, users }) {
     )
       return false;
     assert.equal(body.model, "qwen-job-test");
+    if (marker === "workflow-retry-alice") {
+      const runId = JSON.stringify(body.messages).match(
+        /run (wfr_[A-Za-z0-9-]+)/u,
+      )?.[1];
+      assert.ok(runId);
+      const worker = db
+        .prepare(
+          "SELECT t.id FROM threads t JOIN control_plane_threads o ON o.thread_id = t.id JOIN control_plane_job_bindings b ON b.id = o.job_binding_id JOIN control_plane_job_bindings p ON p.id = b.source_binding_id WHERE p.object_id = ? AND p.kind = 'workflow-run' ORDER BY t.created_at DESC,t.rowid DESC LIMIT 1",
+        )
+        .get(runId);
+      assert.ok(worker);
+      if (!failedWorkers.has(marker)) failedWorkers.set(marker, worker.id);
+      if (failedWorkers.get(marker) === worker.id) {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.end(
+          `data: ${JSON.stringify({ error: { message: "Provider connection closed", type: "server_error", code: "ECONNRESET" } })}\n\n`,
+        );
+        return true;
+      }
+    }
+    if (marker === "workflow-denied-alice") {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            message: "Authentication failed: provider temporarily unavailable",
+            type: "authentication_error",
+            code: "invalid_api_key",
+          },
+        }),
+      );
+      return true;
+    }
+
     if (marker === "workflow-profile-alice")
       assert.equal(
         body.tools.some((tool) => tool.function?.name === "read_file"),
@@ -54,9 +89,12 @@ export function createUserThreadFixture({ db, users }) {
         }
       : {
           role: "assistant",
-          content: marker.startsWith("workflow-json")
-            ? JSON.stringify({ value: 42 })
-            : `Personal ${marker} completed`,
+          content:
+            marker.startsWith("workflow-json") ||
+            (marker === "workflow-repair-alice" &&
+              JSON.stringify(body.messages).includes("Corrective turn"))
+              ? JSON.stringify({ value: 42 })
+              : `Personal ${marker} completed`,
         };
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.end(

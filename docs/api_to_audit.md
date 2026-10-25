@@ -3761,3 +3761,13 @@ only production caller is builtin Workflows startup/maintenance. The Plugin
 Guide inventory includes this internal method. Deleted native workers return a
 missing-thread result for metadata and idempotent stop/archive after parent
 admission; existing foreign workers remain denied.
+
+The scoped worker reader now returns a bounded `error` and nullable
+`idleSequence`. Error selection compares the latest canonical system-error and
+turn-completion sequences, retaining provider detail while avoiding an older
+turn's failure. Idle sequences come from canonical `turn/completed` rows. The
+managed Workflows controller consumes each completion once and ignores generic
+global idle/failed callbacks; standalone event handling is unchanged. This
+connects the same durable retry/structured-result controller to authoritative
+native failures and prevents duplicate corrective turns during polling. The
+only production consumer is builtin Workflows; no host-daemon wire field changed.

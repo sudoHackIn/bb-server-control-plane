@@ -130,3 +130,10 @@ Managed server restart requeues interrupted runs and replays the successful
 unchanged prefix under current authority. Pending steps can execute again.
 Registered worker discovery and cleanup use owner-aware core operations;
 cleanup references survive removal of old run history.
+
+Managed agents use the same bounded transient-provider retry controller as
+standalone runs, creating a fresh worker attempt when the harness reports a
+qualifying failure. Authorization/configuration errors are not retried. A
+structured result may receive at most two corrective turns in the same worker;
+exhaustion fails the call. Harness-internal retries are separate from workflow
+worker retries, and interrupted side effects may be repeated.

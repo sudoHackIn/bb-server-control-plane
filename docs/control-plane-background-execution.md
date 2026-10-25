@@ -306,3 +306,28 @@ Both old attempts are disabled and archived. This verifies that crash recovery
 uses current authority rather than a browser credential or a cached grant.
 The fixture restores the revoked grant after assertion. Interrupted side effects
 may be repeated; remaining provider-retry and notification cases are separate.
+
+## Provider failure and structured-result recovery
+
+The scoped worker reader includes the latest bounded failure and an idle
+completion sequence. It compares system-error and turn-completion sequences so
+an earlier turn cannot hide a fresh authorization/provisioning failure. A failed
+or interrupted completion also remains a failure if native status has become
+idle. Managed controllers consume completions monotonically once, rather than
+settling from generic global idle/failed events. This prevents polling an old
+idle snapshot from spending multiple corrective turns.
+
+The existing durable retry counter and bounded backoff now receive authoritative
+provider errors. Authorization/permanent-status and configuration failures take
+precedence over retryable wording or object flags. Qualifying transient failures
+retire the old attempt and create a new worker through normal current-grant
+checks. Structured fallback validation reuses the same worker for at most two
+corrective turns; exhaustion does not become a provider retry.
+
+Docker injects an OpenAI-compatible SSE error after a stream opens, observes a
+successful replacement worker, rejects a mixed authentication/unavailable error
+without retry, repairs a structured answer in the same worker and verifies
+bounded correction exhaustion. The tested stock Qwen internally keeps retrying
+some headless HTTP 503 responses; that behavior is separate from the external
+controller. Corporate-fork behavior and the remaining retry/revocation matrix
+still require verification.

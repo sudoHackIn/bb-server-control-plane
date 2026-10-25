@@ -2089,3 +2089,18 @@ it("rejects a managed profile option on standalone before spawning a worker", as
     await worker;
   }
 });
+
+it("does not retry mixed authorization and transient messages or permanent status overrides", () => {
+  for (const error of [
+    "HTTP 401: provider temporarily unavailable",
+    "Workflow worker interrupted: ECONNRESET",
+    "Authentication failed: API error 503",
+    Object.assign(new Error("Provider overload"), {
+      status: 403,
+      retryable: true,
+    }),
+    "Structured output failed: API error 503",
+  ])
+    expect(isRetryableProviderFailure(error)).toBe(false);
+  expect(isRetryableProviderFailure("API error: 503")).toBe(true);
+});

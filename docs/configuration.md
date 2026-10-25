@@ -1507,3 +1507,14 @@ replay and an execution-profile grant revoked while BB is offline. Its test-only
 inner/outer watchdogs are 240/270 seconds because it now runs both graceful and
 abrupt two-user recovery scenarios. Browser-mode and production run deadlines
 are unchanged.
+
+Managed workflow agents now preserve terminal worker/provider errors through
+the scoped reader. The existing controller retries qualifying transient failures
+with bounded backoff and a fresh worker attempt; authorization, permanent model/
+configuration and exhausted structured-output failures take precedence over
+transient wording. Each attempt re-enters canonical owner/profile admission.
+Structured-result corrections reuse the worker and native session, with at most
+two corrective turns. A native completion cursor prevents duplicate repairs
+while polling an idle worker. Stock Qwen can perform its own internal retries:
+the Docker external-retry proof injects an error in an already-open response
+stream, rather than assuming every HTTP 503 leaves the harness immediately.

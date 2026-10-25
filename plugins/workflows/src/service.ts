@@ -109,10 +109,25 @@ function message(error: unknown): string {
 }
 
 export function isRetryableProviderFailure(error: unknown): boolean {
+  const detail = message(error).toLowerCase();
+  if (
+    /(?:not authori[sz]ed|unauthori[sz]ed|authentication|permission denied|forbidden|revoked|invalid api.?key|unknown model|unsupported|workflow worker interrupted|structured output failed|schema (?:is )?invalid)/u.test(
+      detail,
+    ) ||
+    /(?:http|status|api error|error)[\s:]*\b(?:400|401|403|404|422)\b/u.test(
+      detail,
+    )
+  )
+    return false;
   if (typeof error === "object" && error !== null) {
     const candidate = error as Record<string, unknown>;
-    if (candidate.retryable === true) return true;
     const status = candidate.status ?? candidate.statusCode;
+    if (
+      typeof status === "number" &&
+      [400, 401, 403, 404, 422].includes(status)
+    )
+      return false;
+    if (candidate.retryable === true) return true;
     if (
       typeof status === "number" &&
       [429, 500, 502, 503, 504, 529].includes(status)
@@ -128,11 +143,10 @@ export function isRetryableProviderFailure(error: unknown): boolean {
       return true;
     }
   }
-  const detail = message(error).toLowerCase();
   return [
     /provider[^\n]*(?:overload|capacity|busy|temporar|unavailable|rate.?limit)/,
     /(?:rate.?limit|too many requests)/,
-    /(?:http|status|api error|error)\s*(?:429|500|502|503|504|529)\b/,
+    /(?:http|status|api error|error)[\s:]*(?:429|500|502|503|504|529)\b/,
     /\b(?:econnreset|econnrefused|etimedout|ehostunreach|enetunreach)\b/,
     /(?:connection reset|connection closed|socket hang up|network error)/,
   ].some((pattern) => pattern.test(detail));
@@ -340,6 +354,7 @@ export function createWorkflowService(
   }
   const controllers = new Map<string, AbortController>();
   const idleHandlers = new Set<string>();
+  const observedIdleSequences = new Map<string, number>();
   const handlerTasks = new Set<Promise<void>>();
   const idleHandlerTasks = new Map<string, Promise<void>>();
   const childStops = new Map<string, Promise<void>>();
@@ -521,7 +536,10 @@ export function createWorkflowService(
           );
         }
       })
-      .finally(() => childStops.delete(threadId));
+      .finally(() => {
+        childStops.delete(threadId);
+        observedIdleSequences.delete(threadId);
+      });
     childStops.set(threadId, stopping);
     return stopping;
   }
@@ -1062,11 +1080,16 @@ export function createWorkflowService(
                 run.authorityBindingId,
                 child.id,
               );
-              if (current.status === "idle") {
-                onThreadIdle(child.id, current.output);
+              if (current.error !== null)
+                failThreadCall(child.id, current.error);
+              else if (current.status === "idle") {
+                onThreadIdle(child.id, current.output, current.idleSequence);
                 await idleHandlerTasks.get(call.id);
               } else if (current.status === "error")
-                failThreadCall(child.id, "Workflow worker failed");
+                failThreadCall(
+                  child.id,
+                  current.error ?? "Workflow worker failed",
+                );
               const stored = getCall(db, run.id, callIndex);
               if (
                 stored?.status === "succeeded" ||
@@ -1269,9 +1292,22 @@ export function createWorkflowService(
     wakeCall(call);
   }
 
-  function onThreadIdle(threadId: string, output: string | null): void {
+  function onThreadIdle(
+    threadId: string,
+    output: string | null,
+    sequence?: number | null,
+  ): void {
     const call = getCallByChildThread(db, threadId);
     if (call === null || idleHandlers.has(call.id)) return;
+    if (backgroundJobs) {
+      if (
+        sequence === undefined ||
+        sequence === null ||
+        sequence <= (observedIdleSequences.get(threadId) ?? 0)
+      )
+        return;
+      observedIdleSequences.set(threadId, sequence);
+    }
     idleHandlers.add(call.id);
     const task = handleThreadIdle(threadId, output)
       .catch((error) => {
@@ -1726,11 +1762,15 @@ export function createWorkflowService(
             continue;
           }
           const thread = await backgroundJobs.getWorker(parent, threadId);
-          if (thread.status === "idle") {
-            onThreadIdle(threadId, thread.output);
+          if (thread.error !== null) failThreadCall(threadId, thread.error);
+          else if (thread.status === "idle") {
+            onThreadIdle(threadId, thread.output, thread.idleSequence);
             await idleHandlerTasks.get(call.id);
           } else if (thread.status === "error")
-            failThreadCall(threadId, "Workflow worker is in an error state");
+            failThreadCall(
+              threadId,
+              thread.error ?? "Workflow worker is in an error state",
+            );
           continue;
         }
         const thread = await bb.sdk.threads.get({ threadId });
@@ -1930,8 +1970,10 @@ export function createWorkflowService(
     runWorker,
     onThreadIdle,
     onOriginUnavailable,
-    onThreadFailed: (threadId, error) =>
-      failThreadCall(threadId, error ?? "Workflow worker failed"),
+    onThreadFailed: (threadId, error) => {
+      if (!backgroundJobs)
+        failThreadCall(threadId, error ?? "Workflow worker failed");
+    },
     onThreadArchived: (threadId) =>
       failThreadCall(threadId, "Workflow worker was archived"),
     onThreadDeleted: (threadId) =>

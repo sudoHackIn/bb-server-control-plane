@@ -2001,7 +2001,13 @@ export interface InternalDoNotUseBackgroundJobs {
   getWorker(
     id: string,
     threadId: string,
-  ): Promise<{ threadId: string; status: string; output: string | null }>;
+  ): Promise<{
+    threadId: string;
+    status: string;
+    output: string | null;
+    error: string | null;
+    idleSequence: number | null;
+  }>;
   sendWorker(id: string, threadId: string, message: string): Promise<void>;
   stopWorker(id: string, threadId: string): Promise<void>;
   archiveWorker(id: string, threadId: string): Promise<void>;

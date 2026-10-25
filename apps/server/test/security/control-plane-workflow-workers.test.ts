@@ -1,9 +1,11 @@
+import { threadScope, turnScope } from "@bb/domain";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { expect, it, vi } from "vitest";
 import {
   createControlPlaneJobBinding,
   createThread,
+  appendStoredThreadEvent,
   getThread,
   controlPlaneJobBindings,
   controlPlaneUsers,
@@ -55,7 +57,85 @@ it("scopes worker metadata and actions to the owning parent and denies unapprove
         await withControlPlaneUser(alice.user.id, () =>
           jobs.getWorker(a.id, child.id),
         ),
-      ).toEqual({ threadId: child.id, status: "idle", output: null });
+      ).toEqual({
+        threadId: child.id,
+        status: "idle",
+        output: null,
+        error: null,
+        idleSequence: null,
+      });
+      appendStoredThreadEvent(harness.db, harness.hub, {
+        threadId: child.id,
+        type: "system/error",
+        scope: threadScope(),
+        data: {
+          code: "provider_failed",
+          message: "Provider failed",
+          detail: "HTTP 503: provider unavailable",
+        },
+      });
+      harness.db
+        .update(threads)
+        .set({ status: "error" })
+        .where(eq(threads.id, child.id))
+        .run();
+      expect(
+        (
+          await withControlPlaneUser(alice.user.id, () =>
+            jobs.getWorker(a.id, child.id),
+          )
+        ).error,
+      ).toBe("Provider failed\nHTTP 503: provider unavailable");
+      appendStoredThreadEvent(harness.db, harness.hub, {
+        threadId: child.id,
+        type: "turn/completed",
+        scope: turnScope("failed-turn"),
+        data: {
+          providerThreadId: "session",
+          status: "failed",
+          error: { message: "HTTP 401: authentication failed" },
+        },
+      });
+      expect(
+        (
+          await withControlPlaneUser(alice.user.id, () =>
+            jobs.getWorker(a.id, child.id),
+          )
+        ).error,
+      ).toBe("HTTP 401: authentication failed");
+      appendStoredThreadEvent(harness.db, harness.hub, {
+        threadId: child.id,
+        type: "system/error",
+        scope: threadScope(),
+        data: {
+          code: "not_authorized",
+          message: "Permission denied",
+          detail: "HTTP 403",
+        },
+      });
+      expect(
+        (
+          await withControlPlaneUser(alice.user.id, () =>
+            jobs.getWorker(a.id, child.id),
+          )
+        ).error,
+      ).toBe("Permission denied\nHTTP 403");
+      appendStoredThreadEvent(harness.db, harness.hub, {
+        threadId: child.id,
+        type: "turn/completed",
+        scope: turnScope("completed-turn"),
+        data: { providerThreadId: "session", status: "completed" },
+      });
+      harness.db
+        .update(threads)
+        .set({ status: "idle" })
+        .where(eq(threads.id, child.id))
+        .run();
+      const idle = await withControlPlaneUser(alice.user.id, () =>
+        jobs.getWorker(a.id, child.id),
+      );
+      expect(idle.error).toBeNull();
+      expect(idle.idleSequence).toBeGreaterThan(0);
       await expect(
         withControlPlaneUser(bob.user.id, async () =>
           jobs.getWorker(a.id, child.id),
