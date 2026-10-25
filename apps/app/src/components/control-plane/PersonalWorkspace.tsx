@@ -9,6 +9,7 @@ import { createControlPlaneClient } from "@bb/sdk/browser";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PersonalTimeline } from "./PersonalTimeline";
+import { PersonalWorkflows } from "./PersonalWorkflows";
 import { PersonalConversationComposer } from "./PersonalConversationComposer";
 import {
   Sidebar,
@@ -67,6 +68,8 @@ function WorkspaceNavigation({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const workflowView =
+    new URLSearchParams(location.search).get("view") === "workflows";
   const projectRoute = useMatch("/projects/:projectId");
   const threadRoute = useMatch("/projects/:projectId/threads/:threadId");
   const shortThreadRoute = useMatch("/threads/:threadId");
@@ -307,6 +310,21 @@ function WorkspaceNavigation({
               New conversation
             </Button>
           )}
+          {selectedProject && !project.isError && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                navigate({
+                  pathname: location.pathname,
+                  search: workflowView ? "" : "?view=workflows",
+                });
+                closeSidebar();
+              }}
+            >
+              {workflowView ? "Conversation" : "Workflows"}
+            </Button>
+          )}
         </header>
         {project.isError ||
         (threadId !== null && detail.isError) ||
@@ -318,6 +336,15 @@ function WorkspaceNavigation({
               void threads.refetch();
               if (threadId) void detail.refetch();
             }}
+          />
+        ) : workflowView && selectedProject ? (
+          <PersonalWorkflows
+            key={`${selectedProject.projectId}:${selectedThread?.id ?? "project"}`}
+            client={client}
+            projectId={selectedProject.projectId}
+            originThreadId={
+              project.data?.canRun ? (selectedThread?.id ?? null) : null
+            }
           />
         ) : (
           <section className="flex min-h-0 flex-1 flex-col">
@@ -355,6 +382,7 @@ function WorkspaceNavigation({
           </section>
         )}
         {selectedProject &&
+          !workflowView &&
           project.data &&
           !project.isError &&
           !mismatchedThread &&

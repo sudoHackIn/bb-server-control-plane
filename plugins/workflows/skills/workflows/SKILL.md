@@ -156,3 +156,11 @@ only on personal runs under current project access. List continuation uses the
 opaque `nextCursor`; history continuation uses its numeric `nextCursor` as
 `--after`. Raw plugin RPC remains closed to personal credentials. See
 `bb guide machines` for the limited SDK client and command options.
+
+The personal web workspace's **Workflows** button uses that same limited client
+for project runs, status/result/call history, stop, inline start and replay.
+It requires an owned conversation with execution access for start/replay; project
+views remain readable without that permission. Progress uses two-second polling,
+not unrestricted plugin RPC. Draft source/arguments are not persisted and reset
+on view/project/conversation changes. See `bb guide machines` for the workflow
+screen and equivalent commands.

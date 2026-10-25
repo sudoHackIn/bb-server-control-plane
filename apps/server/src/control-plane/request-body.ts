@@ -1,14 +1,64 @@
-import { bodyLimit } from "hono/body-limit";
-import type { Context } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 
-export function controlPlaneBodyLimit(maxSize: number) {
-  return bodyLimit({
-    maxSize,
-    onError(context) {
+async function drainRejectedBody(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), 500);
+    timer.unref?.();
+  });
+  let drained = 0;
+  try {
+    while (drained <= 8 * 1024 * 1024) {
+      const item = await Promise.race([reader.read(), expired]);
+      if (item === null) break;
+      if (item.done) return;
+      drained += item.value.byteLength;
+    }
+    void reader.cancel().catch(() => {});
+  } catch {
+    void reader.cancel().catch(() => {});
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function controlPlaneBodyLimit(maxSize: number): MiddlewareHandler {
+  return async (context, next) => {
+    const body = context.req.raw.body;
+    if (!body) return next();
+    const reader = body.getReader();
+    async function reject() {
+      await drainRejectedBody(reader);
       context.header("connection", "close");
       return context.json({ error: "payload_too_large" }, 413);
-    },
-  });
+    }
+    if (Number(context.req.header("content-length")) > maxSize) return reject();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const item = await reader.read();
+      if (item.done) break;
+      size += item.value.byteLength;
+      if (size > maxSize) return reject();
+      chunks.push(item.value);
+    }
+    reader.releaseLock();
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    context.req.raw = new Request(context.req.url, {
+      method: context.req.method,
+      headers: context.req.raw.headers,
+      signal: context.req.raw.signal,
+      body: bytes,
+    });
+    return next();
+  };
 }
 
 export async function readControlPlaneJson(context: Context): Promise<unknown> {

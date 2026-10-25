@@ -659,8 +659,21 @@ args?, resumeRunId?})`, `list({projectId?, cursor?, limit?, signal?})`, `get(id,
 signal?)`, `result(id, signal?)`, `history(id, {after?, limit?, signal?})` and
 `stop(id, signal?)`. Start accepts an optional second AbortSignal. These methods
 also work with a personal browser cookie on the matching origin. Definitions,
-schedules, workflow UI and dedicated progress subscriptions remain separate
-shared-server work; a started workflow continues independently of its browser
+schedules and dedicated progress subscriptions remain separate shared-server
+work; a started workflow continues independently of its browser
 session under current saved execution grants.
 The workflow HTTP envelope is separately limited to 4 MiB, allowing for JSON
 escaping; the tighter source and argument limits still apply.
+
+
+In the personal web UI, select a project or conversation and click **Workflows**.
+The main workspace lists your project runs, status, result and paginated agent
+calls. Open a conversation with execution permission to submit inline workflow
+source and JSON arguments. **Prepare replay** selects a terminal run; supply the
+source/arguments and choose **Resume workflow** to replay its unchanged successful
+prefix. **Stop workflow** cancels a queued/running run. These actions use the same
+limited client as the commands above. Progress polls every two seconds while the
+screen is active; **Refresh workflows** retries a failed read. **Conversation**
+returns to the ordinary timeline/composer. Reload preserves the workflow view;
+select a run again afterward. Source drafts reset when leaving the view or
+changing the project/conversation.

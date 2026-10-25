@@ -287,3 +287,34 @@ it("restores project selection with browser history without relying on prior com
   fireEvent.click(screen.getByRole("button", { name: "History forward" }));
   await screen.findByRole("heading", { name: "Project b" });
 });
+
+it("opens workflows in the main workspace and keeps the conversation/sidebar navigation", async () => {
+  const paths: string[] = [];
+  mount(async (input) => {
+    const url = new URL(input.toString());
+    paths.push(url.pathname);
+    if (url.pathname.endsWith("/bootstrap")) return Response.json(bootstrap);
+    if (url.pathname.endsWith("/projects/a"))
+      return Response.json(project("a"));
+    if (url.pathname.endsWith("/workflows"))
+      return Response.json({ runs: [], nextCursor: null });
+    if (url.pathname.endsWith("/threads"))
+      return Response.json({ threads: [], nextCursor: null });
+    if (url.pathname.endsWith("/profiles"))
+      return Response.json({ profiles: [], nextCursor: null });
+    throw new Error(`Unexpected request ${url.pathname}`);
+  }, "/projects/a?view=workflows");
+  await screen.findByRole("heading", { name: "Workflows" });
+  expect(
+    screen.queryByRole("textbox", { name: "Message your agent…" }),
+  ).toBeNull();
+  expect(screen.queryByLabelText("Workflow source")).toBeNull();
+  expect(document.querySelector('[data-sidebar="sidebar"]')).not.toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
+  await screen.findByRole("heading", { name: "Project a" });
+  fireEvent.click(screen.getByRole("button", { name: "Workflows" }));
+  await screen.findByRole("heading", { name: "Workflows" });
+  expect(paths.every((path) => path.startsWith("/control-plane/user/"))).toBe(
+    true,
+  );
+});

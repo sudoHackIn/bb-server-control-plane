@@ -26,6 +26,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
+- [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
 - [x] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection through approved profile versions. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [x] Stream personal persisted events with exclusive cursor replay and native BB timeline snapshots/updates; recheck token/project authority on every frame and idle intervals, limit buffers/connections, and release subscriptions on cancellation. Global lists/search/bootstrap/user UI still require separate scoping.
@@ -52,7 +53,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 
 ## Per-user workflows, automations and schedules
 
-This stage is required before shared multi-user deployment. Everything below is planned work, not a verified property of the current fork. First inspect the existing workflow, automation and scheduler storage and execution paths; reuse their persistence where possible and add ownership and enforcement at the actual boundaries.
+This stage is required before shared multi-user deployment. The composite checks below remain incomplete; the increment reports document the verified subset. Inventory the existing workflow, automation and scheduler storage and execution paths, reuse their persistence where possible and enforce ownership at the actual boundaries.
 
 ### Implementation stages
 
@@ -1665,3 +1666,51 @@ deployment pass all 63 tasks in 5 minutes 44 seconds. Its 42 oversized-body prob
 require HTTP 413 using the normal keep-alive client and preserve the saved state;
 normal certificate approval, login/exchange and the existing actual Qwen,
 workflow/restart/crash checks also pass.
+
+## Fortieth increment: personal workflow run workspace
+
+The personal native workspace now has a **Workflows** view in the main content
+area, keeping the left project/thread navigation. It uses the existing limited
+SDK for personal project runs and pagination, status/phase/errors, JSON result,
+paginated agent calls with retry/repair counts, cancellation, inline source/JSON
+start and terminal replay. Execution uses the selected owned conversation;
+project/read-only views can inspect runs without displaying execution controls.
+Replay submits explicit source/arguments to the normal native replay controller.
+No new privileged API, persistence table or plugin frontend is introduced.
+
+The authorized project/conversation URL accepts `?view=workflows`; reload keeps
+the view and a run can be selected again. Polling refreshes every two seconds
+while active. Query keys separate projects/runs; components reset selected run,
+source and argument drafts when changing the project/conversation or leaving the
+view. A failed read hides cached run/result/history content. Existing bootstrap
+and project-access failures unmount the screen. Result JSON is rendered as text,
+including an available JSON null. Stop/start failures are explicit and do not
+pretend that a requested action succeeded.
+
+The existing personal API, SDK and `bb server access workflows` commands remain
+the canonical non-UI surfaces. Saved workflow definitions, dedicated progress
+subscriptions, automations/schedules, legacy assignment and the broader execution
+and recovery audit remain open. This increment does not complete the composite
+background stage.
+
+The real browser deployment also exposed an early-close race in the preceding
+body-boundary increment: closing the rejected connection while a 4 MiB upload is
+still being written can produce a reset before the client receives HTTP 413.
+The common middleware now buffers accepted input only to the existing route cap
+and drains rejected input before closing, with an 8 MiB budget and a 500 ms
+deadline, cancelling unfinished streams. No oversized bytes reach parsing or
+action dispatch. A real TCP regression repeats large Content-Length/chunked
+uploads followed by valid requests; stalled/endless stream tests verify bounded
+cleanup. The Docker matrix still requires complete HTTP 413 responses and
+unchanged persisted state, without retries or accepting a reset as success.
+
+Final verification passes 29 personal UI tests and 18 server security/real-TCP
+checks, strict app/server types and changed-file lint/format/diff checks. The
+final production Docker/Chrome deployment passes all 63 tasks in 6 minutes
+11 seconds, including both certificate users' actual Qwen workflow start,
+result/history, replay, pagination after reload, cancellation, foreign-run
+read/stop denials, ordinary conversation UI/logout and native restart recovery.
+The browser uses isolated temporary certificate contexts outside the host
+execution sandbox, which otherwise aborts Chrome before opening a page. The
+Docker runtime keeps its original UID, namespaces, readonly mounts and seccomp
+constraints. Results are recorded in `control-plane-phase-40-verification.json`.

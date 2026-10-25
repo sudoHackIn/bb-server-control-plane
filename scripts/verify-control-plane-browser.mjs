@@ -64,7 +64,6 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
   }
   async function visible(locator) {
     await locator.waitFor({ state: "visible" });
-    assert.equal(await locator.isVisible(), true);
   }
   async function login(page, user) {
     const path = `/projects/${user.projectId}/threads/${user.threadId}#msg=${user.messageSeq}`;
@@ -162,6 +161,192 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         { exact: true },
       ),
     );
+    const browserWorkflowIds = [];
+    for (const [actor, user] of [
+      [alice, aliceUser],
+      [bob, bobUser],
+    ]) {
+      const page = actor.page;
+      await page
+        .getByRole("button", { name: "Workflows", exact: true })
+        .click();
+      await visible(
+        page.getByRole("heading", { name: "Workflows", exact: true }),
+      );
+      assert.equal(
+        await page
+          .getByRole("textbox", { name: "Message your agent…" })
+          .count(),
+        0,
+      );
+      const source = page.getByRole("textbox", {
+        name: "Workflow source",
+        exact: true,
+      });
+      await source.fill(
+        `export const meta={name:"browser-workflow-${user.login}",description:"Personal browser agent"}; return await agent("BB_PERSONAL_workflow-agent-${user.login}");`,
+      );
+      await page
+        .getByRole("textbox", {
+          name: "Workflow arguments (JSON)",
+          exact: true,
+        })
+        .fill(JSON.stringify({ owner: user.login }));
+      const started = page.waitForResponse(
+        (reply) =>
+          reply.url().endsWith("/control-plane/user/workflows") &&
+          reply.request().method() === "POST",
+      );
+      await page
+        .getByRole("button", { name: "Run workflow", exact: true })
+        .click();
+      const startedResponse = await started;
+      assert.equal(startedResponse.status(), 201);
+      const workflow = await startedResponse.json();
+      assert.equal(workflow.projectId, user.projectId);
+      browserWorkflowIds.push(workflow.id);
+      await visible(page.getByText(`Run ${workflow.id}`, { exact: true }));
+      await visible(page.getByLabel("Workflow result", { exact: true }));
+      await visible(
+        page
+          .getByLabel("Workflow agent calls", { exact: true })
+          .getByText(/succeeded/u),
+      );
+      await page
+        .getByRole("button", { name: "Prepare replay", exact: true })
+        .click();
+      const resumed = page.waitForResponse(
+        (reply) =>
+          reply.url().endsWith("/control-plane/user/workflows") &&
+          reply.request().method() === "POST",
+      );
+      await page
+        .getByRole("button", { name: "Resume workflow", exact: true })
+        .click();
+      const resumedResponse = await resumed;
+      assert.equal(resumedResponse.status(), 201);
+      assert.equal(
+        resumedResponse.request().postDataJSON().resumeRunId,
+        workflow.id,
+      );
+      const replay = await resumedResponse.json();
+      assert.notEqual(replay.id, workflow.id);
+      await visible(page.getByText(`Run ${replay.id}`, { exact: true }));
+      await visible(page.getByLabel("Workflow result", { exact: true }));
+      if (process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS) {
+        await mkdir(process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS, {
+          recursive: true,
+          mode: 0o700,
+        });
+        await page.getByLabel("Selected workflow", { exact: true }).screenshot({
+          path: join(
+            process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS,
+            `personal-workflow-${user.login}.png`,
+          ),
+        });
+      }
+      await page.reload();
+      await visible(
+        page.getByRole("heading", { name: "Workflows", exact: true }),
+      );
+      await page
+        .getByText("Loading workflows…", { exact: true })
+        .waitFor({ state: "hidden" });
+      const completedRun = page
+        .getByRole("button", {
+          name: `browser-workflow-${user.login} · succeeded`,
+          exact: true,
+        })
+        .first();
+      for (let pageIndex = 0; (await completedRun.count()) === 0; pageIndex++) {
+        assert.ok(
+          pageIndex < 10,
+          "Workflow pagination did not reach the browser run",
+        );
+        const next = page.waitForResponse(
+          (reply) =>
+            new URL(reply.url()).pathname === "/control-plane/user/workflows" &&
+            reply.request().method() === "GET" &&
+            new URL(reply.url()).searchParams.has("cursor"),
+        );
+        await page
+          .getByRole("button", { name: "More workflows", exact: true })
+          .click();
+        assert.equal((await next).status(), 200);
+        await page.waitForFunction(() => {
+          const more = [...document.querySelectorAll("button")].find(
+            (button) => button.textContent?.trim() === "More workflows",
+          );
+          return !more || !more.disabled;
+        });
+      }
+      await completedRun.click();
+      await visible(page.getByLabel("Workflow result", { exact: true }));
+      assert.equal(
+        await page
+          .getByRole("button", {
+            name: `browser-workflow-${user.login === "alice" ? "bob" : "alice"} · succeeded`,
+            exact: true,
+          })
+          .count(),
+        0,
+      );
+      await source.fill(
+        `export const meta={name:"browser-cancel-${user.login}",description:"Browser cancellation"}; phase("waiting"); return await new Promise(()=>{});`,
+      );
+      const pending = page.waitForResponse(
+        (reply) =>
+          reply.url().endsWith("/control-plane/user/workflows") &&
+          reply.request().method() === "POST",
+      );
+      await page
+        .getByRole("button", { name: "Run workflow", exact: true })
+        .click();
+      assert.equal((await pending).status(), 201);
+      await visible(
+        page.getByRole("button", { name: "Stop workflow", exact: true }),
+      );
+      const stopped = page.waitForResponse(
+        (reply) =>
+          reply.url().endsWith("/stop") && reply.request().method() === "POST",
+      );
+      await page
+        .getByRole("button", { name: "Stop workflow", exact: true })
+        .click();
+      assert.equal((await stopped).status(), 200);
+      await visible(
+        page.getByRole("button", {
+          name: `browser-cancel-${user.login} · cancelled`,
+          exact: true,
+        }),
+      );
+      await page
+        .getByRole("button", { name: "Conversation", exact: true })
+        .click();
+      await visible(page.getByRole("textbox", { name: "Message your agent…" }));
+    }
+    for (const [actor, foreignId] of [
+      [alice, browserWorkflowIds[1]],
+      [bob, browserWorkflowIds[0]],
+    ]) {
+      assert.equal(
+        (
+          await actor.context.request.get(
+            `${ready.origin}/control-plane/user/workflows/${foreignId}`,
+          )
+        ).status(),
+        404,
+      );
+      assert.equal(
+        (
+          await actor.context.request.post(
+            `${ready.origin}/control-plane/user/workflows/${foreignId}/stop`,
+            { headers: { origin: ready.origin } },
+          )
+        ).status(),
+        404,
+      );
+    }
     const foreign = await bob.context.request.get(
       `${ready.origin}/control-plane/user/threads/${thread.id}`,
     );
@@ -227,6 +412,11 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       nativeSidebarTimelineAndComposerRendered: true,
       actualNativeEditorCreatesAndContinuesQwenConversation: true,
       liveQwenResponseRendered: true,
+      personalWorkflowListStartProgressHistoryAndResultRendered: true,
+      personalWorkflowReplayAndCancellationFromNativeUi: true,
+      personalWorkflowViewSurvivesReload: true,
+      personalWorkflowPaginationAfterReload: true,
+      foreignWorkflowHiddenAndApiDenied: true,
       nativeDeepLinkSurvivesReload: true,
       personalUiDoesNotRequestAdministrativeApiOrPluginFrontends: true,
       foreignConversationHiddenAndApiDenied: true,

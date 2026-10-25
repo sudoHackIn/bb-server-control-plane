@@ -64,7 +64,8 @@ caller's previous scope is restored afterward. This is internal server plumbing,
 not a public capability token. The internal builtin-only Plugin SDK facade now
 wraps these same operations. Native workflow runs now retain binding references;
 the worker kernel and isolated agent bridge now participate in native dispatch.
-Nested workflows and automation integration remain pending.
+Nested workflows use the isolated evaluator and scoped worker bridge; automation
+integration remains pending.
 
 ## Remaining integration
 
@@ -432,3 +433,15 @@ projects, threads, job bindings and sessions; an oversized exchange leaves its
 approved certificate flow unconsumed. Normal JSON/form login and certificate
 approval still work, and a valid exchange can subsequently consume that flow.
 The execution, retry, recovery and UI work listed above remains required.
+
+## Personal workflow run workspace
+
+The personal web workspace now calls the existing limited Workflow SDK for
+project-scoped lists, status/results/agent-call history, inline start, terminal
+replay and cancellation. The main-content view keeps native project/thread
+navigation. Current conversation authority controls execution; read-only project
+views have no start/replay form. Active polling is two seconds, and read failures
+hide cached run details. Drafts/selection reset on project/conversation/view
+changes and are not persisted. This UI adds no plugin RPC bypass or separate
+workflow store. Definitions, automations/schedules and the remaining audit above
+remain required. See `control-plane-phase-40-verification.json` for this increment.

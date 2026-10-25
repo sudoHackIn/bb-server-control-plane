@@ -1550,12 +1550,14 @@ JSON bounded to 128 KiB, 32 levels and 10,000 values. Start permits only
 UID/HOME/cwd and execution grants come from the managed origin and approved DSL
 worker profiles. No caller-supplied owner, environment or launcher fields are
 accepted. CLI `--file` reads a client-local file. See `bb guide machines` for
-pagination, replay and history/result semantics. Saved definitions, schedules,
-workflow UI and a dedicated workflow progress stream remain pending.
+pagination, replay and history/result semantics. The personal UI exposes the same
+run operations through the Workflows button in a selected project/conversation.
+Saved definitions, schedules and a dedicated workflow progress stream remain
+pending.
 
 Workflow HTTP bodies have a separate 4 MiB envelope limit so JSON escaping does
 not reduce the advertised source/argument bounds. The wildcard covers the root
-and nested workflow routes. Oversized streams propagate the body-limit error;
+and nested workflow routes. Oversized streams are rejected before parsing;
 invalid JSON remains a 400 response. This bound does not increase native script,
 argument, result, process or execution budgets.
 
@@ -1584,3 +1586,26 @@ Certificate browser sign-in continues to require an empty body. These changes
 add no configuration override, CLI option or Plugin SDK member. The budgets
 cover the existing control-plane body-consuming actions; they do not constitute
 a complete audit of native BB APIs, daemon RPC or all request metadata.
+
+The personal Workflows screen occupies the main workspace and keeps the native
+left project/thread sidebar. It uses only the limited SDK client: project-scoped
+run pagination, selected status/result/agent-call history, cancellation, inline
+source/JSON start and terminal-run replay. Open an owned conversation with
+execution access to start; project-only/read-only views can inspect existing
+runs. Replay requires supplied source and arguments and uses native successful
+prefix replay. Source drafts are component memory, reset when leaving the view
+or changing project/conversation, and are never stored in browser persistence.
+
+`?view=workflows` on an authorized project/conversation path opens this screen,
+including after reload; selecting a particular run is local to the current view.
+Queries refresh every two seconds while active and are disposed when the screen
+unmounts. A read/access failure hides cached details/results/history and offers
+an explicit refresh. This is polling through the existing limited API, without
+opening a general plugin frontend or adding a new workflow streaming protocol.
+
+Before closing a rejected control-plane upload, the body middleware discards
+remaining bytes with an 8 MiB drain budget and a 500 ms deadline. It then cancels
+an unfinished stream. This avoids resetting normal finite uploads while the
+client is still writing, without parsing or dispatching oversized input or
+waiting indefinitely for stalled/endless bodies. Accepted bytes are buffered
+only up to the route's existing body budget before the action is called.

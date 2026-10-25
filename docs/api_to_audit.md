@@ -3810,15 +3810,17 @@ and the personal API reuse the same workflow service and SQLite data.
 `createControlPlaneClient().workflows` is the limited core SDK surface; it adds
 no Plugin SDK member. Native RPC output and the public HTTP response are both
 validated, with the latter checking central owner/project/origin identity after
-awaiting plugin work. Personal workflow UI and live progress subscriptions remain
-pending; current status/history/result reads are bounded and owner-scoped.
+awaiting plugin work. The personal workflow run UI uses this limited client;
+dedicated live progress subscriptions remain pending. Current status/history/result
+reads are bounded and owner-scoped.
 
 ### Control-plane request budgets
 
 The existing profile and personal-thread routes now mount root/nested budget
 and administrative guards using the Hono `/*` pattern. The shared control-plane
-body-limit factory returns structured HTTP 413 and closes the connection after
-rejection. JSON and form readers first complete a bounded text read; they never
+body-limit factory buffers accepted bytes to the route cap and returns structured
+HTTP 413 for oversized input. Before closing, it drains rejected input with an
+8 MiB budget and a 500 ms deadline, cancelling unfinished streams. JSON and form readers first complete a bounded text read; they never
 swallow that read's transport/size error as an invalid payload. The form reader
 preserves Content-Type and rejects duplicate fields. Stop/logout reject
 additional fields before mutating thread or session state.
