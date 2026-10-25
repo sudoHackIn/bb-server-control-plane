@@ -63,7 +63,7 @@ This stage is required before shared multi-user deployment. The composite checks
 
 ### Implementation stages
 
-- [ ] Inventory definitions, runs, schedules, triggers, queued/delayed messages, retries, workflow replay and their API/CLI/plugin entry points. Identify every background path that can create a thread or execute a tool.
+- [x] Inventory definitions, runs, schedules, triggers, queued/delayed messages, retries, workflow replay and their API/CLI/plugin entry points. Identify every background path that can create a thread or execute a tool. See [the background inventory](control-plane-background-inventory.md) for source locations, trust boundaries and remaining implementation/acceptance; this item closes the inventory only.
 - [ ] Persist authoritative `userId`, authorized project and execution-context references for personal definitions, runs and schedules. A plugin ID, project ID or parent thread ID does not establish the owner. Shared project access alone must not expose another user's personal automation.
 - [ ] Execute tenant-authored workflow scripts and workspace commands under the registered Unix identity. A JavaScript VM or owner metadata alone does not authorize running tenant code as the shared BB service user. Keep trusted centrally installed plugin code separate from tenant-authored scripts.
 - [ ] Scope list/search/get, create/edit/delete, enable/disable, manual run/cancel and resume/replay operations to the authenticated user. Apply the same rules to the UI, API, CLI and plugin RPC. Administrators retain full visibility and management.
@@ -2016,3 +2016,32 @@ replacing the draft. The wrapping toolbar passes a 390-pixel layout check; deskt
 and narrow screenshots were visually inspected. This is not a complete mobile
 interaction audit. No test watchdog was increased or workflow scenario skipped.
 The image personal bundle matches the locally built artifact byte for byte.
+
+## Forty-seventh increment: background execution inventory
+
+[The background inventory](control-plane-background-inventory.md) maps native and
+central persistence, public/personal/native/plugin entry points, workers,
+queue/retry wakeups, generic plugin cron/services, notifications, daemon/tool
+callbacks and actual code-execution identities. Generic plugin cron rows have no
+personal owner field and callbacks run in explicit service scope. Queue rows
+carry thread references and execution state; owner authority is resolved through
+the thread, not through an independent queue owner field. These are distinct from
+owned native automation/workflow definitions and their central source bindings.
+
+Managed script automation remains rejected. The standalone runner can use
+service-side interpreter/environment/storage facilities and is not an acceptable
+fallback for tenant code. The inventory records the next runtime's launcher,
+bounded input/output, durable process/cancel identity, grant/restart and cleanup
+acceptance requirements before exposing it in the limited API/SDK/CLI/UI.
+
+This is an inventory/documentation stage, with no runtime behavior, schema or
+protocol changes. Only the inventory checklist item closes; the composite
+background stage, isolated script runtime, machine RPC, queue/retry and broader
+role/source propagation audit remain open. Verification passes 15 existing
+real-SQLite security tests across five files (10 Turbo tasks) and all 63 normal
+Docker deployment tasks in 7 minutes 24 seconds. All 47 inventory source links,
+formatting and diff checks pass. The deployment retains the managed-script
+rejection, actual two-owner jobs, schedules, restart and crash scenarios.
+`control-plane-phase-47-verification.json` records the complete proof. No new
+runtime tests or typecheck pass were needed for this documentation-only stage;
+browser acceptance remains the phase-46 baseline.
