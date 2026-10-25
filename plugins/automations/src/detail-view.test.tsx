@@ -209,6 +209,13 @@ describe("Automation detail recipe", () => {
             },
             {
               ...run,
+              id: "run_cancelled",
+              threadId: "thr_cancelled",
+              status: "cancelled",
+              error: null,
+            },
+            {
+              ...run,
               id: "run_succeeded",
               threadId: "thr_target",
               status: "succeeded",
@@ -231,6 +238,7 @@ describe("Automation detail recipe", () => {
     expect(
       [...container.querySelectorAll("pre")].map((block) => block.textContent),
     ).toEqual([error]);
+    expect(container.querySelector('[aria-label="Cancelled"]')).not.toBeNull();
   });
 
   it("renders the personal workspace through the host's environment provider icon", () => {

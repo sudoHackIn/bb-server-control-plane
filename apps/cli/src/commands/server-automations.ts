@@ -1,3 +1,7 @@
+import {
+  automationInput,
+  type AutomationInputOptions,
+} from "./automation-input.js";
 import type { Command } from "commander";
 import type { createControlPlaneClient } from "@bb/sdk/node";
 import { z } from "zod";
@@ -9,7 +13,7 @@ export function registerServerAutomationCommands(
 ) {
   const automations = access
     .command("automations")
-    .description("Read your server automations through the limited API");
+    .description("Manage your server automations through the limited API");
   const output = (value: object) => console.log(JSON.stringify(value, null, 2));
   automations
     .command("list")
@@ -53,6 +57,102 @@ export function registerServerAutomationCommands(
             limit: z.coerce.number().int().min(1).max(100).parse(options.limit),
           }),
         ),
+      ),
+    );
+  automations
+    .command("definition <automation-id>")
+    .option("--json", "Print JSON")
+    .action(
+      action(async (id: string) =>
+        output(await client().automations.definition(id)),
+      ),
+    );
+  function definitionOptions(command: Command) {
+    return command
+      .option("--name <name>", "Definition name")
+      .option("--prompt <text>", "Agent prompt")
+      .option("--prompt-stdin", "Read the agent prompt from stdin")
+      .option("--at <time>", "Once trigger: ISO time or Unix milliseconds")
+      .option("--cron <expression>", "Five-field cron trigger")
+      .option("--timezone <zone>", "Cron timezone, defaults to UTC")
+      .option("--json", "Print JSON");
+  }
+  definitionOptions(automations.command("create <origin-thread-id>"))
+    .option("--disabled", "Create paused")
+    .action(
+      action(
+        async (
+          originThreadId: string,
+          options: AutomationInputOptions & { disabled?: boolean },
+        ) => {
+          const input = await automationInput(options);
+          if (!input.name || input.prompt === undefined || !input.trigger)
+            throw new Error("Provide --name, a prompt and one trigger");
+          output(
+            await client().automations.create({
+              originThreadId,
+              name: input.name,
+              prompt: input.prompt,
+              trigger: input.trigger,
+              enabled: !options.disabled,
+            }),
+          );
+        },
+      ),
+    );
+  definitionOptions(automations.command("update <automation-id>"))
+    .requiredOption("--revision <number>", "Expected saved definition revision")
+    .action(
+      action(
+        async (
+          id: string,
+          options: AutomationInputOptions & { revision: string },
+        ) => {
+          output(
+            await client().automations.update(id, {
+              ...(await automationInput(options)),
+              expectedRevision: z.coerce
+                .number()
+                .int()
+                .min(1)
+                .parse(options.revision),
+            }),
+          );
+        },
+      ),
+    );
+  for (const operation of ["pause", "resume", "delete"] as const)
+    automations
+      .command(`${operation} <automation-id>`)
+      .option("--json", "Print JSON")
+      .action(
+        action(async (id: string) =>
+          output(
+            await client().automations[
+              operation === "delete" ? "remove" : operation
+            ](id),
+          ),
+        ),
+      );
+  automations
+    .command("run <automation-id>")
+    .option("--idempotency-key <key>", "Deduplicate a repeated manual request")
+    .option("--json", "Print JSON")
+    .action(
+      action(async (id: string, options: { idempotencyKey?: string }) =>
+        output(
+          await client().automations.run(id, {
+            idempotencyKey: options.idempotencyKey,
+          }),
+        ),
+      ),
+    );
+  automations
+    .command("stop <automation-id> <run-id>")
+    .option("--json", "Print JSON")
+    .action(
+      action(async (id: string, runId: string) =>
+        output(await client().automations.stop(id, runId)),
       ),
     );
 }

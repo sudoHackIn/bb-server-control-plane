@@ -966,6 +966,31 @@ describe("automation data access", () => {
     }
   });
 
+  it("cancels a run without changing the source schedule, enabled state or failure budget", () => {
+    const db = createTestDb();
+    const automation = createScheduledAutomation(db, 1000);
+    db.prepare("UPDATE automations SET consecutive_failures=2 WHERE id=?").run(
+      automation.id,
+    );
+    const run = createManualRun(db, {
+      automationId: automation.id,
+      runMode: "agent",
+      idempotencyKey: null,
+      now: 1001,
+    }).run;
+    expect(
+      closeAutomationRun(db, { runId: run.id, status: "cancelled", now: 1002 })
+        ?.run.status,
+    ).toBe("cancelled");
+    expect(getAutomation(db, automation.id)).toMatchObject({
+      enabled: true,
+      nextRunAt: 1000,
+      consecutiveFailures: 2,
+      lastRunStatus: "cancelled",
+      lastError: null,
+    });
+  });
+
   it("dedupes manual runs by idempotency key", () => {
     const db = createTestDb();
     createScheduledAutomation(db, 1000);

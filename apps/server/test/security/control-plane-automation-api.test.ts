@@ -54,6 +54,8 @@ it("rechecks project visibility after an awaited RPC and rejects substituted nat
       createdByThreadId: alice.thread.id,
       name: "Test",
       enabled: true,
+      revision: 1,
+      execution: { mode: "agent", prompt: "owned prompt" },
       trigger: { triggerType: "once", runAt: 1000 },
       nextRunAt: 1000,
       lastRunAt: null,
@@ -86,23 +88,27 @@ it("rechecks project visibility after an awaited RPC and rejects substituted nat
     await expect(duplicate.get(alice.user.id, value.id)).rejects.toMatchObject({
       status: 502,
     });
-    const history = createControlPlaneAutomationService(db, async () => ({
-      runs: [
-        {
-          id: "run",
-          automationId: "foreign",
-          threadId: null,
-          status: "skipped",
-          trigger: "manual",
-          skipReason: null,
-          error: null,
-          scheduledFor: 1,
-          startedAt: 1,
-          finishedAt: 1,
-        },
-      ],
-      nextCursor: null,
-    }));
+    const history = createControlPlaneAutomationService(db, async (method) =>
+      method === "controlPlaneAutomationReads"
+        ? [value]
+        : {
+            runs: [
+              {
+                id: "run",
+                automationId: "foreign",
+                threadId: null,
+                status: "skipped",
+                trigger: "manual",
+                skipReason: null,
+                error: null,
+                scheduledFor: 1,
+                startedAt: 1,
+                finishedAt: 1,
+              },
+            ],
+            nextCursor: null,
+          },
+    );
     await expect(
       history.history(alice.user.id, value.id, { limit: 20 }),
     ).rejects.toMatchObject({ status: 502 });

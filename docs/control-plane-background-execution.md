@@ -520,7 +520,7 @@ Completed idle workers release physical runtime processes without archiving or
 fencing their thread/session history. Core and plugins share the same release
 path; host protocol 253 preserves active-turn races across environments.
 Managed scripts, target-thread reuse and arbitrary execution overrides are
-rejected. Personal automation mutations/UI, isolated scripts, full legacy
+rejected. Personal automation UI, isolated scripts, full legacy
 assignment and the remaining recovery/admission audit are still required.
 The personal read API lists central owner-filtered definition bindings, then
 invokes only the builtin controller under that principal. Metadata and history
@@ -552,3 +552,25 @@ binding; callers cannot supply an owner or project override. Public projections
 strip native execution configuration and output, validate identity, reject
 unknown/duplicate definition rows and recheck the full requested batch after
 awaiting the plugin. SDK and CLI use these fixed routes without exposing RPC.
+
+## Personal automation mutations and cancellation
+
+Limited writes derive execution settings from an owned approved origin, then
+invoke the same builtin controller under the verified user principal. The
+managed update RPC carries an expected native definition revision; validation
+and version/configuration writes share the native immediate transaction. The
+old administrative/native update remains available, and the personal API never
+accepts arbitrary execution settings. Owned detail reads expose only the prompt
+and revision in addition to metadata, so no provider environment or MCP config
+is copied to the personal editor.
+
+Individual cancellation stores `cancel_requested_at` in native run authority
+before calling process cleanup. Running single-flight state persists until the
+fence and stop complete. Reconciliation prioritizes this saved intent both
+before and after awaiting worker state, so an interruption cannot count as a
+provider failure or retry the cancelled run. The controller deduplicates live
+cleanup attempts and a recreated controller retries pending intent. Terminal
+`cancelled` closes preserve the source's enabled flag, next due time and failure
+budget. Workers still being attached reject a per-run stop with 409; source
+pause remains the dispatch fence during that window. Complete queued/delayed
+cancellation and the wider admission/crash audit remain open.

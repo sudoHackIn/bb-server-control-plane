@@ -10,9 +10,12 @@ An automation is a scheduled task. When due it runs in one of two modes:
 agent Spawn a thread or re-prompt a target thread with a configured prompt.
 script Run a stored server-side script and capture stdout/stderr/exit.
 
-Use the top-level `bb automation` command. The CLI routes it to this plugin.
+In standalone/full administrative BB, use the top-level `bb automation`
+command. Personal shared-server clients use `bb server access automations`
+as described below.
 
-Pass `--project` explicitly for every automation command. Inside a thread, automations are stamped origin `agent` and record the creating thread automatically. Automation-spawned threads cannot create automations.
+Pass `--project` explicitly for native automation commands. Limited personal
+creation derives its project from the origin and accepts no project override. Inside a thread, automations are stamped origin `agent` and record the creating thread automatically. Automation-spawned threads cannot create automations.
 
 Personal supports automations with `--project proj_personal`. Use `bb project list --include-personal --json` to include it in discovery; an empty default project list does not mean Personal is unavailable.
 
@@ -24,8 +27,8 @@ is supported. Script mode, arbitrary host/worktree targets, target-thread
 re-prompting and service-tier overrides are rejected until their isolated paths
 are implemented. Managed pause also blocks manual run and stops descendants.
 Completed idle runtimes are released; owned history and Qwen session resume
-remain available. Personal automation mutations/UI are a later stage; personal
-reads use the limited API described below. User credentials do not grant the
+remain available. The personal automation UI is a later stage; personal
+reads and mutations use the limited API described below. User credentials do not grant the
 native CLI/RPC administrative API.
 
 Choosing a mode:
@@ -81,10 +84,69 @@ through the limited API, rather than native plugin RPC. Lists are owner-filtered
 and accept `--project`, `--cursor` and `--limit` (maximum 50). History accepts
 its own opaque `--cursor` and `--limit` (maximum 100). Agent output remains in
 its owned thread; these read projections omit execution configuration and output.
-Personal mutations and automation UI are not yet exposed.
+Personal management uses the limited commands below; the personal automation
+UI is not yet exposed.
 
 The managed builtin `controlPlaneAutomationReads` RPC accepts at most 50 `ids`
 and reads existing definitions through owner predicates. It omits incomplete
 reservations; personal clients page through empty pages while `nextCursor` is
 present. It is unavailable in standalone mode. Personal clients use the limited
 SDK/CLI rather than selecting or calling this RPC directly.
+
+## Limited management commands
+
+Personal certificate/bearer sessions can create and manage agent automations
+through the limited API and `createControlPlaneClient(...).automations` SDK.
+The server derives project, provider/model/reasoning/permission settings and
+execution identity from the owned origin thread's approved pinned profile.
+The client supplies a name, prompt, cron/timezone or once trigger and enabled
+state; it cannot override owner, UID, HOME, cwd, environment, tools or MCP.
+
+```sh
+bb server access automations create <origin-thread-id> --name Digest --prompt-stdin --cron '0 9 * * *' --timezone Europe/Moscow --json
+bb server access automations definition <automation-id> --json
+bb server access automations update <automation-id> --revision 1 --prompt-stdin --json
+bb server access automations pause <automation-id> --json
+bb server access automations resume <automation-id> --json
+bb server access automations run <automation-id> --idempotency-key daily-manual --json
+bb server access automations stop <automation-id> <run-id> --json
+bb server access automations delete <automation-id> --json
+```
+
+Use `--at <ISO-time-or-Unix-ms>` instead of `--cron` for a once trigger.
+`--timezone` requires `--cron` and otherwise defaults to UTC. Creation requires
+`--name`, a prompt (`--prompt` or `--prompt-stdin`) and exactly one trigger;
+`--disabled` creates a paused source. Editing requires the saved `--revision`
+and at least one changed name, prompt or trigger. Native immutable versions
+are committed with the configuration change; stale revisions return 409.
+Pause/resume leave the definition revision unchanged. A consumed once trigger
+must receive a future trigger before it can be resumed.
+
+Metadata list/get retain their field shape and omit the prompt. The owner-only
+`definition` method/GET `/:id/definition` returns the editable prompt and current
+revision. Create/update return metadata with the resulting revision. New run
+readers must understand the terminal `cancelled` status.
+
+HTTP writes are POST `/control-plane/user/automations`, PUT/DELETE `/:id`, POST
+`/:id/pause`, `/:id/resume`, `/:id/run` and `/:id/runs/:runId/stop`. Creation
+accepts `originThreadId,name,prompt,trigger,enabled`; editing accepts
+`expectedRevision` and changed `name,prompt,trigger`. Manual run accepts only
+an optional `idempotencyKey`. Delete, pause, resume and stop require an empty
+body; queries cannot override identity or execution context. JSON bodies have
+a 1 MiB transport budget and prompts a 128 KiB UTF-8 budget.
+
+Individual stop fences only the selected run. Its cancellation intent is saved
+before process cleanup; until cleanup succeeds the run stays running and the
+single-flight guard stays in force. A pending cleanup returns 409 and the sweep
+retries saved requests, including after controller restart. A successful stop
+records `cancelled` without changing enabled/next-run/failure-budget state.
+Already terminal runs return `stopped:false`. A worker still being attached
+returns 409; retry once attached or pause the whole source to fence dispatch.
+Pause fences all descendants, while delete tombstones authority and removes
+native definition/version/run records. Existing owned BB conversations retain
+their history; source-fenced workers cannot resume execution.
+
+All operations use the same builtin controller and shared kernel as native
+management. Unknown/native RPC routes stay closed to personal credentials.
+The personal automation workspace and wider background admission/recovery audit
+remain subsequent work; managed script execution is still unavailable.

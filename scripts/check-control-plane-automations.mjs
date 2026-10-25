@@ -129,14 +129,13 @@ export async function verifyNativeAutomations({
       cwd: subject.project.cwd,
     });
   }
-  async function commandProcesses() {
+  async function commandProcesses(marker = "worker-hang-automation-alice") {
     const found = [];
     for (const name of await readdir("/proc")) {
       if (!/^[0-9]+$/u.test(name)) continue;
       try {
         const command = await readFile(`/proc/${name}/cmdline`, "utf8");
-        if (!command.includes("bb-personal-worker-hang-automation-alice.json"))
-          continue;
+        if (!command.includes(`bb-personal-${marker}.json`)) continue;
         const status = await readFile(`/proc/${name}/status`, "utf8");
         found.push({
           pid: Number(name),
@@ -148,29 +147,98 @@ export async function verifyNativeAutomations({
     }
     return found;
   }
+  const command = (subject, ...args) =>
+    userCommand(subject.user.login, ["automations", ...args, "--json"]);
+  const createPersonal = (subject, marker, prompt = `BB_PERSONAL_${marker}`) =>
+    userCommand(
+      subject.user.login,
+      [
+        "automations",
+        "create",
+        subject.thread.id,
+        "--name",
+        marker,
+        "--at",
+        String(Date.now() + 3600000),
+        "--prompt-stdin",
+        "--json",
+      ],
+      prompt,
+    );
   try {
     for (const subject of subjects) {
       const marker = `automation-agent-${subject.user.login}`;
-      const saved = await rpc("automations_create", payload(subject, marker));
+      const created = await createPersonal(
+        subject,
+        marker,
+        "Draft automation prompt",
+      );
+      assert.equal(created.revision, 1);
+      const saved = await userCommand(
+        subject.user.login,
+        [
+          "automations",
+          "update",
+          created.id,
+          "--revision",
+          "1",
+          "--name",
+          `${marker} revised`,
+          "--prompt-stdin",
+          "--json",
+        ],
+        `BB_PERSONAL_${marker}`,
+      );
+      assert.equal(saved.revision, 2);
+      assert.equal(
+        (await command(subject, "definition", saved.id)).prompt,
+        `BB_PERSONAL_${marker}`,
+      );
+      assert.equal(
+        (
+          await userRequest(
+            subject.user.login,
+            `/control-plane/user/automations/${saved.id}`,
+            { method: "PUT", body: { expectedRevision: 1, name: "Stale" } },
+          )
+        ).status,
+        409,
+      );
+      assert.equal((await command(subject, "pause", saved.id)).enabled, false);
+      assert.equal(
+        (
+          await userRequest(
+            subject.user.login,
+            `/control-plane/user/automations/${saved.id}/run`,
+            { method: "POST", body: {} },
+          )
+        ).status,
+        400,
+      );
+      assert.equal((await command(subject, "resume", saved.id)).enabled, true);
+      assert.deepEqual(
+        storage
+          .prepare(
+            "SELECT execution_json FROM automation_versions WHERE automation_id=? ORDER BY revision",
+          )
+          .all(saved.id)
+          .map((row) => JSON.parse(row.execution_json).prompt),
+        ["Draft automation prompt", `BB_PERSONAL_${marker}`],
+      );
       const auth = storage
         .prepare("SELECT * FROM automation_authorities WHERE automation_id=?")
         .get(saved.id);
       assert.equal(auth.owner_user_id, subject.user.id);
-      const run = (
-        await rpc("automations_run", {
-          projectId: saved.projectId,
-          automationId: saved.id,
-          idempotencyKey: "one",
-        })
-      ).run;
+      const run = await command(
+        subject,
+        "run",
+        saved.id,
+        "--idempotency-key",
+        "one",
+      );
       assert.equal(
-        (
-          await rpc("automations_run", {
-            projectId: saved.projectId,
-            automationId: saved.id,
-            idempotencyKey: "one",
-          })
-        ).run.id,
+        (await command(subject, "run", saved.id, "--idempotency-key", "one"))
+          .id,
         run.id,
       );
       await completed(run.id);
@@ -202,8 +270,59 @@ export async function verifyNativeAutomations({
       assert.equal(worker.profile_version_id, subject.profile.body.version.id);
       owned.push({ subject, saved, run });
     }
-    const command = (subject, ...args) =>
-      userCommand(subject.user.login, ["automations", ...args, "--json"]);
+    for (const item of owned) {
+      const other = owned.find(
+        (entry) => entry.subject.user.id !== item.subject.user.id,
+      );
+      const base = `/control-plane/user/automations/${other.saved.id}`;
+      for (const [path, method, body] of [
+        [base, "PUT", { expectedRevision: 2, name: "Forged" }],
+        [base, "DELETE", undefined],
+        [`${base}/pause`, "POST", undefined],
+        [`${base}/resume`, "POST", undefined],
+        [`${base}/run`, "POST", {}],
+        [`${base}/runs/${other.run.id}/stop`, "POST", undefined],
+        [`${base}/definition`, "GET", undefined],
+      ])
+        assert.equal(
+          (await userRequest(item.subject.user.login, path, { method, body }))
+            .status,
+          404,
+        );
+      const input = {
+        originThreadId: other.subject.thread.id,
+        name: "Forged",
+        prompt: "Forged",
+        trigger: { triggerType: "once", runAt: Date.now() + 3600000 },
+      };
+      assert.equal(
+        (
+          await userRequest(
+            item.subject.user.login,
+            "/control-plane/user/automations",
+            { method: "POST", body: input },
+          )
+        ).status,
+        404,
+      );
+      assert.equal(
+        (
+          await userRequest(
+            item.subject.user.login,
+            "/control-plane/user/automations",
+            {
+              method: "POST",
+              body: {
+                ...input,
+                originThreadId: item.subject.thread.id,
+                home: "/root",
+              },
+            },
+          )
+        ).status,
+        400,
+      );
+    }
     async function personalReads(items = owned) {
       for (const item of items) {
         const value = await command(item.subject, "get", item.saved.id);
@@ -271,7 +390,7 @@ export async function verifyNativeAutomations({
           (
             await userRequest(
               item.subject.user.login,
-              `/control-plane/user/automations/${value.id}/run`,
+              `/control-plane/user/automations/${value.id}/script`,
               { method: "POST" },
             )
           ).status,
@@ -476,14 +595,127 @@ export async function verifyNativeAutomations({
         .get(hanging.id).total,
       1,
     );
+    const cancellable = await Promise.all(
+      subjects.map(async (subject) => {
+        const marker = `worker-hang-automation-api-${subject.user.login}`;
+        const definition = await createPersonal(subject, marker);
+        const run = await command(subject, "run", definition.id);
+        await wait(async () => {
+          try {
+            await proof(subject, marker);
+            return (await commandProcesses(marker)).length > 0;
+          } catch (error) {
+            if (error.code === "ENOENT" || error instanceof SyntaxError)
+              return false;
+            throw error;
+          }
+        }, "personal automation command and identity marker are ready before cancellation");
+        for (const process of await commandProcesses(marker))
+          assert.equal(process.uid, subject.user.uid);
+        return { subject, marker, definition, run };
+      }),
+    );
+    for (let index = 0; index < cancellable.length; index++) {
+      const item = cancellable[index];
+      assert.equal(
+        (await command(item.subject, "stop", item.definition.id, item.run.id))
+          .stopped,
+        true,
+      );
+      await wait(
+        async () => (await commandProcesses(item.marker)).length === 0,
+        "personal run cancellation terminates command PIDs",
+      );
+      assert.equal(
+        (await command(item.subject, "history", item.definition.id)).runs[0]
+          .status,
+        "cancelled",
+      );
+      assert.equal(
+        (await command(item.subject, "get", item.definition.id)).enabled,
+        true,
+      );
+      const state = storage
+        .prepare(
+          "SELECT enabled,next_run_at,consecutive_failures FROM automations WHERE id=?",
+        )
+        .get(item.definition.id);
+      assert.equal(state.enabled, 1);
+      assert.equal(state.next_run_at, item.definition.trigger.runAt);
+      assert.equal(state.consecutive_failures, 0);
+      assert.ok(
+        storage
+          .prepare(
+            "SELECT cancel_requested_at FROM automation_run_authorities WHERE run_id=?",
+          )
+          .get(item.run.id).cancel_requested_at,
+      );
+      assert.equal(
+        (await command(item.subject, "stop", item.definition.id, item.run.id))
+          .stopped,
+        false,
+      );
+      if (index === 0)
+        assert.ok(
+          (await commandProcesses(cancellable[1].marker)).length > 0,
+          "another owner's command survives individual cancellation",
+        );
+    }
+    const deletedMarker = "worker-hang-automation-delete-alice";
+    const deleted = await createPersonal(alice, deletedMarker);
+    await command(alice, "run", deleted.id);
+    await wait(
+      async () => (await commandProcesses(deletedMarker)).length > 0,
+      "owned command starts before source deletion",
+    );
+    assert.equal((await command(alice, "delete", deleted.id)).deleted, true);
+    await wait(
+      async () => (await commandProcesses(deletedMarker)).length === 0,
+      "source deletion fences and reaps actual commands",
+    );
+    assert.equal(
+      (
+        await userRequest(
+          alice.user.login,
+          `/control-plane/user/automations/${deleted.id}`,
+        )
+      ).status,
+      404,
+    );
+    const beforeOversized = storage
+      .prepare("SELECT count(*) AS count FROM automations")
+      .get().count;
+    assert.equal(
+      (
+        await userRequest(alice.user.login, "/control-plane/user/automations", {
+          method: "POST",
+          body: { prompt: "x".repeat(1024 * 1024) },
+        })
+      ).status,
+      413,
+    );
+    assert.equal(
+      storage.prepare("SELECT count(*) AS count FROM automations").get().count,
+      beforeOversized,
+    );
     let offline;
     return {
       verification: {
+        personalAutomationCrudAndRevisionCas: true,
+        personalAutomationOriginProfileDerivedByServer: true,
+        personalAutomationImmutablePromptVersions: true,
+        personalAutomationForeignMutationsDenied: true,
+        personalAutomationPausedRunDeniedBeforeClaim: true,
+        personalAutomationIndividualCancelReapsActualCommands: true,
+        personalAutomationCancelPreservesOtherOwnerAndSourceSchedule: true,
+        personalAutomationCancelledHistoryWithoutFailureBudget: true,
+        personalAutomationDeleteFencesAndReapsCommands: true,
+        personalAutomationActualHttpBodyBudget: true,
         personalAutomationReadApiAndCli: true,
         personalAutomationOwnerFilteredPagination: true,
         personalAutomationPendingRootDoesNotBreakPagination: true,
         personalAutomationForeignReadsDenied: true,
-        personalAutomationMutationAndOwnerInjectionDenied: true,
+        personalAutomationUnknownMutationAndOwnerInjectionDenied: true,
         nativeAutomationsUseSavedOwner: true,
         nativeAutomationQwenUidHomeCwd: true,
         nativeAutomationWorkerAndSourceBindings: true,

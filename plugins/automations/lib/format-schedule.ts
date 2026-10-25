@@ -15,7 +15,13 @@ interface FormatScheduleStatusLabelArgs {
   nextRunAt: number | null;
   trigger?: AutomationTrigger;
   runCount?: number;
-  lastRunStatus?: "running" | "succeeded" | "failed" | "skipped" | null;
+  lastRunStatus?:
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "skipped"
+    | "cancelled"
+    | null;
   now?: number;
 }
 
@@ -30,7 +36,13 @@ interface OneShotLifecycleArgs {
   enabled: boolean;
   trigger: AutomationTrigger;
   runCount: number;
-  lastRunStatus: "running" | "succeeded" | "failed" | "skipped" | null;
+  lastRunStatus:
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "skipped"
+    | "cancelled"
+    | null;
   now?: number;
 }
 
@@ -41,7 +53,8 @@ type OneShotLifecycle =
   | "running"
   | "completed"
   | "failed"
-  | "skipped";
+  | "skipped"
+  | "cancelled";
 
 const DAY_ABBREVIATION: Record<string, string> = {
   Sunday: "Sun",
@@ -104,6 +117,7 @@ export function getOneShotLifecycle({
     if (lastRunStatus === "running") return "running";
     if (lastRunStatus === "failed") return "failed";
     if (lastRunStatus === "skipped") return "skipped";
+    if (lastRunStatus === "cancelled") return "cancelled";
     return "completed";
   }
   return trigger.runAt <= now ? "expired" : "paused";
@@ -140,6 +154,7 @@ export function formatScheduleStatusLabel({
     if (oneShotLifecycle === "running") return "Running";
     if (oneShotLifecycle === "failed") return "Failed";
     if (oneShotLifecycle === "skipped") return "Skipped";
+    if (oneShotLifecycle === "cancelled") return "Cancelled";
     if (oneShotLifecycle === "completed") return "Completed";
     if (oneShotLifecycle === "expired") return "Expired — edit to reschedule";
   }

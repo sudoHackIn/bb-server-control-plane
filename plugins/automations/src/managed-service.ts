@@ -1,3 +1,4 @@
+import { experimental_PluginRpcRefusal } from "@get-bb/plugin-sdk";
 import type { InternalDoNotUseBackgroundJobs } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type { AutomationService, ServiceApi } from "./service.js";
@@ -54,6 +55,7 @@ const runAuthoritySchema = z.object({
   definitionRevision: z.number().int().positive(),
   executionJson: z.string(),
   bindingId: z.string().uuid().nullable(),
+  cancelRequestedAt: z.number().nullable(),
 });
 function detail(value: AutomationResponse) {
   return value.execution.mode === "script"
@@ -79,6 +81,7 @@ export function createManagedAutomationService({
   const dispatching = new Set<string>();
   let ticking = false;
   let lifecycleSignal: AbortSignal | undefined;
+  const cancelTasks = new Map<string, Promise<boolean>>();
   function head(row: AutomationRow) {
     const raw = db
       .prepare(
@@ -195,7 +198,7 @@ export function createManagedAutomationService({
   function runHead(id: string) {
     const raw = db
       .prepare(
-        "SELECT run_id AS runId,automation_id AS automationId,definition_binding_id AS definitionBindingId,definition_revision AS definitionRevision,execution_json AS executionJson,binding_id AS bindingId FROM automation_run_authorities WHERE run_id=?",
+        "SELECT run_id AS runId,automation_id AS automationId,definition_binding_id AS definitionBindingId,definition_revision AS definitionRevision,execution_json AS executionJson,binding_id AS bindingId,cancel_requested_at AS cancelRequestedAt FROM automation_run_authorities WHERE run_id=?",
       )
       .get(id);
     return raw ? runAuthoritySchema.parse(raw) : null;
@@ -346,6 +349,55 @@ export function createManagedAutomationService({
       }
     }
   }
+  function cancellationRequested(id: string) {
+    return (runHead(id)?.cancelRequestedAt ?? null) !== null;
+  }
+  async function finishCancellation(
+    row: AutomationRow,
+    runId: string,
+  ): Promise<boolean> {
+    const existing = cancelTasks.get(runId);
+    if (existing) return existing;
+    const task = (async () => {
+      const run = getAutomationRun(db, runId, row.id);
+      if (!run || run.status !== "running") return false;
+      const saved = runHead(runId);
+      if (!saved?.bindingId || !run.threadId)
+        throw new Error("Automation cancellation has no attached worker");
+      const root = head(row);
+      const parent = jobs.get(saved.bindingId);
+      if (
+        saved.automationId !== row.id ||
+        saved.definitionBindingId !== root.bindingId ||
+        !parent ||
+        parent.kind !== "automation-run" ||
+        parent.objectId !== run.id ||
+        parent.sourceBindingId !== root.bindingId ||
+        parent.projectId !== row.projectId
+      )
+        throw new Error("Automation run authority mismatch");
+      await jobs.setEnabled(saved.bindingId, false);
+      await jobs.stopWorker(saved.bindingId, run.threadId);
+      closeAutomationRun(db, { runId, status: "cancelled", now: Date.now() });
+      emit(row);
+      return true;
+    })();
+    cancelTasks.set(runId, task);
+    try {
+      return await task;
+    } finally {
+      if (cancelTasks.get(runId) === task) cancelTasks.delete(runId);
+    }
+  }
+  async function reconcileCancellation(row: AutomationRow, runId: string) {
+    try {
+      await finishCancellation(row, runId);
+    } catch (error) {
+      bb.log.warn(
+        `Cannot finish automation cancellation ${runId}: ${message(error)}`,
+      );
+    }
+  }
   async function reconcile(startup: boolean) {
     let workers: Awaited<
       ReturnType<InternalDoNotUseBackgroundJobs["listWorkers"]>
@@ -367,6 +419,10 @@ export function createManagedAutomationService({
       const saved = runHead(run.id);
       const row = getAutomation(db, run.automationId);
       if (!row) continue;
+      if (cancellationRequested(run.id)) {
+        await reconcileCancellation(row, run.id);
+        continue;
+      }
       let threadId = run.threadId;
       try {
         if (!saved?.bindingId)
@@ -398,6 +454,10 @@ export function createManagedAutomationService({
         }
         jobs.withAuthority(saved.bindingId, () => undefined);
         const worker = await jobs.getWorker(saved.bindingId, threadId);
+        if (cancellationRequested(run.id)) {
+          await reconcileCancellation(row, run.id);
+          continue;
+        }
         if (worker.error || worker.status === "error")
           throw new Error(worker.error ?? "Automation worker failed");
         if (worker.status === "idle" && worker.idleSequence !== null) {
@@ -416,6 +476,10 @@ export function createManagedAutomationService({
           emit(row);
         }
       } catch (error) {
+        if (cancellationRequested(run.id)) {
+          await reconcileCancellation(row, run.id);
+          continue;
+        }
         if (saved?.bindingId && threadId)
           await jobs
             .stopWorker(saved.bindingId, threadId)
@@ -424,6 +488,10 @@ export function createManagedAutomationService({
                 `Cannot stop automation ${run.id}: ${message(cleanup)}`,
               ),
             );
+        if (cancellationRequested(run.id)) {
+          await reconcileCancellation(row, run.id);
+          continue;
+        }
         closeAutomationRun(db, {
           runId: run.id,
           status: "failed",
@@ -520,9 +588,13 @@ export function createManagedAutomationService({
       return ids.flatMap((id) => {
         const row = getAutomation(db, id, jobs.userId ?? undefined);
         if (!row) return [];
-        if (jobs.userId !== null) head(row);
+        const root = head(row);
         const value = decodeAutomationRow(row).automation;
-        return ["problem" in value ? value : detail(value)];
+        return [
+          "problem" in value
+            ? value
+            : { ...detail(value), revision: root.revision },
+        ];
       });
     },
     async get(input) {
@@ -594,6 +666,14 @@ export function createManagedAutomationService({
     async update(input) {
       const row = required(input),
         root = head(row);
+      if (
+        input.expectedRevision !== undefined &&
+        input.expectedRevision !== root.revision
+      )
+        throw new experimental_PluginRpcRefusal({
+          code: "conflict",
+          message: "Automation revision conflict",
+        });
       const canonical = toAutomationResponse(row);
       if (input.script)
         throw new Error(
@@ -614,7 +694,10 @@ export function createManagedAutomationService({
       const updated = db
         .transaction(() => {
           if (head(row).revision !== root.revision)
-            throw new Error("Automation revision conflict");
+            throw new experimental_PluginRpcRefusal({
+              code: "conflict",
+              message: "Automation revision conflict",
+            });
           const next = updateAutomation(db, {
             projectId: row.projectId,
             automationId: row.id,
@@ -710,6 +793,48 @@ export function createManagedAutomationService({
           getAutomationRun(db, result.run.id) ?? result.run,
         ),
       };
+    },
+    async managedStop(input) {
+      const row = required(input);
+      const root = head(row);
+      const run = getAutomationRun(db, input.runId, row.id);
+      if (!run)
+        throw new experimental_PluginRpcRefusal({
+          code: "not_found",
+          message: "Automation run not found",
+        });
+      if (run.status !== "running") return { stopped: false };
+      const saved = runHead(run.id);
+      if (dispatching.has(run.id) || !saved?.bindingId || !run.threadId)
+        throw new experimental_PluginRpcRefusal({
+          code: "conflict",
+          message: "Automation worker is still being attached",
+        });
+      const parent = jobs.get(saved.bindingId);
+      if (
+        saved.automationId !== row.id ||
+        saved.definitionBindingId !== root.bindingId ||
+        !parent ||
+        parent.kind !== "automation-run" ||
+        parent.objectId !== run.id ||
+        parent.sourceBindingId !== root.bindingId ||
+        parent.projectId !== row.projectId
+      )
+        throw new Error("Automation run authority mismatch");
+      db.prepare(
+        "UPDATE automation_run_authorities SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE run_id=?",
+      ).run(Date.now(), run.id);
+      try {
+        return { stopped: await finishCancellation(row, run.id) };
+      } catch (error) {
+        bb.log.warn(
+          `Automation cancellation ${run.id} remains pending: ${message(error)}`,
+        );
+        throw new experimental_PluginRpcRefusal({
+          code: "conflict",
+          message: "Automation cancellation is pending worker cleanup",
+        });
+      }
     },
     runs(input) {
       required(input);

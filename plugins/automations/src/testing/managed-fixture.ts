@@ -6,14 +6,27 @@ import { migrations, createAutomation } from "../data.js";
 export default function fixture(bb: BbPluginApi) {
   const db = bb.storage.database();
   bb.storage.migrate(db, migrations);
-  const service = createAutomationService({
+  const configuration = {
     bb,
     db,
     pluginDataDir: "/unused/managed",
     serverUrl: "http://unused",
-  });
+  };
+  let service = createAutomationService(configuration);
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
   return {
+    cancelRequested(runId: string) {
+      return (
+        db
+          .prepare(
+            "SELECT 1 FROM automation_run_authorities WHERE run_id=? AND cancel_requested_at IS NOT NULL",
+          )
+          .get(runId) !== undefined
+      );
+    },
+    restart() {
+      service = createAutomationService(configuration);
+    },
     tick: (startup = false) =>
       service.managedTick?.(startup, new AbortController().signal),
     fault(enabled: boolean) {

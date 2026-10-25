@@ -1,5 +1,6 @@
 import {
   automationDetailReadResultSchema,
+  managedAutomationReadResultSchema,
   automationDetailResponseSchema,
   automationListResponseSchema,
   automationResponseSchema,
@@ -22,7 +23,19 @@ export const automationRpcContract = defineRpcContract({
     input: z
       .object({ ids: z.array(z.string().min(1).max(200)).max(50) })
       .strict(),
-    output: z.array(automationDetailReadResultSchema).max(50),
+    output: z.array(managedAutomationReadResultSchema).max(50),
+  },
+  controlPlaneAutomationUpdate: {
+    input: updateAutomationInputSchema.safeExtend({
+      expectedRevision: z.number().int().min(1),
+    }),
+    output: automationDetailResponseSchema,
+  },
+  controlPlaneAutomationStop: {
+    input: projectAutomationInputSchema.extend({
+      runId: z.string().min(1).max(200),
+    }),
+    output: z.object({ stopped: z.boolean() }).strict(),
   },
   automations_overview: {
     input: z.null(),
@@ -72,6 +85,24 @@ export function createRpcHandlers(service: AutomationService) {
       if (!service.managedRead)
         throw new Error("Managed automation reads are unavailable");
       return service.managedRead(input.ids);
+    },
+    controlPlaneAutomationUpdate(
+      input: z.output<
+        typeof automationRpcContract.controlPlaneAutomationUpdate.input
+      >,
+    ) {
+      if (!service.managedRead)
+        throw new Error("Managed automation updates are unavailable");
+      return service.update(input);
+    },
+    controlPlaneAutomationStop(input: {
+      projectId: string;
+      automationId: string;
+      runId: string;
+    }) {
+      if (!service.managedStop)
+        throw new Error("Managed automation stop is unavailable");
+      return service.managedStop(input);
     },
     automations_overview() {
       return service.overview();

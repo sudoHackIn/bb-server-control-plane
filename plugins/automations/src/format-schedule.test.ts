@@ -241,6 +241,7 @@ describe("one-shot automation lifecycle", () => {
     ["succeeded", "completed", "Completed"],
     ["failed", "failed", "Failed"],
     ["skipped", "skipped", "Skipped"],
+    ["cancelled", "cancelled", "Cancelled"],
   ] as const)(
     "shows a terminal %s run truthfully",
     (lastRunStatus, expectedLifecycle, expectedLabel) => {

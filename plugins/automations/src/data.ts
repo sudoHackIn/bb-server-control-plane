@@ -241,6 +241,7 @@ export const migrations = [
      runtime_released_at INTEGER,
      runtime_retained INTEGER NOT NULL DEFAULT 0
    );`,
+  `ALTER TABLE automation_run_authorities ADD COLUMN cancel_requested_at INTEGER;`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -829,7 +830,7 @@ export function closeAutomationRun(
   db: Db,
   args: {
     runId: string;
-    status: "succeeded" | "failed" | "skipped";
+    status: "succeeded" | "failed" | "skipped" | "cancelled";
     skipReason?: string | null;
     error?: string | null;
     output?: string | null;
@@ -865,7 +866,15 @@ export function closeAutomationRun(
         now: args.now,
       });
     if (settled.changes !== 1) return null;
-    if (args.status === "failed") {
+    if (args.status === "cancelled") {
+      db.prepare(
+        "UPDATE automations SET last_run_status='cancelled',last_run_thread_id=?,last_error=NULL,updated_at=? WHERE id=?",
+      ).run(
+        args.threadId ?? existing.threadId,
+        args.now,
+        existing.automationId,
+      );
+    } else if (args.status === "failed") {
       recordAutomationFailure(db, {
         automationId: existing.automationId,
         retrySchedule: existing.trigger === "schedule",
@@ -956,15 +965,19 @@ export function createManualRun(
   })();
 }
 
-export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
+export function getAutomationRun(
+  db: Db,
+  id: string,
+  automationId?: string,
+): AutomationRunRow | null {
   return optionalRunRow(
     db
       .prepare(
         `SELECT
            ${AUTOMATION_RUN_COLUMNS}
-         FROM automation_runs WHERE id = ?`,
+         FROM automation_runs WHERE id = ?${automationId === undefined ? "" : " AND automation_id = ?"}`,
       )
-      .get(id),
+      .get(...(automationId === undefined ? [id] : [id, automationId])),
   );
 }
 

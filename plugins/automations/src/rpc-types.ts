@@ -97,6 +97,7 @@ export const automationRunStatusSchema = z.enum([
   "succeeded",
   "failed",
   "skipped",
+  "cancelled",
 ]);
 export type AutomationRunStatus = z.infer<typeof automationRunStatusSchema>;
 export const automationRunTriggerSchema = z.enum(["schedule", "manual"]);
@@ -382,6 +383,14 @@ export const automationDetailReadResultSchema = z.union([
 ]);
 export type AutomationDetailReadResult = z.infer<
   typeof automationDetailReadResultSchema
+>;
+
+export const managedAutomationReadResultSchema = z.union([
+  automationDetailResponseSchema.extend({ revision: z.number().int().min(1) }),
+  automationReadProblemSchema,
+]);
+export type ManagedAutomationReadResult = z.infer<
+  typeof managedAutomationReadResultSchema
 >;
 
 export const automationRunResponseSchema = z

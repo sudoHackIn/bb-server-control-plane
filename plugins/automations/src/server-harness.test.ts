@@ -31,6 +31,8 @@ const SECTION_ID = "sec_reviews";
 
 const rpcMethods = [
   "controlPlaneAutomationReads",
+  "controlPlaneAutomationStop",
+  "controlPlaneAutomationUpdate",
   "automations_overview",
   "automations_list",
   "automations_get",

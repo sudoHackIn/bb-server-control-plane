@@ -795,8 +795,8 @@ Native user-principal list/get/mutations/history require personal ownership and
 current project access, including shared projects. Full administrative native
 RPC can manage registered owners and inspect legacy history; unassigned legacy
 objects are disabled at startup and cannot execute until explicitly assigned.
-Personal automation mutation API/UI and isolated script execution remain
-later stages; the read-only personal API is described below. Browser tokens are not stored with jobs.
+The personal automation UI and isolated script execution remain later stages;
+limited reads and management operations are described below. Browser tokens are not stored with jobs.
 
 ## Personal automation reads
 
@@ -818,7 +818,64 @@ does not expose another user's personal automations. Replies use `no-store`.
 
 These projections contain schedules, state, origin and execution thread IDs;
 they omit execution configuration, prompts, script paths and run output.
-Read agent output through the owned thread API. The full administrative/native
-management surfaces remain available. Personal create/update/pause/resume/run/
-delete and a personal automation workspace are subsequent work; native plugin
-RPC and unsupported mutation URLs remain closed to personal credentials.
+Read agent output through the owned thread API. The full administrative/native management surfaces remain available. Personal
+management operations are described below; the personal automation workspace
+is subsequent work. Native RPC and unsupported mutation URLs remain closed.
+
+## Personal automation management
+
+Personal certificate/bearer sessions can create and manage agent automations
+through the limited API and `createControlPlaneClient(...).automations` SDK.
+The server derives project, provider/model/reasoning/permission settings and
+execution identity from the owned origin thread's approved pinned profile.
+The client supplies a name, prompt, cron/timezone or once trigger and enabled
+state; it cannot override owner, UID, HOME, cwd, environment, tools or MCP.
+
+```sh
+bb server access automations create <origin-thread-id> --name Digest --prompt-stdin --cron '0 9 * * *' --timezone Europe/Moscow --json
+bb server access automations definition <automation-id> --json
+bb server access automations update <automation-id> --revision 1 --prompt-stdin --json
+bb server access automations pause <automation-id> --json
+bb server access automations resume <automation-id> --json
+bb server access automations run <automation-id> --idempotency-key daily-manual --json
+bb server access automations stop <automation-id> <run-id> --json
+bb server access automations delete <automation-id> --json
+```
+
+Use `--at <ISO-time-or-Unix-ms>` instead of `--cron` for a once trigger.
+`--timezone` requires `--cron` and otherwise defaults to UTC. Creation requires
+`--name`, a prompt (`--prompt` or `--prompt-stdin`) and exactly one trigger;
+`--disabled` creates a paused source. Editing requires the saved `--revision`
+and at least one changed name, prompt or trigger. Native immutable versions
+are committed with the configuration change; stale revisions return 409.
+Pause/resume leave the definition revision unchanged. A consumed once trigger
+must receive a future trigger before it can be resumed.
+
+Metadata list/get retain their field shape and omit the prompt. The owner-only
+`definition` method/GET `/:id/definition` returns the editable prompt and current
+revision. Create/update return metadata with the resulting revision. New run
+readers must understand the terminal `cancelled` status.
+
+HTTP writes are POST `/control-plane/user/automations`, PUT/DELETE `/:id`, POST
+`/:id/pause`, `/:id/resume`, `/:id/run` and `/:id/runs/:runId/stop`. Creation
+accepts `originThreadId,name,prompt,trigger,enabled`; editing accepts
+`expectedRevision` and changed `name,prompt,trigger`. Manual run accepts only
+an optional `idempotencyKey`. Delete, pause, resume and stop require an empty
+body; queries cannot override identity or execution context. JSON bodies have
+a 1 MiB transport budget and prompts a 128 KiB UTF-8 budget.
+
+Individual stop fences only the selected run. Its cancellation intent is saved
+before process cleanup; until cleanup succeeds the run stays running and the
+single-flight guard stays in force. A pending cleanup returns 409 and the sweep
+retries saved requests, including after controller restart. A successful stop
+records `cancelled` without changing enabled/next-run/failure-budget state.
+Already terminal runs return `stopped:false`. A worker still being attached
+returns 409; retry once attached or pause the whole source to fence dispatch.
+Pause fences all descendants, while delete tombstones authority and removes
+native definition/version/run records. Existing owned BB conversations retain
+their history; source-fenced workers cannot resume execution.
+
+All operations use the same builtin controller and shared kernel as native
+management. Unknown/native RPC routes stay closed to personal credentials.
+The personal automation workspace and wider background admission/recovery audit
+remain subsequent work; managed script execution is still unavailable.

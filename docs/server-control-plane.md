@@ -40,6 +40,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add the internal durable background authority-binding registry, immutable object revisions, current-grant/source checks and user-principal callback scope. Actual workflow/automation/scheduler integration remains pending.
 - [x] Expose lifecycle-scoped internal background authority only to builtin Workflows/Automations, derive owner/profile context server-side and verify registration/read/restart plus unapproved-plugin denial in Docker. Native plugin persistence/execution integration remains pending.
 - [x] Expose personal native workflow run start/list/status/result/history/stop and terminal replay through the limited API, SDK and CLI, reusing builtin persistence and owner authority. Automations and schedules remain pending.
+- [x] Manage personal agent automations through limited API/SDK/CLI: create/edit with revision CAS, pause/resume, idempotent run, durable individual stop and deletion. Personal UI and the composite background audit remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -1937,3 +1938,39 @@ preserves that revocation and asserts denial. Temporary diagnostics were not
 shipped. `control-plane-phase-44-verification.json` records the full deployment
 proof and remaining scope. Browser acceptance was not rerun for this read API
 increment; personal automation mutations/UI and the composite stage remain open.
+
+## Forty-fifth increment: personal automation management
+
+Limited API/SDK/CLI operations now create and edit agent definitions, read
+editable prompt/revision details, pause/resume, run idempotently, stop one run
+and delete an owned source. Creation derives all execution identity/profile
+settings from an owned approved origin; no caller-supplied UID, HOME, cwd,
+provider/model/tools/MCP or environment fields are accepted. Metadata list/get
+keep their existing field shape; definition detail and mutation responses carry
+revision information. Expected native revisions protect personal edits, and
+configuration/version rows commit atomically through the same native controller.
+
+A run stop persists cancellation intent before cleanup. Acknowledgement follows
+fencing and process stop; unfinished cleanup remains running, blocks another
+single-flight run and is retried by reconciliation after controller restart.
+A separate cancelled terminal state preserves the source schedule and failure
+budget, with native history/status presentation. Stop during worker attachment
+returns 409; source pause remains the fence for pending dispatch. This does not
+complete the full background admission/cancellation/crash audit.
+
+The Docker acceptance scenario creates/edits/pause-resumes/manual-runs through
+both users' limited CLI, checks native immutable prompt versions and rejects
+foreign writes and stale revisions. It also checks individual cancellation of
+actual registered-UID commands while the other user's command survives, source
+deletion cleanup, bounded JSON input and the existing schedule/restart/crash
+scenarios. Verification passed: 156 selected tests, strict types across four
+packages, changed-file lint and formatting, and all 63 normal Docker deployment
+tasks in 7 minutes 27 seconds. A two-barrier regression covers cancellation
+arriving during failed-provider cleanup; removing the final intent recheck makes
+that regression fail. Real SQLite controller restart retries pending cancellation.
+The Docker fixture waits for both parsed command proof and process discovery to
+avoid observing a PID before its proof file is written.
+
+`control-plane-phase-45-verification.json` records the deployment proof and
+limits. Browser acceptance was not rerun. Personal automation UI, managed
+scripts, legacy assignment and the remaining feature sequence stay open.

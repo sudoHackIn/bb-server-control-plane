@@ -37,6 +37,7 @@ import {
   type AutomationExecution,
   type AutomationExecutionRequest,
   type AutomationDetailReadResult,
+  type ManagedAutomationReadResult,
   type AutomationDetailResponse,
   type AutomationReadProblem,
   type AutomationReadResult,
@@ -81,7 +82,12 @@ export type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
 };
 
 export interface AutomationService {
-  managedRead?(ids: string[]): AutomationDetailReadResult[];
+  managedRead?(ids: string[]): ManagedAutomationReadResult[];
+  managedStop?(input: {
+    projectId: string;
+    automationId: string;
+    runId: string;
+  }): Promise<{ stopped: boolean }>;
   managedTick?(startup: boolean, signal: AbortSignal): Promise<void>;
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: ListAutomationsInput): AutomationReadResult[];
@@ -92,7 +98,9 @@ export interface AutomationService {
   create(
     input: ResolvedCreateAutomationInput,
   ): Promise<AutomationDetailResponse>;
-  update(input: UpdateAutomationInput): Promise<AutomationDetailResponse>;
+  update(
+    input: UpdateAutomationInput & { expectedRevision?: number },
+  ): Promise<AutomationDetailResponse>;
   delete(input: {
     projectId: string;
     automationId: string;
@@ -674,6 +682,8 @@ export function createAutomationService(args: {
     },
 
     async update(input) {
+      if (input.expectedRevision !== undefined)
+        throw new Error("Managed revisions are unavailable in standalone mode");
       const project = await requireProjectAvailable(bb, input.projectId);
       const current = requireProjectAutomation(db, input);
       const currentAutomation = decodeAutomationRow(current).automation;

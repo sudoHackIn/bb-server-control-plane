@@ -8,7 +8,7 @@ it("uses only personal routes with bearer credentials, opaque cursors, cancellat
     projectId: "project",
     name: "Owned",
     enabled: true,
-    trigger: { triggerType: "once", runAt: 1000 },
+    trigger: { triggerType: "once" as const, runAt: 1000 },
     createdByThreadId: "origin",
     nextRunAt: 1000,
     lastRunAt: null,
@@ -74,4 +74,93 @@ it("uses only personal routes with bearer credentials, opaque cursors, cancellat
         !request.url.includes("private-token"),
     ),
   ).toBe(true);
+});
+
+it("validates definition edits and uses only scoped mutation routes with revision and idempotency data", async () => {
+  const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  const metadata = {
+    id: "auto",
+    projectId: "project",
+    name: "Name",
+    enabled: true,
+    trigger: { triggerType: "once" as const, runAt: 1000 },
+    createdByThreadId: "origin",
+    nextRunAt: 1000,
+    lastRunAt: null,
+    runCount: 0,
+    lastRunStatus: null,
+    lastRunThreadId: null,
+    lastError: null,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const run = {
+    id: "run",
+    automationId: "auto",
+    threadId: "thread",
+    status: "cancelled",
+    trigger: "manual",
+    skipReason: null,
+    error: null,
+    scheduledFor: 1,
+    startedAt: 1,
+    finishedAt: 2,
+  };
+  const client = createControlPlaneClient({
+    origin: "https://bb.example",
+    token: () => "secret-token",
+    fetch: async (input, init) => {
+      const request = new Request(input, init),
+        path = new URL(request.url).pathname,
+        text = await request.text();
+      const body: unknown = text ? JSON.parse(text) : null;
+      calls.push({ path, method: request.method, body });
+      if (path.endsWith("/definition"))
+        return Response.json({ ...metadata, revision: 1, prompt: "Prompt" });
+      if (request.method === "DELETE") return Response.json({ deleted: true });
+      if (path.endsWith("/stop")) return Response.json({ stopped: true });
+      if (path.endsWith("/run")) return Response.json(run);
+      if (request.method === "PUT" || path.endsWith("/automations"))
+        return Response.json({ ...metadata, revision: 1 });
+      return Response.json(metadata);
+    },
+  });
+  await client.automations.create({
+    originThreadId: "origin",
+    name: "Name",
+    prompt: "Prompt",
+    trigger: metadata.trigger,
+  });
+  expect(calls[0]?.body).toMatchObject({ enabled: true });
+  await client.automations.update("auto", {
+    expectedRevision: 1,
+    prompt: "Changed",
+  });
+  expect(calls[1]).toMatchObject({
+    method: "PUT",
+    body: { expectedRevision: 1, prompt: "Changed" },
+  });
+  expect((await client.automations.definition("auto")).prompt).toBe("Prompt");
+  await client.automations.pause("auto");
+  await client.automations.resume("auto");
+  expect(
+    (await client.automations.run("auto", { idempotencyKey: "once" })).status,
+  ).toBe("cancelled");
+  expect(await client.automations.stop("auto", "run")).toEqual({
+    stopped: true,
+  });
+  expect(await client.automations.remove("auto")).toEqual({ deleted: true });
+  expect(
+    calls.every((call) =>
+      call.path.startsWith("/control-plane/user/automations"),
+    ),
+  ).toBe(true);
+  const before = calls.length;
+  await expect(
+    client.automations.update("auto", { expectedRevision: 1 }),
+  ).rejects.toThrow();
+  await expect(
+    client.automations.run("auto", { idempotencyKey: "x".repeat(201) }),
+  ).rejects.toThrow();
+  expect(calls).toHaveLength(before);
 });

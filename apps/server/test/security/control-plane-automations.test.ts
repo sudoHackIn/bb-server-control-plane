@@ -68,12 +68,41 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
     onTestFinished(() => workers.close());
     let starts = 0;
     let releases = 0;
+    let stopFailures = 0;
+    let cleanupGate: {
+      threadId: string;
+      wait: Promise<void>;
+      cancellationWait: Promise<void>;
+      calls: number;
+      entered: () => void;
+    } | null = null;
     const jobs = createControlPlaneBackgroundJobs(
       harness.db,
       "automations",
       true,
       {
         ...workers,
+        async stopWorker(parentId, threadId) {
+          if (stopFailures-- > 0) throw new Error("Temporary host unavailable");
+          if (cleanupGate?.threadId === threadId) {
+            const gate = cleanupGate;
+            const first = gate.calls++ === 0;
+            gate.entered();
+            await (first ? gate.wait : gate.cancellationWait);
+            return;
+          }
+          await workers.stopWorker(parentId, threadId);
+        },
+        async getWorker(parentId, threadId) {
+          const worker = await workers.getWorker(parentId, threadId);
+          return cleanupGate?.threadId === threadId
+            ? {
+                ...worker,
+                status: "error",
+                error: "Provider failure during cancellation race",
+              }
+            : worker;
+        },
         async releaseWorker() {
           releases++;
           return releases > 1;
@@ -169,6 +198,8 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       .object({
         default: z.custom<
           (bb: BbPluginApi) => {
+            cancelRequested(runId: string): boolean;
+            restart(): void;
             tick(startup?: boolean): Promise<void> | undefined;
             fault(enabled: boolean): void;
             versions(id: string): unknown;
@@ -359,7 +390,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       ).toBe(400);
     }
     for (const path of [
-      `${base}/${saved.id}/run`,
+      `${base}/${saved.id}/script`,
       "/api/plugins/automations/rpc/automations_list",
     ]) {
       expect(
@@ -625,5 +656,203 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         .where(eq(controlPlaneJobBindings.objectId, saved.id))
         .get()?.deletedAt,
     ).not.toBeNull();
+
+    setControlPlaneProfileAccess(
+      harness.db,
+      alice.profile.profileId,
+      alice.user.id,
+      true,
+    );
+    const created = await mine.create({
+      originThreadId: alice.thread.id,
+      name: "API definition",
+      prompt: "owned prompt API",
+      trigger: { triggerType: "schedule", cron: "* * * * *", timezone: "UTC" },
+      enabled: false,
+    });
+    expect(created.revision).toBe(1);
+    expect(created.enabled).toBe(false);
+    expect(created).not.toHaveProperty("prompt");
+    expect((await mine.definition(created.id)).prompt).toBe("owned prompt API");
+    const beforeForeignMutation = rpcCalls;
+    await expect(foreign.definition(created.id)).rejects.toThrow("404");
+    await expect(
+      foreign.update(created.id, { expectedRevision: 1, prompt: "forged" }),
+    ).rejects.toThrow("404");
+    await expect(foreign.pause(created.id)).rejects.toThrow("404");
+    await expect(foreign.resume(created.id)).rejects.toThrow("404");
+    await expect(foreign.run(created.id)).rejects.toThrow("404");
+    await expect(foreign.stop(created.id, "forged")).rejects.toThrow("404");
+    await expect(foreign.remove(created.id)).rejects.toThrow("404");
+    expect(rpcCalls).toBe(beforeForeignMutation);
+    await expect(
+      mine.create({
+        originThreadId: bob.thread.id,
+        name: "forged",
+        prompt: "owned prompt",
+        trigger: created.trigger,
+      }),
+    ).rejects.toThrow("404");
+    const updated = await mine.update(created.id, {
+      expectedRevision: 1,
+      prompt: "owned prompt API revised",
+      name: "Revised",
+    });
+    expect(updated.revision).toBe(2);
+    await expect(
+      mine.update(created.id, { expectedRevision: 1, name: "stale" }),
+    ).rejects.toThrow("409");
+    await expect(
+      invoke(alice.user.id, "controlPlaneAutomationUpdate", {
+        projectId: created.projectId,
+        automationId: created.id,
+        expectedRevision: 1,
+        name: "stale native",
+      }),
+    ).rejects.toThrow(/revision conflict/);
+    expect((await mine.definition(created.id)).prompt).toBe(
+      "owned prompt API revised",
+    );
+    native.fault(true);
+    await expect(
+      mine.update(created.id, {
+        expectedRevision: 2,
+        prompt: "owned prompt rollback",
+      }),
+    ).rejects.toThrow();
+    native.fault(false);
+    expect((await mine.definition(created.id)).prompt).toBe(
+      "owned prompt API revised",
+    );
+    expect((await mine.definition(created.id)).revision).toBe(2);
+    expect(
+      z
+        .array(z.object({ revision: z.number(), execution_json: z.string() }))
+        .parse(native.versions(created.id))
+        .map((row) => ({
+          revision: row.revision,
+          prompt: z
+            .object({ prompt: z.string() })
+            .parse(JSON.parse(row.execution_json)).prompt,
+        })),
+    ).toEqual([
+      { revision: 1, prompt: "owned prompt API" },
+      { revision: 2, prompt: "owned prompt API revised" },
+    ]);
+    const concurrent = await Promise.allSettled([
+      mine.update(created.id, {
+        expectedRevision: 2,
+        name: "Concurrent first",
+      }),
+      mine.update(created.id, {
+        expectedRevision: 2,
+        name: "Concurrent second",
+      }),
+    ]);
+    expect(
+      concurrent.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    const refused = concurrent.find((result) => result.status === "rejected");
+    if (!refused || refused.status !== "rejected")
+      throw new Error("Missing CAS refusal");
+    expect(String(refused.reason)).toContain("409");
+    expect((await mine.definition(created.id)).revision).toBe(3);
+    expect((await mine.resume(created.id)).enabled).toBe(true);
+    const running = await mine.run(created.id, { idempotencyKey: "api-one" });
+    expect((await mine.run(created.id, { idempotencyKey: "api-one" })).id).toBe(
+      running.id,
+    );
+    expect(running).not.toHaveProperty("output");
+    await expect(mine.stop(created.id, first.run.id)).rejects.toThrow("404");
+    stopFailures = 1;
+    await expect(mine.stop(created.id, running.id)).rejects.toThrow("409");
+    expect((await mine.history(created.id)).runs[0]?.status).toBe("running");
+    native.restart();
+    await native.tick(true);
+    expect((await mine.history(created.id)).runs[0]?.status).toBe("cancelled");
+    expect(await mine.stop(created.id, running.id)).toEqual({ stopped: false });
+    expect((await mine.get(created.id)).enabled).toBe(true);
+    expect((await mine.history(created.id)).runs[0]?.status).toBe("cancelled");
+    const raced = await mine.run(created.id, { idempotencyKey: "cancel-race" });
+    if (!raced.threadId) throw new Error("Missing race worker");
+    let releaseCleanup = () => {};
+    let releaseCancellation = () => {};
+    let enteredCleanup = () => {};
+    const cleanupEntered = new Promise<void>((resolve) => {
+      enteredCleanup = resolve;
+    });
+    cleanupGate = {
+      threadId: raced.threadId,
+      calls: 0,
+      cancellationWait: new Promise<void>((resolve) => {
+        releaseCancellation = resolve;
+      }),
+      wait: new Promise<void>((resolve) => {
+        releaseCleanup = resolve;
+      }),
+      entered: enteredCleanup,
+    };
+    const sweep = native.tick();
+    await cleanupEntered;
+    const cancellation = mine.stop(created.id, raced.id);
+    await expect.poll(() => native.cancelRequested(raced.id)).toBe(true);
+    releaseCleanup();
+    const duringCleanup = (await mine.history(created.id)).runs.find(
+      (row) => row.id === raced.id,
+    )?.status;
+    releaseCancellation();
+    await Promise.all([sweep, cancellation]);
+    expect(duringCleanup).toBe("running");
+    cleanupGate = null;
+    expect(
+      (await mine.history(created.id)).runs.find((row) => row.id === raced.id)
+        ?.status,
+    ).toBe("cancelled");
+    expect((await mine.pause(created.id)).enabled).toBe(false);
+    await expect(mine.run(created.id)).rejects.toThrow();
+    expect((await mine.definition(created.id)).revision).toBe(3);
+    for (const override of [
+      { userId: bob.user.id },
+      { home: "/root" },
+      { providerId: "forged" },
+      { model: "forged" },
+      { tools: [] },
+      { execution: { mode: "script", script: "forged" } },
+    ]) {
+      const response = await server.app.request(base, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokens.get(alice.user.id)}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          originThreadId: alice.thread.id,
+          name: "forged",
+          prompt: "owned prompt",
+          trigger: created.trigger,
+          ...override,
+        }),
+      });
+      expect(response.status).toBe(400);
+    }
+    const large = await server.app.request(base, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${tokens.get(alice.user.id)}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ prompt: "x".repeat(1024 * 1024) }),
+    });
+    expect(large.status).toBe(413);
+    setControlPlaneProfileAccess(
+      harness.db,
+      alice.profile.profileId,
+      alice.user.id,
+      false,
+    );
+    await expect(mine.resume(created.id)).rejects.toThrow();
+    expect((await mine.get(created.id)).enabled).toBe(false);
+    expect(await mine.remove(created.id)).toEqual({ deleted: true });
+    await expect(mine.get(created.id)).rejects.toThrow("404");
   });
 });

@@ -380,6 +380,11 @@ const AUTOMATION_RUN_STATUS_VISUALS: Record<
     icon: "ArrowTurnForward",
     className: "text-subtle-foreground",
   },
+  cancelled: {
+    label: "Cancelled",
+    icon: "CircleX",
+    className: "text-subtle-foreground",
+  },
   succeeded: {
     label: "Succeeded",
     icon: "CircleCheck",

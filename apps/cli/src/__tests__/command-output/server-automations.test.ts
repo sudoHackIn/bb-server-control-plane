@@ -50,3 +50,149 @@ it("passes personal automation project filters and opaque history cursors throug
   ).rejects.toThrow();
   expect(urls).toHaveLength(2);
 });
+
+it("maps creation, definition revision edits, run cancellation and deletion to the limited SDK", async () => {
+  const calls: Array<{ path: string; method: string; body: unknown }> = [];
+  const metadata = {
+    id: "auto",
+    projectId: "project",
+    name: "Name",
+    enabled: true,
+    trigger: { triggerType: "once", runAt: 1000 },
+    createdByThreadId: "origin",
+    nextRunAt: 1000,
+    lastRunAt: null,
+    runCount: 0,
+    lastRunStatus: null,
+    lastRunThreadId: null,
+    lastError: null,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const client = createControlPlaneClient({
+    origin: "https://bb.example",
+    fetch: async (input, init) => {
+      const request = new Request(input, init),
+        path = new URL(request.url).pathname,
+        text = await request.text();
+      const body: unknown = text ? JSON.parse(text) : null;
+      calls.push({ path, method: request.method, body });
+      if (path.endsWith("/definition"))
+        return Response.json({ ...metadata, revision: 1, prompt: "Prompt" });
+      if (request.method === "DELETE") return Response.json({ deleted: true });
+      if (path.endsWith("/stop")) return Response.json({ stopped: true });
+      if (path.endsWith("/run"))
+        return Response.json({
+          id: "run",
+          automationId: "auto",
+          threadId: null,
+          status: "running",
+          trigger: "manual",
+          skipReason: null,
+          error: null,
+          scheduledFor: 1,
+          startedAt: 1,
+          finishedAt: null,
+        });
+      return Response.json(
+        request.method === "PUT" || path.endsWith("/automations")
+          ? { ...metadata, revision: 1 }
+          : metadata,
+      );
+    },
+  });
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  const register = (program: import("commander").Command) =>
+    registerServerAutomationCommands(program, () => client);
+  await runCommand(
+    [
+      "automations",
+      "create",
+      "origin",
+      "--name",
+      "Name",
+      "--prompt",
+      "Prompt",
+      "--at",
+      "1000",
+      "--disabled",
+    ],
+    register,
+  );
+  expect(calls[0]?.body).toMatchObject({
+    enabled: false,
+    originThreadId: "origin",
+    trigger: { triggerType: "once", runAt: 1000 },
+  });
+  await runCommand(
+    [
+      "automations",
+      "update",
+      "auto",
+      "--revision",
+      "1",
+      "--prompt",
+      "Changed",
+      "--cron",
+      "* * * * *",
+      "--timezone",
+      "UTC",
+    ],
+    register,
+  );
+  expect(calls[1]?.body).toMatchObject({
+    expectedRevision: 1,
+    prompt: "Changed",
+    trigger: { triggerType: "schedule", cron: "* * * * *", timezone: "UTC" },
+  });
+  for (const operation of ["definition", "pause", "resume", "delete"])
+    await runCommand(["automations", operation, "auto"], register);
+  await runCommand(
+    ["automations", "run", "auto", "--idempotency-key", "same"],
+    register,
+  );
+  await runCommand(["automations", "stop", "auto", "run"], register);
+  expect(calls.at(-1)?.path).toBe(
+    "/control-plane/user/automations/auto/runs/run/stop",
+  );
+  const before = calls.length;
+  await expect(
+    runCommand(["automations", "update", "auto", "--revision", "1"], register),
+  ).rejects.toThrow();
+  await expect(
+    runCommand(
+      [
+        "automations",
+        "create",
+        "origin",
+        "--name",
+        "Name",
+        "--prompt",
+        "Prompt",
+        "--at",
+        "1000",
+        "--cron",
+        "* * * * *",
+      ],
+      register,
+    ),
+  ).rejects.toThrow();
+  for (const flag of ["--at", "--cron", "--timezone"])
+    await expect(
+      runCommand(
+        [
+          "automations",
+          "update",
+          "auto",
+          "--revision",
+          "1",
+          "--name",
+          "Name",
+          flag,
+          "",
+        ],
+        register,
+      ),
+    ).rejects.toThrow();
+  expect(calls).toHaveLength(before);
+});
