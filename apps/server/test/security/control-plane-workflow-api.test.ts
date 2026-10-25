@@ -1,6 +1,8 @@
+import { ApiError } from "../../src/errors.js";
+import { withControlPlaneUser } from "../../src/control-plane/access.js";
 import { createHash, randomBytes } from "node:crypto";
 import { expect, it, onTestFinished } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, count } from "drizzle-orm";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import {
   ControlPlaneRegistry,
@@ -90,15 +92,30 @@ it("runs the limited SDK against native plugin SQLite with owner-scoped paginati
     const factory = z
       .object({
         default: z.custom<
-          (bb: BbPluginApi) => { settle: (id: string) => void }
+          (bb: BbPluginApi) => {
+            settle: (id: string) => void;
+            failDefinitionWrites: (enabled: boolean) => void;
+            definitionCount: () => number;
+          }
         >((value) => typeof value === "function"),
       })
       .parse(imported).default;
     const native = factory(fake.bb);
     const service = createControlPlaneWorkflowService(
       harness.db,
-      async (method, input) =>
-        jsonValueSchema.parse(await fake.harness.callRpc(method, input)),
+      async (method, input) => {
+        try {
+          return jsonValueSchema.parse(
+            await fake.harness.callRpc(method, input),
+          );
+        } catch (error) {
+          throw new ApiError(
+            400,
+            "workflow_rejected",
+            error instanceof Error ? error.message : "Workflow rejected",
+          );
+        }
+      },
     );
     const origin = "https://bb.example";
     harness.config.appUrl = origin;
@@ -281,12 +298,281 @@ it("runs the limited SDK against native plugin SQLite with owner-scoped paginati
         args: { text: '"'.repeat(40000) },
       });
       expect(escaped.name).toBe("personal-api");
+      const definitions = client(alice.user.id).workflows.definitions;
+      native.failDefinitionWrites(true);
+      await expect(
+        definitions.create({ originThreadId: alice.thread.id, script }),
+      ).rejects.toThrow("400");
+      native.failDefinitionWrites(false);
+      expect(native.definitionCount()).toBe(0);
+      const failedReservation = harness.db
+        .select()
+        .from(controlPlaneJobBindings)
+        .where(eq(controlPlaneJobBindings.kind, "workflow-definition"))
+        .all();
+      expect(failedReservation).toHaveLength(1);
+      expect(failedReservation[0]).toMatchObject({ enabled: false });
+      expect(failedReservation[0]?.deletedAt).not.toBeNull();
+      expect((await definitions.list()).definitions).toEqual([]);
+      const oversizedDefinition = await server.app.request(
+        "/control-plane/user/workflow-definitions",
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${tokens.get(alice.user.id)}`,
+            "content-type": "application/json",
+          },
+          body:
+            JSON.stringify({ originThreadId: alice.thread.id, script }) +
+            " ".repeat(4 * 1024 * 1024),
+        },
+      );
+      expect(oversizedDefinition.status).toBe(413);
+      expect(native.definitionCount()).toBe(0);
+      const saved = await definitions.create({
+        originThreadId: alice.thread.id,
+        script,
+        args: { value: 1 },
+      });
+      const another = await definitions.create({
+        originThreadId: alice.thread.id,
+        script,
+      });
+      const bobDefinition = await client(
+        bob.user.id,
+      ).workflows.definitions.create({ originThreadId: bob.thread.id, script });
+      expect(
+        (
+          await client(bob.user.id).workflows.definitions.list({
+            projectId: alice.project.id,
+          })
+        ).definitions,
+      ).toEqual([]);
+      const firstDefinitions = await definitions.list({ limit: 1 });
+      const nextDefinitions = await definitions.list({
+        limit: 1,
+        cursor: firstDefinitions.nextCursor ?? undefined,
+      });
+      expect(
+        new Set(
+          [...firstDefinitions.definitions, ...nextDefinitions.definitions].map(
+            (row) => row.id,
+          ),
+        ),
+      ).toEqual(new Set([saved.id, another.id]));
+      expect(
+        await withControlPlaneUser(bob.user.id, () =>
+          fake.harness.callRpc("controlPlaneDefinitionInventory", {
+            limit: 50,
+          }),
+        ),
+      ).toMatchObject({
+        definitions: [{ id: bobDefinition.id }],
+        nextCursor: null,
+      });
+      const jobs = createControlPlaneBackgroundJobs(
+        harness.db,
+        "workflows",
+        true,
+      );
+      const orphan = await withControlPlaneUser(alice.user.id, () =>
+        jobs.bind({
+          kind: "workflow-definition",
+          objectId: "wfd_orphan",
+          revision: 1,
+          projectId: alice.project.id,
+          originThreadId: alice.thread.id,
+          profileVersionId: null,
+          sourceBindingId: null,
+        }),
+      );
+      await expect(definitions.get(orphan.objectId)).rejects.toThrow("400");
+      await expect(
+        definitions.run(orphan.objectId, { revision: 1 }),
+      ).rejects.toThrow("400");
+      expect(
+        harness.db
+          .select({ value: count() })
+          .from(controlPlaneJobBindings)
+          .where(eq(controlPlaneJobBindings.sourceBindingId, orphan.id))
+          .get()?.value,
+      ).toBe(0);
+      const reachable = new Set<string>();
+      let definitionCursor: string | undefined;
+      for (let pageIndex = 0; pageIndex < 10; pageIndex++) {
+        const page = await definitions.list({
+          limit: 1,
+          cursor: definitionCursor,
+        });
+        for (const row of page.definitions) reachable.add(row.id);
+        if (page.nextCursor === null) break;
+        definitionCursor = page.nextCursor;
+        expect(pageIndex).toBeLessThan(9);
+      }
+      expect(reachable).toEqual(new Set([saved.id, another.id]));
+      await withControlPlaneUser(alice.user.id, () => jobs.remove(orphan.id));
+      const definitionsBase = "/control-plane/user/workflow-definitions";
+      expect(
+        (
+          await request(
+            alice.user.id,
+            "/api/v1/plugins/workflows/rpc/controlPlaneDefinitionGet",
+            "POST",
+            { id: saved.id },
+          )
+        ).status,
+      ).toBe(401);
+      for (const [suffix, method, body] of [
+        ["", "GET", undefined],
+        ["", "PUT", { expectedRevision: 1, script }],
+        ["", "DELETE", undefined],
+        ["/enabled", "POST", { enabled: false }],
+        ["/run", "POST", { revision: 1 }],
+      ] as const)
+        expect(
+          (
+            await request(
+              bob.user.id,
+              `${definitionsBase}/${saved.id}${suffix}`,
+              method,
+              body,
+            )
+          ).status,
+        ).toBe(404);
+      expect(
+        (
+          await request(alice.user.id, definitionsBase, "POST", {
+            originThreadId: alice.thread.id,
+            script,
+            userId: bob.user.id,
+          })
+        ).status,
+      ).toBe(400);
+      const changedScript = script.replace("value:42", "value:43");
+      native.failDefinitionWrites(true);
+      await expect(
+        definitions.update(saved.id, {
+          expectedRevision: 1,
+          script: changedScript,
+          args: null,
+        }),
+      ).rejects.toThrow("400");
+      native.failDefinitionWrites(false);
+      expect(await definitions.get(saved.id)).toMatchObject({
+        revision: 1,
+        script,
+        args: { value: 1 },
+      });
+      expect(
+        await definitions.update(saved.id, {
+          expectedRevision: 1,
+          script: changedScript,
+          args: { value: 2 },
+        }),
+      ).toMatchObject({
+        revision: 2,
+        script: changedScript,
+        args: { value: 2 },
+      });
+      expect(await definitions.get(saved.id, { revision: 1 })).toMatchObject({
+        revision: 1,
+        script,
+        args: { value: 1 },
+      });
+      await expect(
+        definitions.update(saved.id, {
+          expectedRevision: 1,
+          script,
+          args: null,
+        }),
+      ).rejects.toThrow("400");
+      expect((await definitions.get(saved.id)).revision).toBe(2);
+      const savedRun = await definitions.run(saved.id, { revision: 1 });
+      const runAuthority = harness.db
+        .select()
+        .from(controlPlaneJobBindings)
+        .where(eq(controlPlaneJobBindings.objectId, savedRun.id))
+        .get();
+      const definitionAuthority = harness.db
+        .select()
+        .from(controlPlaneJobBindings)
+        .where(eq(controlPlaneJobBindings.objectId, saved.id))
+        .get();
+      expect(runAuthority?.sourceBindingId).toBe(definitionAuthority?.id);
+      native.settle(savedRun.id);
+      const definitionReplay = await client(alice.user.id).workflows.start({
+        originThreadId: alice.thread.id,
+        script,
+        resumeRunId: savedRun.id,
+      });
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneJobBindings)
+          .where(eq(controlPlaneJobBindings.objectId, definitionReplay.id))
+          .get()?.sourceBindingId,
+      ).toBe(definitionAuthority?.id);
+      expect((await definitions.setEnabled(saved.id, false)).enabled).toBe(
+        false,
+      );
+      await expect(definitions.run(saved.id, { revision: 2 })).rejects.toThrow(
+        "400",
+      );
+      await expect(
+        client(alice.user.id).workflows.start({
+          originThreadId: alice.thread.id,
+          script,
+          resumeRunId: savedRun.id,
+        }),
+      ).rejects.toThrow("400");
+      expect((await definitions.setEnabled(saved.id, true)).enabled).toBe(true);
+      const deletedSourceRun = await definitions.run(another.id, {
+        revision: 1,
+      });
+      native.settle(deletedSourceRun.id);
+      await definitions.remove(another.id);
+      await expect(definitions.get(another.id)).rejects.toThrow("404");
+      expect(
+        (await client(alice.user.id).workflows.result(deletedSourceRun.id))
+          .available,
+      ).toBe(true);
+      await expect(
+        client(alice.user.id).workflows.start({
+          originThreadId: alice.thread.id,
+          script,
+          resumeRunId: deletedSourceRun.id,
+        }),
+      ).rejects.toThrow("400");
+      expect(
+        (await client(bob.user.id).workflows.definitions.get(bobDefinition.id))
+          .id,
+      ).toBe(bobDefinition.id);
       setControlPlaneProfileAccess(
         harness.db,
         alice.profile.profileId,
         alice.user.id,
         false,
       );
+      expect((await definitions.get(saved.id)).revision).toBe(2);
+      await expect(
+        definitions.update(saved.id, {
+          expectedRevision: 2,
+          script,
+          args: null,
+        }),
+      ).rejects.toThrow("400");
+      expect((await definitions.setEnabled(saved.id, false)).enabled).toBe(
+        false,
+      );
+      await expect(definitions.setEnabled(saved.id, true)).rejects.toThrow(
+        "400",
+      );
+      native.settle(savedRun.id);
+      await definitions.remove(saved.id);
+      await expect(definitions.get(saved.id)).rejects.toThrow("404");
+      expect(
+        await client(alice.user.id).workflows.result(savedRun.id),
+      ).toMatchObject({ available: true, value: { value: 42 } });
       expect((await client(alice.user.id).workflows.get(second.id)).id).toBe(
         second.id,
       );

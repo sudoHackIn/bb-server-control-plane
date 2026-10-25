@@ -658,9 +658,8 @@ With `createControlPlaneClient`, use `workflows.start({originThreadId, script,
 args?, resumeRunId?})`, `list({projectId?, cursor?, limit?, signal?})`, `get(id,
 signal?)`, `result(id, signal?)`, `history(id, {after?, limit?, signal?})` and
 `stop(id, signal?)`. Start accepts an optional second AbortSignal. These methods
-also work with a personal browser cookie on the matching origin. Definitions,
-schedules and dedicated progress subscriptions remain separate shared-server
-work; a started workflow continues independently of its browser
+also work with a personal browser cookie on the matching origin. Schedules and
+dedicated progress subscriptions remain separate shared-server work; a started workflow continues independently of its browser
 session under current saved execution grants.
 The workflow HTTP envelope is separately limited to 4 MiB, allowing for JSON
 escaping; the tighter source and argument limits still apply.
@@ -677,3 +676,77 @@ screen is active; **Refresh workflows** retries a failed read. **Conversation**
 returns to the ordinary timeline/composer. Reload preserves the workflow view;
 select a run again afterward. Source drafts reset when leaving the view or
 changing the project/conversation.
+
+
+### Saved personal workflow definitions
+
+Definitions store immutable source/default-argument revisions in the builtin
+Workflows database. They are personal objects, including within a shared project.
+The server derives owner, project and pinned execution context from the supplied
+owned origin thread. The definition keeps that origin for its lifetime.
+
+```bash
+bb server access workflows definitions create <origin-thread-id> --file ./review.js --args '{"branch":"main"}' --json
+bb server access workflows definitions list --project <project-id> --limit 20 --json
+bb server access workflows definitions get <definition-id> --revision 1 --json
+bb server access workflows definitions update <definition-id> --revision 1 --file ./review-v2.js --args '{"branch":"next"}' --json
+bb server access workflows definitions run <definition-id> --revision 2 --json
+bb server access workflows definitions disable <definition-id> --json
+bb server access workflows definitions enable <definition-id> --json
+bb server access workflows definitions delete <definition-id> --json
+```
+
+Create/update choose one source option: `--script`, `--script-stdin` or local
+`--file`, with the same 512 KiB source and bounded 128 KiB JSON limits as inline
+runs. Update replaces source and default arguments and requires the expected
+current revision; a stale edit fails without overwriting the newer version.
+Omitting `--args` on create/update saves JSON null. Run requires an exact immutable
+revision and uses its saved arguments unless `--args` is supplied; explicit
+`--args null` overrides them with JSON null. Get defaults to the latest revision.
+List returns summaries and the usual `nextCursor`; get returns source/arguments.
+
+Disabling the stable definition authority blocks starts and is observed by its
+active evaluators/workers. Deleting tombstones that authority; it preserves
+version/run records and blocks descendants. It does not undo external effects.
+Current project access permits reads/disable/delete after profile loss; executing,
+saving edits and re-enabling require current execution grants. A definition is
+independent of the browser token that created it. Registered UID/HOME/project cwd
+are resolved again for actual execution.
+
+Use `createControlPlaneClient(...).workflows.definitions` with `create(input,
+signal?)`, `list({projectId?,cursor?,limit?,signal?})`, `get(id,{revision?,signal?})`,
+`update(id,{expectedRevision,script,args?},signal?)`, `setEnabled(id,enabled,signal?)`,
+`run(id,{revision,args?},signal?)` and `remove(id,signal?)`.
+
+In the personal Workflows UI, the source/JSON form can **Save new definition**.
+**Load** copies the saved source/defaults into the form; **Update saved definition**
+creates a new version with a conflict check. **Run saved workflow** uses the loaded
+saved revision and defaults, not unsaved form changes. The saved origin is shown.
+Enable/disable and delete use the same limited API. Loading metadata after a
+role/project change fails closed. Project-only views can run a saved definition
+when execution is allowed, because its origin is already recorded. File-based
+`.bb/workflows/<name>.js` resolution remains separate from these definition IDs.
+
+
+Replay of a definition-derived run inherits its stable source binding, including
+when requested through the ordinary inline workflow start/resume API. It cannot
+strip or replace that ancestry to reuse a disabled/deleted definition's cached
+prefix. The previous run may be terminal/cancelled; its saved source authority
+still has to permit the new execution. Creating a separate new inline run remains
+subject to the ordinary current profile/project permissions.
+
+
+Administrators can use the authenticated native SDK `plugins.callRpc` or
+`bb plugin rpc call workflows <method> --input-file <json-path> --json` for these
+same handlers. `controlPlaneDefinitionInventory` accepts
+`{"cursor":null,"limit":50}` and optional `projectId`, returns summaries with
+`ownerUserId` and `nextCursor`, and respects a user principal if invoked under one.
+`controlPlaneDefinitionGet` takes `id` and optional `revision`;
+`controlPlaneDefinitionRun` takes `id`, exact `revision` and optional `args`.
+Enabled/update/remove handlers use the corresponding ID-based contracts above.
+Raw native RPC requires administrative access; personal clients use the limited
+API. Administrative run dispatch adopts the saved owner and rechecks that user's
+profile/project/source grants. It cannot bypass a disabled source. A logged-out
+user's API token remains rejected while an authorized administrative dispatch can
+run the still-enabled saved job under that user. Dedicated administrative
+definition UI and legacy assignment remain later work.

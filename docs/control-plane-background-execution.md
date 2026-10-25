@@ -4,7 +4,8 @@ This is a source inventory and integration plan for the required personal
 workflow/automation/schedule stage. The authority-binding foundation and native
 workflow owner/binding persistence and isolated pure evaluation are implemented.
 Worker authority/dispatch and the isolated agent process bridge are implemented.
-Nested workflows and automation integration remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
+Nested workflows use the isolated evaluator; automation/schedule integration
+and the remaining authority/recovery audit remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
 
 ## Existing persistence and execution
 
@@ -445,3 +446,41 @@ hide cached run details. Drafts/selection reset on project/conversation/view
 changes and are not persisted. This UI adds no plugin RPC bypass or separate
 workflow store. Definitions, automations/schedules and the remaining audit above
 remain required. See `control-plane-phase-40-verification.json` for this increment.
+
+## Managed personal definition revisions
+
+Native Workflows stores personal definition heads and immutable source/default
+argument revisions. Core lists central owner/project bindings before pagination;
+only fixed builtin RPC can read/create/update/run/enable/delete native definitions.
+The personal SDK, CLI and workflow workspace use this path. Definition IDs are
+separate from workspace file names. One stable authority binding fences every
+version/run; native run snapshots retain their supplied code/arguments and source
+ancestry. Cross-database insert failures retire reservations; missing native
+records cannot execute. Source disable/delete is observed by the existing actual
+execution/retry/worker guards. Browser tokens are not persisted as authority.
+
+This closes personal definition controls, not automation/schedule support,
+administrative definition UX, legacy assignment or the remaining background
+execution audit. See `control-plane-phase-41-verification.json` for scope.
+
+Replay of a definition-derived run inherits its stable source binding, including
+when requested through the ordinary inline workflow start/resume API. It cannot
+strip or replace that ancestry to reuse a disabled/deleted definition's cached
+prefix. The previous run may be terminal/cancelled; its saved source authority
+still has to permit the new execution. Creating a separate new inline run remains
+subject to the ordinary current profile/project permissions.
+
+Administrators can use the authenticated native SDK `plugins.callRpc` or
+`bb plugin rpc call workflows <method> --input-file <json-path> --json` for these
+same handlers. `controlPlaneDefinitionInventory` accepts
+`{"cursor":null,"limit":50}` and optional `projectId`, returns summaries with
+`ownerUserId` and `nextCursor`, and respects a user principal if invoked under one.
+`controlPlaneDefinitionGet` takes `id` and optional `revision`;
+`controlPlaneDefinitionRun` takes `id`, exact `revision` and optional `args`.
+Enabled/update/remove handlers use the corresponding ID-based contracts above.
+Raw native RPC requires administrative access; personal clients use the limited
+API. Administrative run dispatch adopts the saved owner and rechecks that user's
+profile/project/source grants. It cannot bypass a disabled source. A logged-out
+user's API token remains rejected while an authorized administrative dispatch can
+run the still-enabled saved job under that user. Dedicated administrative
+definition UI and legacy assignment remain later work.

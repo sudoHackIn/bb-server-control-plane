@@ -27,6 +27,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
+- [x] Persist personal workflow definitions and immutable source/default-argument revisions, with stable source authority and API/SDK/CLI/UI controls for create/read/update/run/enable/disable/delete.
 - [x] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection through approved profile versions. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [x] Stream personal persisted events with exclusive cursor replay and native BB timeline snapshots/updates; recheck token/project authority on every frame and idle intervals, limit buffers/connections, and release subscriptions on cancellation. Global lists/search/bootstrap/user UI still require separate scoping.
@@ -35,7 +36,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Carry verified user/run context through plugin calls and child creation. Plugin identity, parentThreadId and origin metadata are not authentication.
 - [x] Add the internal durable background authority-binding registry, immutable object revisions, current-grant/source checks and user-principal callback scope. Actual workflow/automation/scheduler integration remains pending.
 - [x] Expose lifecycle-scoped internal background authority only to builtin Workflows/Automations, derive owner/profile context server-side and verify registration/read/restart plus unapproved-plugin denial in Docker. Native plugin persistence/execution integration remains pending.
-- [x] Expose personal native workflow run start/list/status/result/history/stop and terminal replay through the limited API, SDK and CLI, reusing builtin persistence and owner authority. Definitions, workflow UI, automations and schedules remain pending.
+- [x] Expose personal native workflow run start/list/status/result/history/stop and terminal replay through the limited API, SDK and CLI, reusing builtin persistence and owner authority. Automations and schedules remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -1714,3 +1715,87 @@ The browser uses isolated temporary certificate contexts outside the host
 execution sandbox, which otherwise aborts Chrome before opening a page. The
 Docker runtime keeps its original UID, namespaces, readonly mounts and seccomp
 constraints. Results are recorded in `control-plane-phase-40-verification.json`.
+
+## Forty-first increment: managed personal workflow definitions
+
+Builtin Workflows gains native definition heads and immutable source/default
+argument revisions. A definition's owner/project/origin/profile authority is
+stable; native code revisions are separate from that central authority revision.
+Saving edits uses an expected revision and one native SQLite transaction.
+A conflicting edit does not overwrite content. Exact-revision runs copy saved
+source/defaults, optionally overriding arguments, through the normal native
+controller and attach the definition binding as their source ancestor. Editing
+never substitutes new code into an existing run.
+
+Central authority is reserved before native insertion. A failed insert rolls
+back native writes and retires the reservation; a crash-created orphan without
+native content cannot run or expose source. Disable/delete modify the central
+fence directly, without duplicating mutable enabled/deleted state across two
+stores. Existing evaluator/worker/retry guards observe that source ancestry.
+Version/run records remain stored; stopping authority does not undo external
+side effects. Current project access permits read/disable/delete after profile
+loss; saving, executing and re-enabling require current execution grants.
+
+The limited `/control-plane/user/workflow-definitions` API,
+`workflows.definitions` SDK, `bb server access workflows definitions` commands
+and personal workflow workspace share the same fixed builtin RPC/controller
+path. Lists filter central ownership before pagination and return metadata;
+get reads source/defaults at a requested or current revision. User calls cannot
+choose owner/project/profile/UID/HOME/cwd. Shared project membership does not
+expose another user's personal definition. The UI preserves the loaded editing
+revision during enable/disable, preventing stale drafts from accidentally
+adopting a concurrent version. Project/conversation changes dispose source-load
+callbacks. File-based workflow names remain a separate interface.
+
+The Docker fixture adds two-user definition lifecycle, exact/default/null
+arguments, source-disable termination of an actual registered-UID evaluator,
+foreign-ID denial and owner/version/enabled recovery after restart. Browser
+checks add actual Qwen through a saved definition, source editing, loaded-version
+execution, reload, enable/disable/delete and foreign requests while it exists.
+Overall watchdogs grow with these additional cases (420/450 seconds for normal
+inner/outer checks, 480/510 for browser); individual operation waits and kernel
+isolation are unchanged. The image includes the new portable verification
+module. Administrative definition UX, legacy assignments, automations/schedules
+and the broader admission/recovery audit remain unfinished.
+
+Replay of a definition-derived run inherits its stable source binding, including
+when requested through the ordinary inline workflow start/resume API. It cannot
+strip or replace that ancestry to reuse a disabled/deleted definition's cached
+prefix. The previous run may be terminal/cancelled; its saved source authority
+still has to permit the new execution. Creating a separate new inline run remains
+subject to the ordinary current profile/project permissions.
+
+Administrators can use the authenticated native SDK `plugins.callRpc` or
+`bb plugin rpc call workflows <method> --input-file <json-path> --json` for these
+same handlers. `controlPlaneDefinitionInventory` accepts
+`{"cursor":null,"limit":50}` and optional `projectId`, returns summaries with
+`ownerUserId` and `nextCursor`, and respects a user principal if invoked under one.
+`controlPlaneDefinitionGet` takes `id` and optional `revision`;
+`controlPlaneDefinitionRun` takes `id`, exact `revision` and optional `args`.
+Enabled/update/remove handlers use the corresponding ID-based contracts above.
+Raw native RPC requires administrative access; personal clients use the limited
+API. Administrative run dispatch adopts the saved owner and rechecks that user's
+profile/project/source grants. It cannot bypass a disabled source. A logged-out
+user's API token remains rejected while an authorized administrative dispatch can
+run the still-enabled saved job under that user. Dedicated administrative
+definition UI and legacy assignment remain later work.
+
+Final verification passes 273 native Workflow tests, 33 personal UI tests,
+18 server security/real-SQLite/TCP tests, two CLI workflow tests and one each for
+the limited SDK and bounded domain input (328 total). The native insertion fault
+is injected after its head write and rolls back both tables; a separately seeded
+reservation-only state cannot read/execute content or allocate a derived run,
+and sparse pagination still reaches valid definitions. Both disabled and deleted
+source authority prevent ordinary inline resume while authorized historical
+results remain readable.
+
+Strict app/server/CLI/SDK/plugin types and changed-file lint/format/diff checks
+pass. Production browser Docker passes all 63 tasks in 7 minutes 9 seconds;
+normal `--network none` Docker passes all 63 in 5 minutes 58 seconds. The latter
+verifies real Qwen shell UID/HOME/cwd, source-disable termination and disappearance
+of the command processes; a read-only SQLite check also confirms that its worker
+row exists and is archived. Final image rebuild includes the stricter explicit
+row-existence assertion and current guides. Administrative native inventory
+shows both owners, Bob's revoked credential stays rejected, and administrative
+run dispatch adopts Bob's saved authority after logout. Completed evidence is
+in `control-plane-phase-41-verification.json`; the overall goal remains open.

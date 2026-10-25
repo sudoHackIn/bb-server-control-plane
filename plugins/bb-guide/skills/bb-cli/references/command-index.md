@@ -117,6 +117,14 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access workflows result`
 - `bb server access workflows history`
 - `bb server access workflows stop`
+- `bb server access workflows definitions create`
+- `bb server access workflows definitions list`
+- `bb server access workflows definitions get`
+- `bb server access workflows definitions update`
+- `bb server access workflows definitions enable`
+- `bb server access workflows definitions disable`
+- `bb server access workflows definitions run`
+- `bb server access workflows definitions delete`
 - `bb server access threads list`
 - `bb server access threads start`
 - `bb server access threads get`

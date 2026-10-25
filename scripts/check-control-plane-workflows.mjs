@@ -1,3 +1,4 @@
+import { verifyWorkflowDefinitions } from "./check-control-plane-workflow-definitions.mjs";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
@@ -8,6 +9,7 @@ import {
   writeFile,
   chown,
   symlink,
+  rm,
 } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import Database from "better-sqlite3";
@@ -257,6 +259,32 @@ export async function verifyNativeWorkflows({
       ),
     );
   }
+  async function definitionAdminRpc(method, input) {
+    const file = `/tmp/bb-definition-rpc-${randomUUID()}.json`;
+    await writeFile(file, JSON.stringify(input), { mode: 0o600, flag: "wx" });
+    await chown(file, 1000, 1000);
+    try {
+      return await cli([
+        "plugin",
+        "rpc",
+        "call",
+        "workflows",
+        method,
+        "--input-file",
+        file,
+        "--json",
+      ]);
+    } finally {
+      await rm(file, { force: true });
+    }
+  }
+  const definitions = await verifyWorkflowDefinitions({
+    subjects,
+    userCommand,
+    db,
+    wait,
+    adminRpc: definitionAdminRpc,
+  });
   const personalCancelled = await personalStart(
     subjects[0],
     'export const meta={name:"personal-cancel",description:"User API cancellation"}; phase("waiting"); return await new Promise(()=>{});',
@@ -1288,6 +1316,7 @@ export async function verifyNativeWorkflows({
       );
     },
     verification: {
+      ...definitions.verification,
       ...processProof,
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
@@ -1410,6 +1439,7 @@ export async function verifyNativeWorkflows({
         assert.notEqual(plugin?.status, "error", plugin?.statusDetail);
         return plugin?.status === "running";
       }, "workflow plugin registration after restart");
+      const definitionRestart = await definitions.afterRestart();
       const before = db
         .prepare("SELECT count(*) AS count FROM threads")
         .get().count;
@@ -1452,6 +1482,7 @@ export async function verifyNativeWorkflows({
         storage.close();
       }
       return {
+        ...definitionRestart,
         ...workerRestart,
         interruptedNativeWorkflowAutomaticallyRecovered: true,
         successfulPrefixRecoveredWithoutDuplicateWorker: true,

@@ -296,6 +296,8 @@ it("opens workflows in the main workspace and keeps the conversation/sidebar nav
     if (url.pathname.endsWith("/bootstrap")) return Response.json(bootstrap);
     if (url.pathname.endsWith("/projects/a"))
       return Response.json(project("a"));
+    if (url.pathname.endsWith("/workflow-definitions"))
+      return Response.json({ definitions: [], nextCursor: null });
     if (url.pathname.endsWith("/workflows"))
       return Response.json({ runs: [], nextCursor: null });
     if (url.pathname.endsWith("/threads"))

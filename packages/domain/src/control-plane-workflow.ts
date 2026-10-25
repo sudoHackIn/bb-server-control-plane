@@ -133,3 +133,47 @@ export const controlPlaneWorkflowHistorySchema = z
 export type ControlPlaneWorkflowStart = z.infer<
   typeof controlPlaneWorkflowStartSchema
 >;
+
+export const controlPlaneWorkflowDefinitionCreateSchema =
+  controlPlaneWorkflowStartSchema.omit({ resumeRunId: true });
+export const controlPlaneWorkflowDefinitionUpdateSchema =
+  controlPlaneWorkflowDefinitionCreateSchema
+    .omit({ originThreadId: true })
+    .extend({
+      expectedRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    })
+    .strict();
+export const controlPlaneWorkflowDefinitionRunSchema = z
+  .object({
+    revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    args: workflowArgs.optional(),
+  })
+  .strict();
+export const controlPlaneWorkflowDefinitionSummarySchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    originThreadId: z.string(),
+    revision: z.number().int().positive(),
+    name: z.string().max(1024),
+    enabled: z.boolean(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .strict();
+export const controlPlaneWorkflowDefinitionSchema =
+  controlPlaneWorkflowDefinitionSummarySchema
+    .extend({
+      script: controlPlaneWorkflowStartSchema.shape.script,
+      args: workflowArgs,
+    })
+    .strict();
+export const controlPlaneWorkflowDefinitionPageSchema = z
+  .object({
+    definitions: z.array(controlPlaneWorkflowDefinitionSummarySchema).max(50),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+export type ControlPlaneWorkflowDefinition = z.infer<
+  typeof controlPlaneWorkflowDefinitionSchema
+>;

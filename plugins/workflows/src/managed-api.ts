@@ -29,6 +29,7 @@ const run = z
     finishedAt: z.number().nullable(),
   })
   .strict();
+export const managedWorkflowRunSchema = run;
 const id = z.string().min(1).max(200);
 const lookup = z.object({ runId: id }).strict();
 const contract = defineRpcContract({
@@ -98,7 +99,7 @@ const contract = defineRpcContract({
       .nullable(),
   },
 });
-function summary(row: WorkflowRunRow) {
+export function workflowRunSummary(row: WorkflowRunRow) {
   return {
     id: row.id,
     projectId: row.projectId,
@@ -128,7 +129,7 @@ export function registerManagedWorkflowApi(
   bb.rpc.register(contract, {
     async controlPlaneWorkflowStart(input) {
       managed();
-      return summary(
+      return workflowRunSummary(
         await service.start({
           projectId: input.projectId,
           originThreadId: input.originThreadId,
@@ -143,14 +144,14 @@ export function registerManagedWorkflowApi(
       return {
         runs: ids.flatMap((id) => {
           const row = service.get(id);
-          return row ? [summary(row)] : [];
+          return row ? [workflowRunSummary(row)] : [];
         }),
       };
     },
     controlPlaneWorkflowGet({ runId }) {
       managed();
       const row = service.get(runId);
-      return { run: row ? summary(row) : null };
+      return { run: row ? workflowRunSummary(row) : null };
     },
     async controlPlaneWorkflowStop({ runId }) {
       managed();

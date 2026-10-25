@@ -245,6 +245,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 interface StartWorkflowInput {
+  sourceBindingId?: string;
   projectId: string;
   originThreadId: string;
   source: string;
@@ -593,6 +594,9 @@ export function createWorkflowService(
       if (!validation.valid)
         throw new Error(`Workflow args are invalid: ${validation.error}`);
     }
+    if (input.sourceBindingId !== undefined && !backgroundJobs)
+      throw new Error("Managed source authority is required");
+    let sourceBindingId = input.sourceBindingId ?? null;
     const origin = await resolveOrigin(input);
     let resumedOwnerUserId: string | null = null;
     if (input.resumedFromRunId !== null) {
@@ -602,8 +606,19 @@ export function createWorkflowService(
           `Cannot resume unknown workflow run ${input.resumedFromRunId}`,
         );
       }
-      if (backgroundJobs && !bindingFor(previous))
-        throw new Error("Cannot resume an unassigned workflow run");
+      if (backgroundJobs) {
+        const previousBinding = bindingFor(previous);
+        if (!previousBinding)
+          throw new Error("Cannot resume an unassigned workflow run");
+        if (
+          input.sourceBindingId !== undefined &&
+          input.sourceBindingId !== previousBinding.sourceBindingId
+        )
+          throw new Error(
+            "Cannot replace workflow source authority during replay",
+          );
+        sourceBindingId = previousBinding.sourceBindingId;
+      }
       resumedOwnerUserId = previous.ownerUserId;
       if (previous.status === "queued" || previous.status === "running") {
         throw new Error(
@@ -625,7 +640,7 @@ export function createWorkflowService(
           projectId: input.projectId,
           profileVersionId: null,
           originThreadId: input.originThreadId,
-          sourceBindingId: null,
+          sourceBindingId,
         })
       : null;
     let created: WorkflowRunRow;

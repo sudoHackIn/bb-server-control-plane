@@ -49,6 +49,10 @@ try {
       "check-control-plane-workflows.mjs",
     ],
     [
+      "scripts/check-control-plane-workflow-definitions.mjs",
+      "check-control-plane-workflow-definitions.mjs",
+    ],
+    [
       "scripts/check-control-plane-approvals.mjs",
       "check-control-plane-approvals.mjs",
     ],

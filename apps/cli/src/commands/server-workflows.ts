@@ -1,7 +1,8 @@
 import type { Command } from "commander";
 import type { createControlPlaneClient } from "@bb/sdk/node";
 import { controlPlaneWorkflowStartSchema } from "@bb/domain";
-import { readFile } from "node:fs/promises";
+import { readWorkflowScript } from "./workflow-source.js";
+import { registerServerWorkflowDefinitionCommands } from "./server-workflow-definitions.js";
 import { z } from "zod";
 import { action } from "../action.js";
 
@@ -12,6 +13,7 @@ export function registerServerWorkflowCommands(
   const workflows = access
     .command("workflows")
     .description("Manage your server workflow runs through the limited API");
+  registerServerWorkflowDefinitionCommands(workflows, client);
   const output = (value: object) => console.log(JSON.stringify(value, null, 2));
   workflows
     .command("list")
@@ -59,33 +61,7 @@ export function registerServerWorkflowCommands(
             resume?: string;
           },
         ) => {
-          if (
-            [
-              options.script !== undefined,
-              Boolean(options.scriptStdin),
-              options.file !== undefined,
-            ].filter(Boolean).length !== 1
-          )
-            throw new Error(
-              "Choose exactly one of --script, --script-stdin or --file",
-            );
-          let script = options.script ?? "";
-          if (options.file) {
-            const buffer = await readFile(options.file);
-            if (buffer.byteLength > 524288)
-              throw new Error("Workflow script is too large");
-            script = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
-          }
-          if (options.scriptStdin) {
-            if (process.stdin.isTTY)
-              throw new Error("Pipe the script into stdin");
-            process.stdin.setEncoding("utf8");
-            for await (const part of process.stdin) {
-              script += part;
-              if (Buffer.byteLength(script) > 524288)
-                throw new Error("Workflow script is too large");
-            }
-          }
+          const script = await readWorkflowScript(options);
           const input = controlPlaneWorkflowStartSchema.parse({
             originThreadId,
             script,

@@ -240,6 +240,16 @@ export const migrations = [
    CREATE INDEX workflow_runs_owner_origin_created_idx ON workflow_runs(owner_user_id, origin_thread_id, created_at DESC);`,
   `ALTER TABLE workflow_workers ADD COLUMN parent_binding_id TEXT;
    UPDATE workflow_workers SET parent_binding_id = (SELECT authority_binding_id FROM workflow_runs WHERE workflow_runs.id = workflow_workers.run_id);`,
+  `CREATE TABLE workflow_definitions (
+     id TEXT PRIMARY KEY, owner_user_id TEXT NOT NULL, project_id TEXT NOT NULL,
+     origin_thread_id TEXT NOT NULL, binding_id TEXT NOT NULL UNIQUE,
+     revision INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+   );
+   CREATE TABLE workflow_definition_versions (
+     definition_id TEXT NOT NULL REFERENCES workflow_definitions(id) ON DELETE CASCADE,
+     revision INTEGER NOT NULL, name TEXT NOT NULL, script TEXT NOT NULL, args_json TEXT NOT NULL,
+     PRIMARY KEY(definition_id,revision)
+   );`,
 ];
 
 export function createWorkflowRunId() {

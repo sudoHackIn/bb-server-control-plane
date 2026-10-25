@@ -1,4 +1,8 @@
 import {
+  installControlPlaneDefinitionRoutes,
+  isControlPlaneDefinitionPath,
+} from "./definition-routes.js";
+import {
   controlPlaneBodyLimit,
   readControlPlaneJson,
   readControlPlaneForm,
@@ -81,6 +85,7 @@ export function certificateLogin(context: Context): string | null {
 export function isUserAuthPath(path: string, method: string): boolean {
   if (
     isControlPlaneThreadPath(path, method) ||
+    isControlPlaneDefinitionPath(path, method) ||
     isControlPlaneWorkflowPath(path, method)
   )
     return true;
@@ -153,8 +158,14 @@ export function createControlPlaneUserAccess(
       browser.install(app, signOutAdministrator);
       installControlPlaneProfileRoutes(app, registry.db, authenticate);
       if (threads) installControlPlaneThreadRoutes(app, threads, authenticate);
-      if (workflows)
+      if (workflows) {
         installControlPlaneWorkflowRoutes(app, workflows, authenticate);
+        installControlPlaneDefinitionRoutes(
+          app,
+          workflows.definitions,
+          authenticate,
+        );
+      }
       const projectResponse = (
         row: NonNullable<ReturnType<typeof getControlPlaneProject>>,
         userId: string,

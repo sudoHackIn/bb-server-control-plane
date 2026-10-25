@@ -1552,8 +1552,8 @@ worker profiles. No caller-supplied owner, environment or launcher fields are
 accepted. CLI `--file` reads a client-local file. See `bb guide machines` for
 pagination, replay and history/result semantics. The personal UI exposes the same
 run operations through the Workflows button in a selected project/conversation.
-Saved definitions, schedules and a dedicated workflow progress stream remain
-pending.
+Saved personal definitions are available as described below; schedules and a
+dedicated workflow progress stream remain pending.
 
 Workflow HTTP bodies have a separate 4 MiB envelope limit so JSON escaping does
 not reduce the advertised source/argument bounds. The wildcard covers the root
@@ -1609,3 +1609,48 @@ an unfinished stream. This avoids resetting normal finite uploads while the
 client is still writing, without parsing or dispatching oversized input or
 waiting indefinitely for stalled/endless bodies. Accepted bytes are buffered
 only up to the route's existing body budget before the action is called.
+
+Personal workflow definitions use `/control-plane/user/workflow-definitions`:
+GET lists owned summaries, POST creates from `originThreadId`, `script` and default
+`args`. GET `/:id?revision=N` reads a version; PUT `/:id` takes `expectedRevision`,
+replacement `script` and `args`. POST `/:id/run` requires exact `revision` and
+optional argument override; POST `/:id/enabled` takes `enabled`; DELETE `/:id`
+tombstones the authority. All body routes retain the 4 MiB envelope and tighter
+source/argument limits. Owner/project/origin/profile/launcher overrides are not
+accepted. SDK and CLI discovery are in `bb guide machines`.
+
+The builtin plugin adds native SQLite definition/head and immutable-version
+tables. One stable central `workflow-definition` binding governs every version
+and derived run; a run copies exact source/arguments and binds that source as its
+ancestor. The binding's revision 1 identifies the stable authority, while the
+native revision identifies immutable code/defaults. They are distinct counters.
+Native and central persistence use fail-closed reservation: central authority is
+reserved first, native insertion commits in one transaction, and a failed insert
+retires the reservation. A crash before native insertion can leave a binding with
+no definition, which cannot execute and is skipped by native list/get.
+Disable/delete commit the central execution fence without a second mutable
+native enabled/deleted flag. Versions and run snapshots remain stored. Saving
+changes does not silently rebind origin/project/profile or interrupt older runs;
+current execution grants still apply when a particular revision is run.
+
+Replay of a definition-derived run inherits its stable source binding, including
+when requested through the ordinary inline workflow start/resume API. It cannot
+strip or replace that ancestry to reuse a disabled/deleted definition's cached
+prefix. The previous run may be terminal/cancelled; its saved source authority
+still has to permit the new execution. Creating a separate new inline run remains
+subject to the ordinary current profile/project permissions.
+
+Administrators can use the authenticated native SDK `plugins.callRpc` or
+`bb plugin rpc call workflows <method> --input-file <json-path> --json` for these
+same handlers. `controlPlaneDefinitionInventory` accepts
+`{"cursor":null,"limit":50}` and optional `projectId`, returns summaries with
+`ownerUserId` and `nextCursor`, and respects a user principal if invoked under one.
+`controlPlaneDefinitionGet` takes `id` and optional `revision`;
+`controlPlaneDefinitionRun` takes `id`, exact `revision` and optional `args`.
+Enabled/update/remove handlers use the corresponding ID-based contracts above.
+Raw native RPC requires administrative access; personal clients use the limited
+API. Administrative run dispatch adopts the saved owner and rechecks that user's
+profile/project/source grants. It cannot bypass a disabled source. A logged-out
+user's API token remains rejected while an authorized administrative dispatch can
+run the still-enabled saved job under that user. Dedicated administrative
+definition UI and legacy assignment remain later work.

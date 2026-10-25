@@ -1110,6 +1110,27 @@ async function verifyControlPlaneInputLimits({
   const definition = alice.profile.body.version.definition;
   const cases = [
     {
+      path: "/control-plane/user/workflow-definitions",
+      limit: 4194304,
+      identity: token,
+      payload: {
+        originThreadId: alice.thread.id,
+        script:
+          'export const meta={name:"body-cap",description:"Must not save"}; return null;',
+      },
+    },
+    {
+      path: "/control-plane/user/workflow-definitions/missing",
+      limit: 4194304,
+      identity: token,
+      method: "PUT",
+      payload: {
+        expectedRevision: 1,
+        script:
+          'export const meta={name:"body-cap",description:"Must not save"}; return null;',
+      },
+    },
+    {
       path: "/control-plane/user/threads",
       limit: 1048576,
       identity: token,

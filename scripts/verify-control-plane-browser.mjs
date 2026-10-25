@@ -315,10 +315,17 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         .click();
       assert.equal((await stopped).status(), 200);
       await visible(
-        page.getByRole("button", {
-          name: `browser-cancel-${user.login} · cancelled`,
-          exact: true,
-        }),
+        page
+          .getByLabel("Selected workflow", { exact: true })
+          .getByRole("status")
+          .filter({ hasText: /^cancelled(?: ·|$)/u }),
+      );
+      await verifyBrowserDefinitions(
+        page,
+        user.login === "alice" ? bob : alice,
+        user,
+        ready.origin,
+        visible,
       );
       await page
         .getByRole("button", { name: "Conversation", exact: true })
@@ -412,6 +419,9 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       nativeSidebarTimelineAndComposerRendered: true,
       actualNativeEditorCreatesAndContinuesQwenConversation: true,
       liveQwenResponseRendered: true,
+      personalWorkflowDefinitionsCrudAndExactRevisionRun: true,
+      personalWorkflowDefinitionQwenWorkerAndDefaultArguments: true,
+      personalWorkflowDefinitionForeignRequestsDeniedWhilePresent: true,
       personalWorkflowListStartProgressHistoryAndResultRendered: true,
       personalWorkflowReplayAndCancellationFromNativeUi: true,
       personalWorkflowViewSurvivesReload: true,
@@ -451,4 +461,142 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     for (const context of contexts) await context.close();
     await browser.close();
   }
+}
+
+async function verifyBrowserDefinitions(page, foreign, user, origin, visible) {
+  const name = `browser-definition-${user.login}`;
+  const source = page.getByRole("textbox", {
+    name: "Workflow source",
+    exact: true,
+  });
+  const args = page.getByRole("textbox", {
+    name: "Workflow arguments (JSON)",
+    exact: true,
+  });
+  await source.fill(
+    `export const meta={name:"${name}",description:"Browser saved definition"}; return await agent("BB_PERSONAL_workflow-agent-${user.login}");`,
+  );
+  await args.fill(JSON.stringify({ saved: user.login, revision: 1 }));
+  const created = page.waitForResponse(
+    (reply) =>
+      new URL(reply.url()).pathname ===
+        "/control-plane/user/workflow-definitions" &&
+      reply.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Save new definition", exact: true })
+    .click();
+  const response = await created;
+  assert.equal(response.status(), 201);
+  const definition = await response.json();
+  assert.equal(definition.revision, 1);
+  assert.equal(definition.projectId, user.projectId);
+  const path = `/control-plane/user/workflow-definitions/${definition.id}`;
+  await visible(
+    page.getByText(`Definition ${definition.id} · v1 · enabled`, {
+      exact: true,
+    }),
+  );
+  assert.equal(
+    (await foreign.context.request.get(origin + path)).status(),
+    404,
+  );
+  assert.equal(
+    (
+      await foreign.context.request.post(origin + path + "/run", {
+        headers: { origin },
+        data: { revision: 1 },
+      })
+    ).status(),
+    404,
+  );
+  async function runSaved(expected) {
+    const pending = page.waitForResponse(
+      (reply) =>
+        new URL(reply.url()).pathname === path + "/run" &&
+        reply.request().method() === "POST",
+    );
+    await page
+      .getByRole("button", { name: "Run saved workflow", exact: true })
+      .click();
+    const reply = await pending;
+    assert.equal(reply.status(), 201);
+    const run = await reply.json();
+    await visible(page.getByText(`Run ${run.id}`, { exact: true }));
+    await visible(page.getByLabel("Workflow result", { exact: true }));
+    assert.deepEqual(
+      JSON.parse(
+        await page.getByLabel("Workflow result", { exact: true }).textContent(),
+      ),
+      expected,
+    );
+  }
+  await runSaved(`Personal workflow-agent-${user.login} completed`);
+  await source.fill(
+    `export const meta={name:"${name}",description:"Browser revised definition"}; return args;`,
+  );
+  await args.fill(JSON.stringify({ saved: user.login, revision: 2 }));
+  const updating = page.waitForResponse(
+    (reply) =>
+      new URL(reply.url()).pathname === path &&
+      reply.request().method() === "PUT",
+  );
+  await page
+    .getByRole("button", { name: "Update saved definition", exact: true })
+    .click();
+  const updated = await updating;
+  assert.equal(updated.status(), 200);
+  assert.equal((await updated.json()).revision, 2);
+  await visible(
+    page.getByText(`Definition ${definition.id} · v2 · enabled`, {
+      exact: true,
+    }),
+  );
+  await runSaved({ saved: user.login, revision: 2 });
+  await page
+    .getByRole("button", { name: "Disable definition", exact: true })
+    .click();
+  await visible(
+    page.getByRole("button", { name: "Enable definition", exact: true }),
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Run saved workflow", exact: true })
+      .isDisabled(),
+    true,
+  );
+  await page
+    .getByRole("button", { name: "Enable definition", exact: true })
+    .click();
+  await visible(
+    page.getByText(`Definition ${definition.id} · v2 · enabled`, {
+      exact: true,
+    }),
+  );
+  await page.reload();
+  await page
+    .getByRole("button", { name: `Load ${name} · v2`, exact: true })
+    .click();
+  await visible(
+    page.getByText(`Definition ${definition.id} · v2 · enabled`, {
+      exact: true,
+    }),
+  );
+  assert.deepEqual(JSON.parse(await args.inputValue()), {
+    saved: user.login,
+    revision: 2,
+  });
+  const deleting = page.waitForResponse(
+    (reply) =>
+      new URL(reply.url()).pathname === path &&
+      reply.request().method() === "DELETE",
+  );
+  await page
+    .getByRole("button", { name: "Delete definition", exact: true })
+    .click();
+  assert.equal((await deleting).status(), 200);
+  await page
+    .getByRole("button", { name: `Load ${name} · v2`, exact: true })
+    .waitFor({ state: "hidden" });
+  assert.equal((await page.context().request.get(origin + path)).status(), 404);
 }

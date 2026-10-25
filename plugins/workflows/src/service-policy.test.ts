@@ -2104,3 +2104,24 @@ it("does not retry mixed authorization and transient messages or permanent statu
     expect(isRetryableProviderFailure(error)).toBe(false);
   expect(isRetryableProviderFailure("API error: 503")).toBe(true);
 });
+
+it("rejects source authority in a standalone workflow instead of silently ignoring it", async () => {
+  const fixture = setup();
+  try {
+    await expect(
+      fixture.service.start({
+        projectId: "project-test",
+        originThreadId: "origin",
+        source: source("return 1;"),
+        args: null,
+        resumedFromRunId: null,
+        sourceBindingId: "unsupported-binding",
+      }),
+    ).rejects.toThrow("Managed source authority is required");
+    expect(
+      fixture.db.prepare("SELECT count(*) FROM workflow_runs").pluck().get(),
+    ).toBe(0);
+  } finally {
+    await fixture.harness.dispose();
+  }
+});

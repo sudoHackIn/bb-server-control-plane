@@ -1,3 +1,4 @@
+import { createControlPlaneWorkflowDefinitions } from "./workflow-definitions.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -22,6 +23,13 @@ import { ApiError } from "../errors.js";
 import { withControlPlaneUser } from "./access.js";
 
 type Operation =
+  | "controlPlaneDefinitionCreate"
+  | "controlPlaneDefinitions"
+  | "controlPlaneDefinitionGet"
+  | "controlPlaneDefinitionUpdate"
+  | "controlPlaneDefinitionEnabled"
+  | "controlPlaneDefinitionRemove"
+  | "controlPlaneDefinitionRun"
   | "controlPlaneWorkflowStart"
   | "controlPlaneWorkflowRuns"
   | "controlPlaneWorkflowGet"
@@ -76,6 +84,31 @@ export function createControlPlaneWorkflowRpc(
     return result.result;
   };
 }
+export function ownedWorkflowBinding(
+  db: DbConnection,
+  userId: string,
+  runId: string,
+  kind: "workflow-run" | "workflow-definition",
+) {
+  const row = db
+    .select({ id: controlPlaneJobBindings.id })
+    .from(controlPlaneJobBindings)
+    .where(
+      and(
+        eq(controlPlaneJobBindings.kind, kind),
+        eq(controlPlaneJobBindings.objectId, runId),
+        eq(controlPlaneJobBindings.ownerUserId, userId),
+        eq(controlPlaneJobBindings.revision, 1),
+        isNull(controlPlaneJobBindings.deletedAt),
+      ),
+    )
+    .get();
+  const value = row ? getControlPlaneJobBinding(db, userId, row.id) : null;
+  if (!value)
+    throw new ApiError(404, "workflow_not_found", "Workflow not found");
+  return value;
+}
+
 export function createControlPlaneWorkflowService(
   db: DbConnection,
   rpc: ControlPlaneWorkflowRpc,
@@ -84,22 +117,7 @@ export function createControlPlaneWorkflowService(
     throw new ApiError(404, "workflow_not_found", "Workflow not found");
   }
   function binding(userId: string, runId: string) {
-    const row = db
-      .select({ id: controlPlaneJobBindings.id })
-      .from(controlPlaneJobBindings)
-      .where(
-        and(
-          eq(controlPlaneJobBindings.kind, "workflow-run"),
-          eq(controlPlaneJobBindings.objectId, runId),
-          eq(controlPlaneJobBindings.ownerUserId, userId),
-          eq(controlPlaneJobBindings.revision, 1),
-          isNull(controlPlaneJobBindings.deletedAt),
-        ),
-      )
-      .get();
-    const value = row ? getControlPlaneJobBinding(db, userId, row.id) : null;
-    if (!value) return notFound();
-    return value;
+    return ownedWorkflowBinding(db, userId, runId, "workflow-run");
   }
   function checked(
     userId: string,
@@ -137,6 +155,7 @@ export function createControlPlaneWorkflowService(
     return checked(userId, value.run);
   }
   return {
+    definitions: createControlPlaneWorkflowDefinitions(db, rpc),
     get,
     async start(userId: string, input: ControlPlaneWorkflowStart) {
       const context = requireControlPlaneThreadDispatch(

@@ -342,6 +342,7 @@ function WorkspaceNavigation({
             key={`${selectedProject.projectId}:${selectedThread?.id ?? "project"}`}
             client={client}
             projectId={selectedProject.projectId}
+            canExecute={project.data?.canRun === true}
             originThreadId={
               project.data?.canRun ? (selectedThread?.id ?? null) : null
             }

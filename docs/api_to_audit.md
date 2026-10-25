@@ -3829,3 +3829,41 @@ This adds no Plugin SDK surface. Normal core SDK/CLI callers and native browser
 forms use these same handlers. The real-database and Docker matrices are scoped
 to current body-consuming control-plane actions, not a complete native BB API or
 daemon-input audit.
+
+### Managed personal workflow definitions
+
+The limited core API/SDK uses fixed builtin Workflows RPC
+`controlPlaneDefinitionCreate/Definitions/Get/Update/Enabled/Remove/Run` (the list
+method is `controlPlaneDefinitions`). Native handlers use the actual plugin
+SQLite definition/version store, central background authority and normal
+`WorkflowService.start`, not an alternative runner. Core derives origin/project
+from an owned executable thread, filters central ownership before pagination and
+checks returned identities/source ancestry. Unrestricted plugin RPC stays
+administrative. A stable definition binding is source authority across immutable
+native revisions; disabling/deleting it fences descendants. Native insertion
+failure compensates the central reservation; missing native rows fail closed.
+No Plugin SDK member or host-daemon wire field is added. The private controller
+start input can supply a definition source binding; ordinary inline callers do
+not supply that field. Test/CLI/UI callers share these same implementations.
+
+Replay of a definition-derived run inherits its stable source binding, including
+when requested through the ordinary inline workflow start/resume API. It cannot
+strip or replace that ancestry to reuse a disabled/deleted definition's cached
+prefix. The previous run may be terminal/cancelled; its saved source authority
+still has to permit the new execution. Creating a separate new inline run remains
+subject to the ordinary current profile/project permissions.
+
+Administrators can use the authenticated native SDK `plugins.callRpc` or
+`bb plugin rpc call workflows <method> --input-file <json-path> --json` for these
+same handlers. `controlPlaneDefinitionInventory` accepts
+`{"cursor":null,"limit":50}` and optional `projectId`, returns summaries with
+`ownerUserId` and `nextCursor`, and respects a user principal if invoked under one.
+`controlPlaneDefinitionGet` takes `id` and optional `revision`;
+`controlPlaneDefinitionRun` takes `id`, exact `revision` and optional `args`.
+Enabled/update/remove handlers use the corresponding ID-based contracts above.
+Raw native RPC requires administrative access; personal clients use the limited
+API. Administrative run dispatch adopts the saved owner and rechecks that user's
+profile/project/source grants. It cannot bypass a disabled source. A logged-out
+user's API token remains rejected while an authorized administrative dispatch can
+run the still-enabled saved job under that user. Dedicated administrative
+definition UI and legacy assignment remain later work.

@@ -164,3 +164,28 @@ views remain readable without that permission. Progress uses two-second polling,
 not unrestricted plugin RPC. Draft source/arguments are not persisted and reset
 on view/project/conversation changes. See `bb guide machines` for the workflow
 screen and equivalent commands.
+
+Saved personal definitions use `bb server access workflows definitions
+create|list|get|update|run|enable|disable|delete` and
+`createControlPlaneClient(...).workflows.definitions`. They are separate from
+workspace `.bb/workflows` files. Create binds an owned origin; update requires its
+expected current revision and appends immutable source/default arguments. Run
+requires an exact revision, using saved defaults unless arguments are overridden.
+Disabling/deleting the stable source authority blocks descendants; histories
+remain stored. The personal Workflows UI exposes the same operations. See
+`bb guide machines` for flags, limits, SDK signatures and permission semantics.
+
+Administrators can use the authenticated native SDK `plugins.callRpc` or
+`bb plugin rpc call workflows <method> --input-file <json-path> --json` for these
+same handlers. `controlPlaneDefinitionInventory` accepts
+`{"cursor":null,"limit":50}` and optional `projectId`, returns summaries with
+`ownerUserId` and `nextCursor`, and respects a user principal if invoked under one.
+`controlPlaneDefinitionGet` takes `id` and optional `revision`;
+`controlPlaneDefinitionRun` takes `id`, exact `revision` and optional `args`.
+Enabled/update/remove handlers use the corresponding ID-based contracts above.
+Raw native RPC requires administrative access; personal clients use the limited
+API. Administrative run dispatch adopts the saved owner and rechecks that user's
+profile/project/source grants. It cannot bypass a disabled source. A logged-out
+user's API token remains rejected while an authorized administrative dispatch can
+run the still-enabled saved job under that user. Dedicated administrative
+definition UI and legacy assignment remain later work.

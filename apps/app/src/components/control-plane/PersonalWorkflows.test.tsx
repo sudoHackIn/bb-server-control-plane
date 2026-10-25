@@ -43,7 +43,10 @@ function mount(
   queries.push(cache);
   const client = createControlPlaneClient({
     origin: "https://bb.example",
-    fetch: fetcher,
+    fetch: (input, init) =>
+      new URL(input.toString()).pathname.endsWith("/workflow-definitions")
+        ? Promise.resolve(Response.json({ definitions: [], nextCursor: null }))
+        : fetcher(input, init),
   });
   const view = (projectId: string) => (
     <QueryClientProvider client={cache}>
@@ -52,6 +55,7 @@ function mount(
         client={client}
         projectId={projectId}
         originThreadId={originThreadId}
+        canExecute={originThreadId !== null}
       />
     </QueryClientProvider>
   );

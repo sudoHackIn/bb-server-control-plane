@@ -1,3 +1,4 @@
+import { PersonalWorkflowDefinitions } from "./PersonalWorkflowDefinitions";
 import { useState } from "react";
 import {
   useInfiniteQuery,
@@ -13,10 +14,12 @@ export function PersonalWorkflows({
   client,
   projectId,
   originThreadId,
+  canExecute,
 }: {
   client: PersonalWorkspaceClient;
   projectId: string;
   originThreadId: string | null;
+  canExecute: boolean;
 }) {
   const cache = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
@@ -117,6 +120,24 @@ export function PersonalWorkflows({
       <p className="text-sm text-muted-foreground">
         Your runs in this project. Progress refreshes every two seconds.
       </p>
+      <PersonalWorkflowDefinitions
+        client={client}
+        projectId={projectId}
+        canExecute={canExecute}
+        originThreadId={originThreadId}
+        script={script}
+        args={args}
+        onLoad={(saved) => {
+          setScript(saved.script);
+          setArgs(JSON.stringify(saved.args, null, 2));
+          setResumeRunId(null);
+        }}
+        onStarted={(created) => {
+          setSelected(created.id);
+          setResumeRunId(null);
+          void cache.invalidateQueries({ queryKey: listKey });
+        }}
+      />
       <Button
         variant="outline"
         onClick={() => {

@@ -1,3 +1,4 @@
+import { createControlPlaneWorkflowDefinitionsClient } from "./control-plane-workflow-definitions.js";
 import { z } from "zod";
 import {
   controlPlaneWorkflowStartSchema,
@@ -18,6 +19,7 @@ export function createControlPlaneWorkflowClient(
   const base = "/control-plane/user/workflows";
   const path = (id: string) => `${base}/${encodeURIComponent(id)}`;
   return {
+    definitions: createControlPlaneWorkflowDefinitionsClient(request),
     async start(
       input: z.input<typeof controlPlaneWorkflowStartSchema>,
       signal?: AbortSignal,
