@@ -14,6 +14,7 @@ import {
   listRunningThreads,
   type ClaimedQueuedThreadMessageRow,
   type RunningThreadRow,
+  type DbTransaction,
 } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
@@ -90,7 +91,6 @@ import {
   ensureThreadIsWritable,
   resolveMessageSenderThreadId,
   sendThreadMessage,
-  type SendThreadMessageTransactionPreflight,
 } from "./thread-send.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
@@ -626,7 +626,7 @@ function consumeClaimedRows(
   claimed: readonly ClaimedQueuedThreadMessageRow[],
   threadId: string,
   respectManualStopPause: boolean,
-): SendThreadMessageTransactionPreflight {
+): (args: { tx: DbTransaction }) => void {
   return ({ tx }) => {
     if (respectManualStopPause && isThreadQueueAutoSendPaused(tx, threadId)) {
       throw createQueuedMessageAutoSendPausedError();

@@ -138,3 +138,16 @@ Docker cover foreign/revoked sources, retained input, restart and regrant.
 Explicit refusal does not consume input; automatic failure/backoff semantics stay
 unchanged. A notification's independent job binding, parent/system-message
 variants and the full machine/action inventory remain open.
+
+### Increment 56: copied-prefix and notification request references
+
+`control_plane_turn_sources` marks canonical managed requests and stores a copied
+prefix's exact source request. `control_plane_job_notifications.request_id`
+binds each new acceptance to its canonical request in the same transaction.
+Dispatch traverses both copied-prefix and retry edges and rechecks every
+encountered notification binding. Missing/cyclic/pruned/over-budget ancestry is
+refused; shared ancestors are valid. Unmarked old managed requests cannot be replayed, including requests without
+legacy notification receipts, without guessing associations or hiding history.
+The canonical source parser is shared by storage and admission. Controlled Docker
+recovery and actual workflow receipts cover these paths; this does not establish
+Qwen fork support or complete all parent/system-message and machine operations.

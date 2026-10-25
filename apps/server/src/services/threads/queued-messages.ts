@@ -582,6 +582,7 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
         input,
         ...(inputGroups.length > 1 ? { inputGroups } : {}),
         requestMethod: "turn/start",
+        sourceRequestId: deferredFirstTurnContext?.requestId,
         senderThreadId: author.senderThreadId,
         ...(queuedMessage.payload.kind === "retry"
           ? {

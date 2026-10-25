@@ -52,11 +52,12 @@ it("commits one durable acceptance with the canonical request and rolls it back 
         requestId: createClientTurnRequestId(),
         senderThreadId: null,
         target: { kind: "thread-start" },
-        beforeAppendInTransaction: ({ tx }) =>
+        beforeAppendInTransaction: ({ tx, requestId }) =>
           acceptControlPlaneWorkflowNotification(
             tx,
             binding.id,
             alice.thread.id,
+            requestId,
           ),
         queueInTransaction: () => {
           if (fail) throw new Error("append interrupted");
@@ -83,6 +84,7 @@ it("commits one durable acceptance with the canonical request and rolls it back 
         bindingId: binding.id,
         threadId: alice.thread.id,
         acceptedAt: expect.any(Number),
+        requestId: expect.any(String),
       },
     ]);
     const count = harness.db
@@ -135,6 +137,7 @@ it("does not accept notifications from another owner, a substituted origin or af
         harness.db,
         binding.id,
         bob.thread.id,
+        createClientTurnRequestId(),
       ),
     ).toThrow();
     setControlPlaneProfileAccess(

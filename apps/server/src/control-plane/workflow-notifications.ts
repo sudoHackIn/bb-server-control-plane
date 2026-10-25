@@ -1,3 +1,4 @@
+import type { ClientTurnRequestId } from "@bb/domain";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -29,6 +30,7 @@ export function acceptControlPlaneWorkflowNotification(
   db: DbQueryConnection,
   bindingId: string,
   threadId: string,
+  requestId: ClientTurnRequestId,
 ): void {
   withControlPlaneJobAuthority(db, bindingId, ({ binding }) => {
     if (binding.kind !== "workflow-run" || binding.originThreadId !== threadId)
@@ -45,7 +47,7 @@ export function acceptControlPlaneWorkflowNotification(
       throw new NotificationOriginUnavailable();
     if (receipt(db, bindingId)) throw new NotificationAlreadyAccepted();
     db.insert(controlPlaneJobNotifications)
-      .values({ bindingId, threadId, acceptedAt: Date.now() })
+      .values({ bindingId, threadId, requestId, acceptedAt: Date.now() })
       .run();
   });
 }
@@ -93,8 +95,13 @@ export async function notifyControlPlaneWorkflowOrigin(
             permissionMode: definition.permissionMode,
             originPluginId: "workflows",
           },
-          beforeAppendInTransaction: ({ tx }) => {
-            acceptControlPlaneWorkflowNotification(tx, bindingId, thread.id);
+          beforeAppendInTransaction: ({ tx, requestId }) => {
+            acceptControlPlaneWorkflowNotification(
+              tx,
+              bindingId,
+              thread.id,
+              requestId,
+            );
           },
         });
         return "accepted";

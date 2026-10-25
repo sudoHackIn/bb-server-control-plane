@@ -52,6 +52,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Close core thread/turn/queue/background execution admission at server shutdown, repeat checks after asynchronous preparation and before each daemon RPC attempt, preserve queued input and retry budgets, and keep explicit cleanup available. See [shutdown admission](control-plane-execution-admission.md); the full machine/source audit remains pending.
 - [x] Bind managed daemon tool/approval requests to the current turn and saved native Qwen session, recheck approval authority and exact receipt/environment/host before dispatch, and stop further plugin cron claims after quiescence. The complete machine/source audit remains pending.
 - [x] Recheck saved cross-thread sender/requester authority for managed messages and queues, preserve retry/requester provenance through idle session continuation, and recheck the exact stored request before daemon transport. Verify retained source references and revoked delivery after restart. The complete queue/notification context audit remains pending.
+- [x] Persist server-only references for copied deferred input and exact workflow notification requests; check complete request/job ancestry at commit and transport, retain references across restart and refuse unmarked legacy managed requests. Parent/system-message and complete machine/action acceptance remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -81,8 +82,9 @@ than treating a target increment number as acceptance.
    queues and retries. Core thread/turn shutdown admission is implemented in 53;
    managed inbound tool/interaction current-turn/session checks are implemented
    in 54; saved message-source and exact-request transport checks are implemented
-   in 55. The remaining machine/action, deferred-input and notification-binding
-   recovery/source audit stays open.
+   in 55. Deferred-prefix and exact notification-binding request references are
+   implemented in 56. Parent/system-message variants and the remaining machine/
+   action and recovery/source audit stay open.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -2455,3 +2457,70 @@ legacy database queue file match HEAD; no comments or lint-rule exceptions were
 added. The UI is unchanged and retains the increment 51 browser baseline.
 `control-plane-phase-55-verification.json` records final proof, matching image
 hashes, aggregate-budget changes, earlier attempts and remaining acceptance.
+
+## Fifty-sixth increment: inherited input and exact notification authority
+
+Migration `0156_control_plane_turn_sources` adds server-only request provenance
+keyed by `(threadId, requestId)`. A nullable source request identifies a copied
+prefix; null marks a new canonical managed request without inherited input.
+Normal unowned BB requests keep their existing behavior. Workflow acceptance
+receipts now save the exact generated request ID, with one receipt per request.
+The receipt and the canonical event/source row commit or roll back together.
+The preflight receives the generated ID rather than matching text or timestamps.
+
+Deferred first-turn and undelivered-error prefixes are checked during preparation
+and again at commit. A new request retains its source reference after it becomes
+the latest request. Native ready-session continuation and reprovisioning carry
+that reference. Before actual daemon transport, core checks both retry and prefix
+edges, with shared ancestors accepted, cycles/missing/pruned requests refused and
+at most 32 unique requests. Any notification encountered requires its current
+workflow binding/ancestry and matching owner, project and origin thread. Saved
+user tokens are unnecessary. Already delivered context is not retroactively
+removed from a conversation; a fresh user message is independent of prior input
+unless it copies or retries that input.
+
+Old notification receipts migrate with a null request ID. Every pre-migration managed request
+without a provenance marker has unknown inherited-input provenance, even when
+there is no legacy notification receipt. Its retry or copied context is refused with
+`message_source_not_authorized`; the server does not infer a reference from its
+time or text. History remains readable. A fresh request without inherited input
+is admissible after normal checks; clearing the conversation context or starting
+a new conversation provides a fresh path when an old undelivered prefix would
+otherwise be copied. This deliberately conservative rule also rejects unmarked old ordinary requests.
+A pending pre-migration request is refused before daemon delivery; it is not
+silently blessed as new input.
+
+The current `qwen-server` provider declares `fork: none`. Docker therefore uses a
+private root fixture to prepare one undelivered accepted request through the core
+request transaction, then uses normal HTTP send and a real registered-UID Qwen
+process to verify prefix refusal after source-profile revocation and successful
+delivery after regrant. The inherited reference is checked again after server
+restart. This does not claim a natural provider failure or Qwen fork support.
+Actual workflow notifications independently assert the receipt's request ID
+matches their canonical native event and provenance row.
+
+No daemon wire fields or public SDK members change. Protocol 253 and Plugin SDK
+0.6.80 remain unchanged. The source parser is extracted so request storage and
+source validation share the existing canonical/legacy parser without a module
+cycle. The old migration rewind helper now removes both the notifications table
+and the new provenance table before replaying older migrations; no assertions
+were removed. Parent/system-message variants, the full machine/action audit,
+composite background acceptance and remaining product features remain open.
+
+The final Docker matrix also constructs an ordinary unmarked legacy request,
+rejects its native HTTP retry before any provider call, then sends fresh owner
+input through native Qwen and asserts that the old undelivered text was not
+included. This is a controlled stored-state recovery case. History is retained;
+this does not silently migrate unknown provenance into a trusted source marker.
+
+Verification passes 905 selected server tests in 99 files, all 658 database tests
+in 59 files, seven typecheck tasks, strict changed-code lint and formatting, and
+all 63 final Docker tasks in 8 minutes 14.784 seconds. Source tests cover the
+32-request limit and rollback of request 33, shared ancestry, cycles, pruning,
+legacy refusal, transactional rollback and notification revocation after reconnect.
+The SQLite upgrade test preserves the old receipt with an unknown request ID,
+checks repeat migration and source-row cascade. Original restart and forced-crash
+assertions remain enabled. The final server/scripts match the image by SHA-256;
+the UI is unchanged and retains increment 51's browser baseline. See
+`control-plane-phase-56-verification.json` for final proof and earlier fixture
+corrections. The full goal remains open.

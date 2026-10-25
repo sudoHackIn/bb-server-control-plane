@@ -1,16 +1,18 @@
+import { assertControlPlaneTurnRequestSources } from "../../control-plane/message-source-authority.js";
 import {
   findStoredEventRow,
   getLastStoredTurnRequestEvent,
   getThread,
 } from "@bb/db";
 import type { DbQueryConnection } from "@bb/db";
-import type { PromptInput } from "@bb/domain";
+import type { ClientTurnRequestId, PromptInput } from "@bb/domain";
 import { ApiError } from "../../errors.js";
 import { parseStoredTurnRequestEvent } from "./thread-events.js";
 
 export interface DeferredFirstTurnContext {
   input: PromptInput[];
   requestSequence: number;
+  requestId: ClientTurnRequestId;
 }
 
 export interface PromptWithGroups {
@@ -66,7 +68,12 @@ export function resolveDeferredFirstTurnContext(
   ) {
     return null;
   }
-  return { input: context, requestSequence: row.sequence };
+  assertControlPlaneTurnRequestSources(db, threadId, request.requestId);
+  return {
+    input: context,
+    requestSequence: row.sequence,
+    requestId: request.requestId,
+  };
 }
 
 export function prependDeferredFirstTurnContext(

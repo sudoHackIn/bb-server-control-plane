@@ -129,6 +129,7 @@ interface BuildAgentThreadMessageTextArgs {
 
 interface SendThreadMessageTransactionPreflightArgs {
   tx: DbTransaction;
+  requestId: ClientTurnRequestId;
 }
 
 interface SendThreadMessageQueueRequestArgs {
@@ -153,6 +154,7 @@ interface SendThreadMessageQueueRequest {
 interface AppendAndQueueSendThreadMessageArgs {
   retryOf?: TurnRequestRetryMarker;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
+  sourceRequestId?: ClientTurnRequestId;
   db: DbConnection;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
@@ -399,6 +401,7 @@ export function captureUserMessageSentTelemetry(
 
 export function appendAndQueueSendThreadMessageInTransaction({
   retryOf,
+  sourceRequestId,
   beforeAppendInTransaction,
   db,
   environmentId,
@@ -417,7 +420,7 @@ export function appendAndQueueSendThreadMessageInTransaction({
   const request = db.transaction(
     (tx) => {
       assertThreadHostAcceptsWork(tx, thread);
-      beforeAppendInTransaction?.({ tx });
+      beforeAppendInTransaction?.({ tx, requestId });
       requireControlPlaneThreadDispatch(tx, thread.id);
       assertControlPlaneMessageSources(tx, thread.id, {
         senderThreadId,
@@ -430,6 +433,7 @@ export function appendAndQueueSendThreadMessageInTransaction({
             threadId: thread.id,
             environmentId,
             type: "client/turn/requested",
+            sourceRequestId,
             ...(retryOf !== undefined ? { retryOf } : {}),
             input,
             ...(inputGroups !== undefined ? { inputGroups } : {}),
@@ -540,8 +544,9 @@ async function sendThreadMessageWithoutContextClear(
   ));
   const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
     tx,
+    requestId,
   }) => {
-    args.beforeAppendInTransaction?.({ tx });
+    args.beforeAppendInTransaction?.({ tx, requestId });
     if (deferredFirstTurnContext) {
       requireDeferredFirstTurnContextCurrent(tx, {
         requestSequence: deferredFirstTurnContext.requestSequence,
@@ -607,6 +612,7 @@ async function sendThreadMessageWithoutContextClear(
   if (
     await dispatchTurnDuringReprovision({
       beforeRequestAppendInTransaction: beforeAppendInTransaction,
+      sourceRequestId: deferredFirstTurnContext?.requestId,
       deps,
       environment,
       execution,
@@ -684,8 +690,9 @@ async function sendThreadMessageWithoutContextClear(
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
-      beforeAppendInTransaction: ({ tx }) => {
-        beforeAppendInTransaction({ tx });
+      sourceRequestId: deferredFirstTurnContext?.requestId,
+      beforeAppendInTransaction: ({ tx, requestId }) => {
+        beforeAppendInTransaction({ tx, requestId });
         ensureThreadCanStartRequest(thread);
       },
       db: deps.db,
@@ -782,6 +789,7 @@ async function sendThreadMessageWithoutContextClear(
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
     ...(args.retryOf !== undefined ? { retryOf: args.retryOf } : {}),
     beforeAppendInTransaction,
+    sourceRequestId: deferredFirstTurnContext?.requestId,
     db: deps.db,
     environmentId: thread.environmentId,
     execution,

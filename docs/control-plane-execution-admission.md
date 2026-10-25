@@ -134,3 +134,31 @@ deferred first-turn input provenance, all parent/system-message variants and eve
 machine operation still need their
 separate source/recovery audit. No claim is made that this increment completes
 that audit or continuously retracts already delivered model input.
+
+## Copied input and workflow notification receipts
+
+Canonical managed requests have a private provenance row. A copied deferred
+prefix records its original request ID in the same transaction as the new event;
+workflow notification acceptance records the exact new request ID. Both are
+checked again during commit and daemon dispatch. The source graph traverses
+retry and copied-prefix edges, accepts shared ancestors and refuses cycles,
+missing/pruned requests or more than 32 unique nodes. Notification nodes require
+current saved job authority and an exact owner/project/origin match. These checks
+run in core without requiring a policy plugin.
+
+The nullable receipt request ID represents unknown legacy provenance only.
+Unmarked old managed requests cannot be retried, copied or delivered automatically,
+including requests without any legacy notification receipt. No association is guessed by text or
+time. New non-inherited user input is independent of earlier delivered messages;
+this does not retract already delivered content or forbid continuing an owned
+conversation after a background job is cancelled. Old undelivered prefixes may
+require clearing context or a new conversation. Source markers retain their
+small references until their thread is deleted; a pruned source event remains
+unusable even if its marker survives.
+
+The Docker recovery case prepares a controlled undelivered request through the
+core transaction in a private root fixture. Subsequent admission, native Qwen
+execution and server restart are real. The current provider's unsupported fork
+capability is unchanged. Real workflow receipts are also matched to their exact
+canonical events. Full parent/system-message variants and the remaining machine/
+action audit are separate acceptance requirements.

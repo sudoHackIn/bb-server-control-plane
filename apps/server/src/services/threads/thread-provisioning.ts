@@ -1,3 +1,4 @@
+import type { ClientTurnRequestId } from "@bb/domain";
 import {
   assertExecutionAdmission,
   isExecutionStopping,
@@ -73,7 +74,11 @@ interface RequestThreadProvisionArgs {
 }
 
 interface RequestThreadTargetReprovisionArgs {
-  beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
+  sourceRequestId?: ClientTurnRequestId;
+  beforeRequestAppendInTransaction?: (args: {
+    tx: DbTransaction;
+    requestId: ClientTurnRequestId;
+  }) => void;
   environment: EnvironmentRow;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
@@ -439,7 +444,7 @@ function appendReprovisionTurnRequest(
   const requestId = createClientTurnRequestId();
   const request = deps.db.transaction(
     (tx) => {
-      args.beforeRequestAppendInTransaction?.({ tx });
+      args.beforeRequestAppendInTransaction?.({ tx, requestId });
       const request =
         appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
           tx,
@@ -447,6 +452,7 @@ function appendReprovisionTurnRequest(
             threadId: args.thread.id,
             environmentId: args.environment.id,
             type: "client/turn/requested",
+            sourceRequestId: args.sourceRequestId,
             input: args.input,
             ...(args.inputGroups !== undefined
               ? { inputGroups: args.inputGroups }

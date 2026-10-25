@@ -379,6 +379,18 @@ export const controlPlaneJobBindings = sqliteTable(
   ],
 );
 
+export const controlPlaneTurnSources = sqliteTable(
+  "control_plane_turn_sources",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull(),
+    sourceRequestId: text("source_request_id"),
+  },
+  (table) => [primaryKey({ columns: [table.threadId, table.requestId] })],
+);
+
 export const controlPlaneJobNotifications = sqliteTable(
   "control_plane_job_notifications",
   {
@@ -387,7 +399,14 @@ export const controlPlaneJobNotifications = sqliteTable(
       .references(() => controlPlaneJobBindings.id),
     threadId: text("thread_id").notNull(),
     acceptedAt: integer("accepted_at").notNull(),
+    requestId: text("request_id"),
   },
+  (table) => [
+    uniqueIndex("control_plane_job_notifications_request_idx").on(
+      table.threadId,
+      table.requestId,
+    ),
+  ],
 );
 
 export const projectExecutionDefaults = sqliteTable(

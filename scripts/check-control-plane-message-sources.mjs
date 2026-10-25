@@ -1,3 +1,5 @@
+import { promisify } from "node:util";
+import { execFile } from "node:child_process";
 import assert from "node:assert/strict";
 
 export function createMessageSourceFixture({ db, users }) {
@@ -16,6 +18,13 @@ export function createMessageSourceFixture({ db, users }) {
       ];
       const marker = markers.at(-1)?.[0];
       if (!marker) return false;
+      if (marker === "BB_MESSAGE_SOURCE_LEGACY_FRESH")
+        assert.equal(
+          JSON.stringify(body.messages).includes(
+            "BB_MESSAGE_SOURCE_LEGACY_UNKNOWN",
+          ),
+          false,
+        );
       calls.set(marker, (calls.get(marker) ?? 0) + 1);
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(
@@ -80,6 +89,27 @@ export function createMessageSourceFixture({ db, users }) {
         assert.equal(stopped.status, 200, JSON.stringify(stopped.body));
         sources.push({ threadId: started.body.id, access });
       }
+      const prepared = await promisify(execFile)(process.execPath, [
+        "inherited-source-check.mjs",
+        JSON.stringify({
+          sourceThreadId: sources[0].threadId,
+          profileVersionId: created[0].profileVersionId,
+        }),
+      ]);
+      const { threadId: deferredThreadId } = JSON.parse(prepared.stdout);
+      assert.equal(
+        db
+          .prepare("SELECT status FROM threads WHERE id=?")
+          .get(deferredThreadId)?.status,
+        "error",
+      );
+      assert.equal(calls.has("BB_MESSAGE_SOURCE_DEFERRED_SEED"), false);
+      const seed = db
+        .prepare(
+          "SELECT request_id FROM control_plane_turn_sources WHERE thread_id=?",
+        )
+        .get(deferredThreadId);
+      assert.ok(seed);
       const targetResponse = await send(
         "/api/v1/threads",
         {
@@ -170,6 +200,114 @@ export function createMessageSourceFixture({ db, users }) {
       assert.equal(retained.failure_count, row.failure_count);
       assert.equal(calls.has("BB_MESSAGE_SOURCE_FOREIGN"), false);
       assert.equal(calls.has("BB_MESSAGE_SOURCE_RESTART"), false);
+      const deferredPath = `/api/v1/threads/${deferredThreadId}/send`;
+      const deferredInput = {
+        input: [
+          {
+            type: "text",
+            text: "BB_MESSAGE_SOURCE_DEFERRED_TURN",
+            mentions: [],
+          },
+        ],
+        mode: "start",
+      };
+      const deferredDenied = await send(deferredPath, deferredInput, token);
+      assert.equal(
+        deferredDenied.status,
+        403,
+        JSON.stringify(deferredDenied.body),
+      );
+      assert.equal(deferredDenied.body.code, "message_source_not_authorized");
+      assert.equal(
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM control_plane_turn_sources WHERE thread_id=?",
+          )
+          .get(deferredThreadId).n,
+        1,
+      );
+      assert.equal(
+        (await send(sources[0].access, { allowed: true }, token, "PUT")).status,
+        200,
+      );
+      const deferredSent = await send(deferredPath, deferredInput, token);
+      assert.equal(deferredSent.status, 200, JSON.stringify(deferredSent.body));
+      await wait(
+        () =>
+          calls.has("BB_MESSAGE_SOURCE_DEFERRED_TURN") &&
+          db
+            .prepare("SELECT status FROM threads WHERE id=?")
+            .get(deferredThreadId)?.status === "idle",
+        "derived source native Qwen turn",
+      );
+      const inherited = db
+        .prepare(
+          "SELECT request_id,source_request_id FROM control_plane_turn_sources WHERE thread_id=? AND source_request_id IS NOT NULL",
+        )
+        .all(deferredThreadId);
+      assert.equal(inherited.length, 1);
+      assert.equal(inherited[0].source_request_id, seed.request_id);
+      assert.equal(
+        (await send(`/api/v1/threads/${deferredThreadId}/stop`, {}, token))
+          .status,
+        200,
+      );
+      assert.equal(
+        (await send(sources[0].access, { allowed: false }, token, "PUT"))
+          .status,
+        200,
+      );
+      const legacyPrepared = await promisify(execFile)(process.execPath, [
+        "inherited-source-check.mjs",
+        JSON.stringify({
+          sourceThreadId: sources[0].threadId,
+          profileVersionId: created[0].profileVersionId,
+          mode: "legacy",
+        }),
+      ]);
+      const legacyId = JSON.parse(legacyPrepared.stdout).threadId;
+      const legacyDenied = await send(
+        `/api/v1/threads/${legacyId}/retry`,
+        {},
+        token,
+      );
+      assert.equal(legacyDenied.status, 403, JSON.stringify(legacyDenied.body));
+      assert.equal(legacyDenied.body.code, "message_source_not_authorized");
+      assert.equal(calls.has("BB_MESSAGE_SOURCE_LEGACY_UNKNOWN"), false);
+      assert.equal(
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM control_plane_turn_sources WHERE thread_id=?",
+          )
+          .get(legacyId).n,
+        0,
+      );
+      const freshLegacy = await send(
+        `/api/v1/threads/${legacyId}/send`,
+        {
+          input: [
+            {
+              type: "text",
+              text: "BB_MESSAGE_SOURCE_LEGACY_FRESH",
+              mentions: [],
+            },
+          ],
+          mode: "start",
+        },
+        token,
+      );
+      assert.equal(freshLegacy.status, 200, JSON.stringify(freshLegacy.body));
+      await wait(
+        () =>
+          calls.has("BB_MESSAGE_SOURCE_LEGACY_FRESH") &&
+          db.prepare("SELECT status FROM threads WHERE id=?").get(legacyId)
+            ?.status === "idle",
+        "fresh owner input after legacy retry denial",
+      );
+      assert.equal(
+        (await send(`/api/v1/threads/${legacyId}/stop`, {}, token)).status,
+        200,
+      );
       saved = {
         send,
         wait,
@@ -179,14 +317,28 @@ export function createMessageSourceFixture({ db, users }) {
         source: sources[0],
         target,
         before,
+        inherited: { threadId: deferredThreadId, ...inherited[0] },
       };
       return {
+        managedUnmarkedLegacyRetryDenied: true,
+        managedFreshInputAfterLegacyDenialRunsNativeQwen: true,
+        managedDeferredSourceRevocationDenied: true,
+        managedDeferredSourceNativeTurnPreservesRequestReference: true,
         managedQueueForeignSenderDenied: true,
         managedQueueSourceGrantRecheckedBeforeConsumption: true,
       };
     },
     async afterRestart(token) {
       assert.ok(saved);
+      assert.equal(
+        db
+          .prepare(
+            "SELECT source_request_id FROM control_plane_turn_sources WHERE thread_id=? AND request_id=?",
+          )
+          .get(saved.inherited.threadId, saved.inherited.request_id)
+          ?.source_request_id,
+        saved.inherited.source_request_id,
+      );
       const { send, wait, path, rowId, row, source, target, before } = saved;
       const count = () =>
         db
@@ -236,6 +388,7 @@ export function createMessageSourceFixture({ db, users }) {
       assert.equal(count(), before + 1);
       assert.equal((await send(`${path}/stop`, {}, token)).status, 200);
       return {
+        managedInheritedRequestReferenceSurvivesRestart: true,
         managedQueueSourceSurvivesRestart: true,
         managedQueueRegrantDeliversSavedInputOnce: true,
       };

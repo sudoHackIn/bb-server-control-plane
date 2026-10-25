@@ -1,0 +1,138 @@
+{
+  "scope": "Server-only inherited-request provenance and exact workflow notification receipts, current source/job ancestry at commit and daemon transport, explicit legacy refusal",
+  "previousStageCommit": "c104908ca",
+  "centralDatabaseMigration": "0156_control_plane_turn_sources",
+  "generatedMigrationAndSnapshot": true,
+  "hostDaemonProtocol": {
+    "version": 253,
+    "changed": false,
+    "compatibilityDeliberatelyPreserved": true,
+    "newWireFields": []
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "canonicalManagedRequestsHavePrivateMarker": true,
+    "copiedPrefixStoresExactSourceRequestId": true,
+    "notificationReceiptStoresExactGeneratedRequestId": true,
+    "oneNotificationReceiptPerThreadRequest": true,
+    "eventMarkerAndReceiptAtomic": true,
+    "prefixRecheckedDuringPreparationAndCommit": true,
+    "readySessionAndReprovisionPlumbingPreserveReference": true,
+    "transportTraversesRetryAndPrefixEdges": true,
+    "everyNotificationJobRechecksCurrentOwnerProjectOriginAndBindingAncestry": true,
+    "sharedAncestorsAllowed": true,
+    "cyclesMissingOrPrunedRequestsDenied": true,
+    "maximumUniqueRequests": 32,
+    "request33RollsBackEventAndMarker": true,
+    "unmarkedLegacyManagedRequestsCannotReplayCopyOrDispatch": true,
+    "legacyReceiptRequestIdRemainsNull": true,
+    "freshOwnerInputIndependentOfPriorDeliveredContext": true,
+    "historyNotDeleted": true,
+    "sourceMarkersCascadeOnThreadDelete": true,
+    "sourceMarkerNotSufficientWhenSourceEventPruned": true,
+    "browserTokensNotSavedAsAuthority": true,
+    "unmanagedSingleUserBehaviorPreserved": true
+  },
+  "verification": {
+    "serverTests": 905,
+    "serverTestFiles": 99,
+    "fullDatabaseTests": 658,
+    "databaseTestFiles": 59,
+    "newSourceTests": 8,
+    "realMigratedSqliteUsed": true,
+    "legacySqliteUpgradeAndIdempotencyAndCascadeTestPassed": true,
+    "typecheckTasks": 7,
+    "typecheckPackages": ["@bb/server", "@bb/db"],
+    "strictLintChangedCodePassed": true,
+    "lintRuleExceptionsAdded": false,
+    "sourceParserExtractedToAvoidModuleCycle": true,
+    "databaseRewindFixtureDropsNotificationAndSourceTables": true,
+    "initialFullDatabaseFailures": {
+      "count": 38,
+      "totalTests": 657,
+      "reason": "Existing historical rewind helper left the notifications table in place before replaying migrations; helper now removes notifications and new provenance table without removing assertions."
+    },
+    "deploymentCommand": "pnpm exec turbo run test:control-plane-deployment --filter=@bb/server",
+    "deploymentStatus": "passed",
+    "watchdogsChangedThisIncrement": false,
+    "normalWatchdogsMs": {
+      "inner": 540000,
+      "outer": 570000
+    },
+    "individualOperationDeadlinesChanged": false,
+    "earlierDeploymentAttempts": [
+      {
+        "result": "failed",
+        "duration": "59.652s",
+        "reason": "Initial public seed fixture omitted required originKind; no product behavior changed to accept the invalid request."
+      },
+      {
+        "result": "failed",
+        "duration": "1m7.955s",
+        "reason": "Current qwen-server declares fork:none; public fork is unsupported. Fixture replaced by controlled core request setup rather than adding or claiming fork support."
+      },
+      {
+        "result": "passed",
+        "tasks": 63,
+        "duration": "8m9.326s",
+        "scope": "Before final rule refusing every unmarked legacy managed request and dedicated legacy retry/fresh native input scenario."
+      }
+    ],
+    "controlledDockerSetup": {
+      "privateRootFixture": "apps/server/test/fixtures/control-plane-inherited-source-fixture.ts",
+      "usesCoreRequestTransaction": true,
+      "simulatesUndeliveredAndPreMigrationRequestState": true,
+      "doesNotClaimNaturalProviderFailureOrForkSupport": true,
+      "subsequentHttpAndQwenExecutionAndRestartReal": true
+    },
+    "unchangedUiBrowserBaselineIncrement": 51,
+    "browserRerunThisIncrement": false,
+    "deploymentTasks": {
+      "successful": 63,
+      "total": 63,
+      "cached": 59,
+      "duration": "8m14.784s"
+    },
+    "finalStagesMs": {
+      "message-sources-complete": 8511,
+      "native-dispatch-complete": 8513,
+      "personal-and-browser-complete": 369879,
+      "message-sources-restart-complete": 405105,
+      "restart-complete": 405773,
+      "crash-recovery-complete": 431193
+    },
+    "finalDeploymentFlags": {
+      "managedUnmarkedLegacyRetryDenied": true,
+      "managedFreshInputAfterLegacyDenialRunsNativeQwen": true,
+      "managedDeferredSourceRevocationDenied": true,
+      "managedDeferredSourceNativeTurnPreservesRequestReference": true,
+      "managedQueueForeignSenderDenied": true,
+      "managedQueueSourceGrantRecheckedBeforeConsumption": true,
+      "managedInheritedRequestReferenceSurvivesRestart": true,
+      "managedQueueSourceSurvivesRestart": true,
+      "managedQueueRegrantDeliversSavedInputOnce": true
+    },
+    "fullRestartAndForcedCrashAssertionsPreserved": true,
+    "formattingPassed": true,
+    "diffCheckPassed": true,
+    "imageMatchesHostSha256": {
+      "apps/server/dist/start-server.js": "6be5a9e0814dc31e6a9b7c23d6315a46f144843a2c3a0d732f9f442b34fe7e75",
+      "scripts/check-control-plane-message-sources.mjs": "712d6264a4ae145207250892d818bf87bfc5cf7a83f0a69fe28d01c0522a41c3",
+      "scripts/check-control-plane-workflows.mjs": "0748337a6cd6bb58df2c802f3c652f2d1cb7e340e06515a5151299f8f315d550"
+    },
+    "privateFixtureSourceSha256": "a4c6e40cfde38924b7a1d959fa1c0b7b240cecbc87bfe02bf41a88b893c04a9f",
+    "privateFixtureBundleImageSha256": "aa3119e1f93495125e104d7e5c3430ca241d739a12318b96da998bd91a32559c",
+    "memoryOomKillSampleBeforeFinalRecovery": 0,
+    "finalLegacyDockerRetryAndFreshOwnerNativeInputPassed": true
+  },
+  "remainingAcceptance": [
+    "Parent/system-message variants and remaining machine/action/source audit",
+    "Complete composite background and legacy personal definition acceptance",
+    "Supported provider/profile settings and explicit unsupported behavior",
+    "Project MCP connection catalog, per-user credentials and provider integration",
+    "Reusable agent catalog/editor and selection",
+    "Complete role/cache/native UI and central plugin acceptance",
+    "Actual corporate Qwen certificate SDK contract remains unverified"
+  ]
+}

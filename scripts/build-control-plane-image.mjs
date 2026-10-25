@@ -96,6 +96,16 @@ try {
     cleanDist: false,
     entryPoint: join(
       repo,
+      "apps/server/test/fixtures/control-plane-inherited-source-fixture.ts",
+    ),
+    outfile: join(directory, "inherited-source-check.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
+  await buildNodeEsmEntry({
+    cleanDist: false,
+    entryPoint: join(
+      repo,
       "apps/server/test/fixtures/control-plane-script-runner-fixture.ts",
     ),
     outfile: join(directory, "script-runner-check.mjs"),

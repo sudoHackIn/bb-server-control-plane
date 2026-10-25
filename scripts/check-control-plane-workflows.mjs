@@ -162,7 +162,16 @@ export async function verifyNativeWorkflows({
           .all(`%[BB workflow finished · ${id}]%`);
         assert.equal(notices.length, 1);
         assert.equal(notices[0].thread_id, subject.thread.id);
-        const content = JSON.parse(notices[0].data).input;
+        const noticeData = JSON.parse(notices[0].data);
+        assert.equal(receipt.request_id, noticeData.requestId);
+        assert.ok(
+          db
+            .prepare(
+              "SELECT request_id FROM control_plane_turn_sources WHERE thread_id=? AND request_id=?",
+            )
+            .get(subject.thread.id, receipt.request_id),
+        );
+        const content = noticeData.input;
         assert.ok(
           content.some(
             (item) =>

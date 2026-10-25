@@ -11,7 +11,6 @@ import {
   listStoredTurnStartedKeys,
   noopNotifier,
   updateThread,
-  type StoredTurnRequestEventRow,
 } from "@bb/db";
 import {
   CLIENT_TURN_REQUEST_ID_ALPHABET,
@@ -19,10 +18,8 @@ import {
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
   isStandaloneBuiltinCompactCommand,
-  parseStoredThreadEvent,
   systemErrorEventDataSchema,
   threadScope,
-  turnRequestEventDataSchema,
   WORKSPACE_PROVISIONING_STEP_KEYS,
 } from "@bb/domain";
 import { randomBytes } from "node:crypto";
@@ -33,8 +30,8 @@ import type {
   ProvisioningTranscriptEntry,
   RecordedThreadExecutionOptions,
   SystemThreadProvisioningStatus,
-  TurnRequestEventData,
   TurnRequestTarget,
+  TurnRequestEventData,
   ThreadEventType,
   ResolvedThreadExecutionOptions,
   SystemErrorEventData,
@@ -49,7 +46,9 @@ import type {
 } from "@bb/domain";
 import { ApiError, TurnStartGuardError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
-import { parseStoredEventPayload } from "./thread-data.js";
+import { parseStoredTurnRequestEvent } from "./stored-turn-request.js";
+export { parseStoredTurnRequestEvent } from "./stored-turn-request.js";
+import { recordControlPlaneTurnSource } from "../../control-plane/turn-source-storage.js";
 import type { DbNotifier, DbQueryConnection, DbTransaction } from "@bb/db";
 import type { AppendStoredThreadEventArgs as AppendThreadEventArgs } from "@bb/db";
 
@@ -62,23 +61,13 @@ interface ThreadEventTransactionDeps {
   hub: DbNotifier;
 }
 
-/**
- * What makes a dispatched turn a retry of an earlier one. Both halves travel
- * together because either alone is useless: the id without the count cannot
- * tell a second attempt from a fifth, and the count without the id cannot say
- * what is being retried.
- */
 export interface TurnRequestRetryMarker {
   requestId: ClientTurnRequestId;
   attempt: number;
 }
 
 interface ClientTurnRequestedEventArgs {
-  /**
-   * Set only when a `turn.failed` retry row is dispatching, marking this turn
-   * as attempt N of an earlier request rather than something the user just
-   * asked for.
-   */
+  sourceRequestId?: ClientTurnRequestId;
   retryOf?: TurnRequestRetryMarker;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
@@ -159,25 +148,9 @@ interface AppendThreadInterruptedEventArgs {
   threadId: string;
 }
 
-const LEGACY_THREAD_START_TARGET = {
-  kind: "thread-start",
-} satisfies TurnRequestTarget;
-const LEGACY_NEW_TURN_TARGET = { kind: "new-turn" } satisfies TurnRequestTarget;
-type LegacyTurnRequestEventType = "client/thread/start" | "client/turn/start";
-const LEGACY_TURN_REQUEST_TARGET_BY_TYPE = {
-  "client/thread/start": LEGACY_THREAD_START_TARGET,
-  "client/turn/start": LEGACY_NEW_TURN_TARGET,
-} satisfies Record<LegacyTurnRequestEventType, TurnRequestTarget>;
-
 interface TurnStartKey {
   threadId: string;
   turnId: string;
-}
-
-function legacyTurnRequestTargetForType(
-  type: LegacyTurnRequestEventType,
-): TurnRequestTarget {
-  return LEGACY_TURN_REQUEST_TARGET_BY_TYPE[type];
 }
 
 function buildClientTurnBaseEventData(
@@ -269,14 +242,22 @@ function buildClientTurnRequestedEventArgs(
 }
 
 function appendBuiltClientTurnRequestedEvent(
+  db: DbQueryConnection,
   append: AppendClientTurnEvent,
   args: PreparedClientTurnRequestedEventArgs,
 ): AppendedClientTurnRequest {
   const sequence = append(buildClientTurnRequestedEventArgs(args));
+  recordControlPlaneTurnSource(
+    db,
+    args.threadId,
+    args.requestId,
+    args.sourceRequestId ?? null,
+  );
   return { requestId: args.requestId, sequence };
 }
 
 function appendBuiltClientTurnEvent(
+  db: DbQueryConnection,
   append: AppendClientTurnEvent,
   args: ClientTurnEventArgs,
 ): number | AppendedClientTurnRequest {
@@ -290,7 +271,7 @@ function appendBuiltClientTurnEvent(
         data: buildClientTurnBaseEventData(args),
       });
     case "client/turn/requested": {
-      return appendBuiltClientTurnRequestedEvent(append, {
+      return appendBuiltClientTurnRequestedEvent(db, append, {
         ...args,
         requestId: createClientTurnRequestId(),
       });
@@ -515,9 +496,12 @@ export function appendClientTurnEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   args: ClientTurnEventArgs,
 ): number | AppendedClientTurnRequest {
-  return appendBuiltClientTurnEvent(
-    (eventArgs) => appendThreadEvent(deps, eventArgs),
-    args,
+  return deps.db.transaction(() =>
+    appendBuiltClientTurnEvent(
+      deps.db,
+      (eventArgs) => appendThreadEvent(deps, eventArgs),
+      args,
+    ),
   );
 }
 
@@ -530,6 +514,7 @@ export function appendClientTurnEventInTransaction(
   args: ClientTurnEventArgs,
 ): number | AppendedClientTurnRequest {
   return appendBuiltClientTurnEvent(
+    db,
     (eventArgs) => appendThreadEventInTransaction(db, eventArgs),
     args,
   );
@@ -543,6 +528,12 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
     db,
     buildClientTurnRequestedEventArgs(args),
   );
+  recordControlPlaneTurnSource(
+    db,
+    args.threadId,
+    args.requestId,
+    args.sourceRequestId ?? null,
+  );
   return {
     requestId: args.requestId,
     sequence: result.sequence,
@@ -555,53 +546,6 @@ export function appendPreparedClientTurnRequestedEventWithNotificationInTransact
       eventType: args.type,
     }),
   };
-}
-
-export function parseStoredTurnRequestEvent(
-  row: StoredTurnRequestEventRow,
-): TurnRequestEventData {
-  const payload = parseStoredEventPayload(row);
-
-  let event;
-  try {
-    event = parseStoredThreadEvent({
-      data: payload,
-      threadId: row.threadId,
-      type: row.type,
-      scope: threadScope(),
-    });
-  } catch {
-    throw new ApiError(
-      500,
-      "internal_error",
-      `Stored ${row.type} event #${row.sequence} for thread ${row.threadId} is malformed`,
-    );
-  }
-
-  if (event.type === "client/turn/requested") {
-    // Strip only the envelope. A field-by-field copy used to live here and
-    // silently dropped every field added after it was written (the gate
-    // provenance pair, then the retry marker), which is exactly the kind of
-    // loss a reader cannot detect: the event parses, it is just missing things.
-    const { type: _type, threadId: _threadId, scope: _scope, ...data } = event;
-    return data;
-  }
-
-  if (row.type === "client/thread/start" || row.type === "client/turn/start") {
-    const legacyTurnRequest = turnRequestEventDataSchema.safeParse({
-      ...payload,
-      target: legacyTurnRequestTargetForType(row.type),
-    });
-    if (legacyTurnRequest.success) {
-      return legacyTurnRequest.data;
-    }
-  }
-
-  throw new ApiError(
-    500,
-    "internal_error",
-    `Stored ${row.type} event #${row.sequence} for thread ${row.threadId} is malformed`,
-  );
 }
 
 function buildThreadProvisioningEventArgs(
