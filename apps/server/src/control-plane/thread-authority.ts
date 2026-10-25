@@ -21,6 +21,8 @@ export function controlPlaneThreadOwnerForCreate(
     | "lifecycleOwnerThreadId"
     | "senderThreadId"
     | "controlPlaneProfileVersionId"
+    | "controlPlaneJobBindingId"
+    | "originPluginId"
   >,
 ): string | undefined {
   const managed = getControlPlaneProjectOwner(db, request.projectId);
@@ -29,7 +31,8 @@ export function controlPlaneThreadOwnerForCreate(
     if (
       principal?.kind === "user" ||
       request.providerId === "qwen-server" ||
-      request.controlPlaneProfileVersionId !== undefined
+      request.controlPlaneProfileVersionId !== undefined ||
+      request.controlPlaneJobBindingId !== undefined
     )
       throw new ApiError(404, "project_not_found", "Project not found");
     return undefined;
@@ -46,6 +49,8 @@ export function controlPlaneThreadOwnerForCreate(
       ownerUserId: userId,
       profileVersionId: request.controlPlaneProfileVersionId,
       providerId: request.providerId ?? "",
+      jobBindingId: request.controlPlaneJobBindingId,
+      originPluginId: request.originPluginId,
       relatedThreadIds: [
         request.parentThreadId,
         request.sourceThreadId,

@@ -8,6 +8,7 @@ import {
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
   controlPlaneJobBindings,
+  controlPlaneThreads,
   controlPlaneProjectAccess,
   threads,
 } from "../schema.js";
@@ -61,21 +62,48 @@ function authority(db: DbQueryConnection, job: Job, allowDisabled = false) {
 }
 function lineage(db: DbQueryConnection, job: Job, allowDisabled = false) {
   const context = authority(db, job, allowDisabled);
-  const seen = new Set([job.id]);
-  let sourceId = job.sourceBindingId;
-  while (sourceId !== null) {
-    if (seen.has(sourceId) || seen.size >= 32) throw new ControlPlaneJobError();
-    seen.add(sourceId);
-    const source = row(db, sourceId);
+  const active = new Set<string>();
+  const visited = new Set<string>();
+  function visit(current: Job) {
+    if (active.has(current.id)) throw new ControlPlaneJobError();
+    if (visited.has(current.id)) return;
+    if (active.size + visited.size >= 32) throw new ControlPlaneJobError();
     if (
-      !source ||
-      source.ownerUserId !== job.ownerUserId ||
-      source.projectId !== job.projectId
+      current.ownerUserId !== job.ownerUserId ||
+      current.projectId !== job.projectId
     )
       throw new ControlPlaneJobError();
-    authority(db, source);
-    sourceId = source.sourceBindingId;
+    authority(db, current, current.id === job.id && allowDisabled);
+    active.add(current.id);
+    const originBindingId = current.originThreadId
+      ? db
+          .select({ jobBindingId: controlPlaneThreads.jobBindingId })
+          .from(controlPlaneThreads)
+          .where(eq(controlPlaneThreads.threadId, current.originThreadId))
+          .get()?.jobBindingId
+      : null;
+    if (current.kind === "workflow-worker") {
+      const parent = current.sourceBindingId
+        ? row(db, current.sourceBindingId)
+        : null;
+      if (
+        !parent ||
+        parent.kind !== "workflow-run" ||
+        current.originThreadId === null ||
+        parent.originThreadId !== current.originThreadId
+      )
+        throw new ControlPlaneJobError();
+    }
+    for (const id of new Set([current.sourceBindingId, originBindingId])) {
+      if (!id) continue;
+      const parent = row(db, id);
+      if (!parent) throw new ControlPlaneJobError();
+      visit(parent);
+    }
+    active.delete(current.id);
+    visited.add(current.id);
   }
+  visit(job);
   return context;
 }
 

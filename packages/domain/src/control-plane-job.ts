@@ -1,8 +1,12 @@
 import { z } from "zod";
 
+export const CONTROL_PLANE_WORKFLOWS_PLUGIN_ID = "workflows";
+export const CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID = "automations";
+
 export const controlPlaneJobKindValues = [
   "workflow-definition",
   "workflow-run",
+  "workflow-worker",
   "automation",
   "automation-run",
   "schedule",

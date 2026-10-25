@@ -27,7 +27,7 @@ export function createUserThreadFixture({ db, users }) {
       );
     const first = !calls.has(marker);
     calls.add(marker);
-    const code = `const fs=require("node:fs");fs.writeFileSync(process.env.HOME+"/bb-personal-${marker}.json",JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()}))`;
+    const code = `const fs=require("node:fs");fs.writeFileSync(process.env.HOME+"/bb-personal-${marker}.json",JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()}))${marker.startsWith("worker-hang-") ? ";setInterval(()=>{},1000)" : ""}`;
     const delta = first
       ? {
           role: "assistant",
@@ -416,6 +416,7 @@ export function createUserThreadFixture({ db, users }) {
         origin,
         subjects: created,
         db,
+        userCommand: command,
       });
 
       const productionBrowser = await verifyExternalBrowser({
@@ -844,7 +845,7 @@ export function createUserThreadFixture({ db, users }) {
     async afterRestart() {
       const { command, alice, wait, shutdownStream, bindingCheck } = saved;
       const jobBindingRestart = await bindingCheck("resume");
-      const workflowRestart = saved.workflows.afterRestart();
+      const workflowRestart = await saved.workflows.afterRestart();
       assert.notEqual((await shutdownStream.done)[0], 0);
       assert.equal(
         (await command("alice", ["threads", "get", alice.thread.id, "--json"]))

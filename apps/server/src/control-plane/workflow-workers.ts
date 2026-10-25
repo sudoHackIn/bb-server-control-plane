@@ -1,0 +1,223 @@
+import { randomUUID } from "node:crypto";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { z } from "zod";
+import type { InternalDoNotUseBackgroundJobs } from "@get-bb/plugin-sdk";
+import {
+  controlPlaneThreads,
+  controlPlaneJobBindings,
+  threads,
+  createControlPlaneJobBinding,
+  deleteControlPlaneJobBinding,
+  setControlPlaneJobEnabled,
+  getThread,
+  requireControlPlaneThreadDispatch,
+} from "@bb/db";
+import type { AppDeps } from "../types.js";
+import { ApiError } from "../errors.js";
+import { getLastThreadOutput } from "../services/threads/thread-data.js";
+import { createControlPlaneThreadService } from "./threads.js";
+import {
+  currentControlPlanePrincipal,
+  withControlPlaneService,
+  withControlPlaneUser,
+} from "./access.js";
+import { withControlPlaneJobAuthority } from "./job-authority.js";
+import { stopThreadForCurrentState } from "../services/threads/thread-lifecycle.js";
+import { resolveThreadHostCommandEnvironment } from "../services/threads/thread-command-environment.js";
+
+const inputSchema = z
+  .object({
+    callId: z.string().regex(/^[A-Za-z0-9_-]{1,200}$/u),
+    prompt: z.string().min(1).max(131072),
+    title: z.string().min(1).max(200).nullable(),
+    profileVersionId: z.string().uuid().nullable(),
+  })
+  .strict();
+function denied(): never {
+  throw new ApiError(
+    403,
+    "worker_not_authorized",
+    "Workflow worker is not authorized",
+  );
+}
+
+export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
+  const service = createControlPlaneThreadService({ deps });
+  let closed = false;
+  let sweep: Promise<void> | null = null;
+  function read(parentId: string, threadId: string) {
+    const record = deps.db
+      .select({ owner: controlPlaneThreads, binding: controlPlaneJobBindings })
+      .from(controlPlaneThreads)
+      .innerJoin(
+        controlPlaneJobBindings,
+        eq(controlPlaneJobBindings.id, controlPlaneThreads.jobBindingId),
+      )
+      .where(
+        and(
+          eq(controlPlaneThreads.threadId, threadId),
+          eq(controlPlaneJobBindings.sourceBindingId, parentId),
+        ),
+      )
+      .get();
+    const principal = currentControlPlanePrincipal();
+    if (
+      !record ||
+      record.binding.kind !== "workflow-worker" ||
+      record.binding.ownerUserId !== record.owner.ownerUserId ||
+      (principal?.kind === "user" &&
+        principal.userId !== record.owner.ownerUserId)
+    )
+      return denied();
+    if (principal?.kind === "user")
+      service.get(record.owner.ownerUserId, threadId);
+    const thread = getThread(deps.db, threadId);
+    if (
+      !thread ||
+      thread.projectId !== record.binding.projectId ||
+      record.owner.profileVersionId !== record.binding.profileVersionId
+    )
+      return denied();
+    return { ...record, thread };
+  }
+  async function stop(threadId: string) {
+    const thread = getThread(deps.db, threadId);
+    if (!thread) return;
+    const environment = resolveThreadHostCommandEnvironment({
+      db: deps.db,
+      thread,
+    });
+    await stopThreadForCurrentState(deps, thread, environment);
+  }
+  const timer = withControlPlaneService(() =>
+    setInterval(() => {
+      if (closed || sweep) return;
+      sweep = (async () => {
+        const active = deps.db
+          .select({ id: threads.id })
+          .from(threads)
+          .innerJoin(
+            controlPlaneThreads,
+            eq(controlPlaneThreads.threadId, threads.id),
+          )
+          .where(
+            and(
+              isNotNull(controlPlaneThreads.jobBindingId),
+              inArray(threads.status, ["pending", "starting", "active"]),
+            ),
+          )
+          .all();
+        const revoked = active.filter((thread) => {
+          try {
+            requireControlPlaneThreadDispatch(deps.db, thread.id);
+            return false;
+          } catch {
+            return true;
+          }
+        });
+        await Promise.all(
+          revoked.map(async (thread) => {
+            try {
+              await stop(thread.id);
+            } catch (error) {
+              deps.logger.error(
+                { error, threadId: thread.id },
+                "Could not stop a revoked workflow worker",
+              );
+            }
+          }),
+        );
+      })()
+        .catch((error) =>
+          deps.logger.error(
+            { error },
+            "Workflow worker authority reconciliation failed",
+          ),
+        )
+        .finally(() => {
+          sweep = null;
+        });
+    }, 500),
+  );
+  timer.unref();
+  return {
+    async startWorker(
+      parentId: string,
+      input: Parameters<InternalDoNotUseBackgroundJobs["startWorker"]>[1],
+    ) {
+      if (closed) return denied();
+      const parsed = inputSchema.parse(input);
+      return withControlPlaneJobAuthority(deps.db, parentId, async (parent) => {
+        if (
+          parent.binding.kind !== "workflow-run" ||
+          parent.binding.originThreadId === null
+        )
+          return denied();
+        const binding = createControlPlaneJobBinding(deps.db, {
+          kind: "workflow-worker",
+          objectId: randomUUID(),
+          revision: 1,
+          userId: parent.user.id,
+          projectId: parent.project.projectId,
+          profileVersionId: parsed.profileVersionId ?? parent.profileVersion.id,
+          originThreadId: parent.binding.originThreadId,
+          sourceBindingId: parentId,
+        });
+        try {
+          const thread = await service.start(
+            parent.user.id,
+            {
+              projectId: parent.project.projectId,
+              profileVersionId: binding.profileVersionId,
+              message: parsed.prompt,
+              ...(parsed.title === null ? {} : { title: parsed.title }),
+            },
+            { bindingId: binding.id, callId: parsed.callId },
+          );
+          return { threadId: thread.id, bindingId: binding.id };
+        } catch (error) {
+          deleteControlPlaneJobBinding(deps.db, null, binding.id);
+          throw error;
+        }
+      });
+    },
+    async getWorker(parentId: string, threadId: string) {
+      const record = read(parentId, threadId);
+      return {
+        threadId,
+        status: record.thread.status,
+        output: getLastThreadOutput(deps.db, threadId),
+      };
+    },
+    async sendWorker(parentId: string, threadId: string, message: string) {
+      read(parentId, threadId);
+      await withControlPlaneJobAuthority(deps.db, parentId, async (context) => {
+        requireControlPlaneThreadDispatch(deps.db, threadId);
+        await service.send(context.user.id, threadId, {
+          message: z.string().min(1).max(131072).parse(message),
+          mode: "queue-if-active",
+        });
+      });
+    },
+    async stopWorker(parentId: string, threadId: string) {
+      const record = read(parentId, threadId);
+      setControlPlaneJobEnabled(
+        deps.db,
+        currentControlPlanePrincipal()?.kind === "user"
+          ? record.owner.ownerUserId
+          : null,
+        record.binding.id,
+        false,
+      );
+      await withControlPlaneUser(record.owner.ownerUserId, () =>
+        stop(threadId),
+      );
+    },
+    async close() {
+      closed = true;
+      clearInterval(timer);
+      await sweep;
+      service.close();
+    },
+  };
+}

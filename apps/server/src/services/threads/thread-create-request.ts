@@ -15,6 +15,7 @@ import type {
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {
+  controlPlaneJobBindingId?: string;
   controlPlaneProfileVersionId?: CreateThreadRequest["controlPlaneProfileVersionId"];
   environment: CreateThreadEnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];

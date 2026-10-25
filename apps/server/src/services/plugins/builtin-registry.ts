@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RETIRED_PLUGIN_SUCCESSORS } from "@bb/domain";
+import {
+  RETIRED_PLUGIN_SUCCESSORS,
+  CONTROL_PLANE_WORKFLOWS_PLUGIN_ID,
+  CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID,
+} from "@bb/domain";
 
 export interface BundledPluginDefinition {
   name: string;
@@ -22,8 +26,9 @@ interface ResolveBuiltinPluginRootPathArgs {
 export const BUILTIN_PLUGINS_DIRECTORY_NAME = "builtin-plugins";
 
 export const BUILTIN_PLUGIN_ID_PREFIX = "bb--";
-export const BUILTIN_WORKFLOWS_PLUGIN_ID = "workflows";
-export const BUILTIN_AUTOMATIONS_PLUGIN_ID = "automations";
+export const BUILTIN_WORKFLOWS_PLUGIN_ID = CONTROL_PLANE_WORKFLOWS_PLUGIN_ID;
+export const BUILTIN_AUTOMATIONS_PLUGIN_ID =
+  CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID;
 
 const ACCOUNT_POOL_PARENT_URL_ENV = "BB_ACCOUNT_POOL_PARENT_URL";
 

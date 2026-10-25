@@ -1174,3 +1174,58 @@ bidirectional dispatch, profile/tool-aware replay and worker ancestry checks are
 connected. Scoped notifications, restart recovery, personal job surfaces,
 definitions, automations and schedules remain open. This increment proves
 isolated pure computation, not completion of the background stage or the goal.
+
+## Twenty-ninth increment: workflow worker authority and native dispatch
+
+Migration `0154_nervous_bulldozer` adds a nullable authority reference to native
+thread ownership, with a unique index so one worker attempt maps to one thread.
+The reference survives deletion of the authority record. Managed Workflows
+threads with missing, deleted, disabled, foreign or profile-mismatched worker
+bindings cannot execute. The existing create/dispatch/Qwen-context paths perform
+these checks; the public thread schema gains no binding/UID/HOME override.
+
+A `workflow-worker` authority record belongs to a workflow-run, its project and
+owner, and an immutable approved worker profile. Both the worker profile and the
+source profile must remain granted. Worker origins contribute their own binding
+to the dependency graph, preventing a new workflow started from a worker from
+losing its parent's restrictions. Traversal permits convergent dependencies,
+rejects cycles/missing edges and limits the complete graph to 32 bindings.
+Builtin plugin IDs are shared domain constants used by the registry and guards.
+
+The builtin-only facade now exposes start/read/send/stop worker operations.
+Creation reserves authority before canonical personal-thread creation, keeps the
+registered origin environment, and assigns hidden child/lifecycle/plugin metadata
+internally. Failure retires the reservation. Reads and actions validate the exact
+parent-to-worker relation. User history still requires current project read
+access; trusted metadata inspection and safe stop work for disabled users.
+Explicit worker stop disables its attempt before canonical native stop. A
+service-scoped monitor checks pending/starting/active mapped threads every
+500 ms and independently stops those whose current authority has been revoked.
+Its shutdown clears the interval and awaits pending work.
+
+Verification: the complete 655-test database suite passes, including migration
+rewind/replay. The rewind helper was missing the earlier background-binding
+table; it now drops that dependent table before profile/project parents. Tests
+verify ownership/binding before notification, unique assignment, worker/source
+profile checks, missing binding denial, retained references, convergent graphs
+and cycles. There are 27 selected server security/lifecycle tests, 402 Plugin
+SDK tests, 256 Workflows tests and 75 Plugin Guide tests passing. Strict
+DB/server/SDK/Workflows/guide typechecks, portable declarations and changed-file
+lint/format pass.
+
+The actual Docker deployment creates mapped worker records beneath two running
+native workflows with a private fixture, then dispatches them through the real
+personal CLI, daemon and stock Qwen. Shell probes verify their actual UID/HOME/cwd.
+Cancelling one native parent stops its worker while the other user remains
+active. Foreign reads and resumed sends after source cancellation are denied;
+the latter admits no new user-message event. Binding/source denial remains after
+server restart. The complete build/deployment passes all 63 tasks. See
+`control-plane-phase-29-verification.json`.
+
+The Docker fixture seeds worker mappings directly; it does not prove successful
+`startWorker` through the evaluator. The adapter's ownership/rejection/metadata
+and safe-stop paths are tested, while its successful native consumer path is the
+next integration step. `agent()` and nested workflow bridges still fail
+explicitly. Their bidirectional protocol, profile-aware replay, controller
+recovery/notifications, personal job APIs, automations and schedules remain open.
+No completion of the background stage or overall goal is claimed here.

@@ -1905,6 +1905,7 @@ export interface InternalDoNotUseBackgroundJobBinding {
   kind:
     | "workflow-definition"
     | "workflow-run"
+    | "workflow-worker"
     | "automation"
     | "automation-run"
     | "schedule";
@@ -1963,6 +1964,21 @@ export interface InternalDoNotUseBackgroundJobs {
     id: string,
     run: (binding: InternalDoNotUseBackgroundJobBinding) => T,
   ): T;
+  startWorker(
+    id: string,
+    input: {
+      callId: string;
+      prompt: string;
+      title: string | null;
+      profileVersionId: string | null;
+    },
+  ): Promise<{ threadId: string; bindingId: string }>;
+  getWorker(
+    id: string,
+    threadId: string,
+  ): Promise<{ threadId: string; status: string; output: string | null }>;
+  sendWorker(id: string, threadId: string, message: string): Promise<void>;
+  stopWorker(id: string, threadId: string): Promise<void>;
   /** Runs the fixed isolated workflow evaluator under current saved authority. No command or environment overrides. */
   evaluateWorkflow(
     id: string,

@@ -3,7 +3,8 @@
 This is a source inventory and integration plan for the required personal
 workflow/automation/schedule stage. The authority-binding foundation and native
 workflow owner/binding persistence and isolated pure evaluation are implemented.
-Controlled agent/nested dispatch and automation integration remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
+Worker authority/dispatch plumbing is implemented; the agent/nested process bridge
+and automation integration remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
 
 ## Existing persistence and execution
 
@@ -44,7 +45,9 @@ read access permits reading authorized historical metadata after profile loss;
 execution additionally requires an enabled user, provisioned environment,
 executable owned project, current profile/version grants and a valid source chain.
 Every source is checked for enabled/deleted state and matching owner/project;
-cycles and chains longer than 32 bindings fail closed. Origin references retain
+cycles and ancestry graphs larger than 32 bindings fail closed. An origin that
+is itself a mapped worker contributes its binding as another dependency; shared
+ancestors in a convergent graph do not count as cycles. Origin references retain
 their ID after a thread is physically removed, so removal cannot turn a dependent
 job into an unbound job. Deleted projects cascade their central bindings.
 
@@ -60,7 +63,8 @@ invoke another user's binding. Async callbacks preserve that principal; the
 caller's previous scope is restored afterward. This is internal server plumbing,
 not a public capability token. The internal builtin-only Plugin SDK facade now
 wraps these same operations. Native workflow runs now retain binding references;
-controlled worker dispatch and automation integration remain pending.
+The worker kernel now participates in native dispatch; the builtin evaluator
+bridge and automation integration remain pending.
 
 ## Remaining integration
 
@@ -106,8 +110,8 @@ Execution always rechecks the actual saved user's permissions. Cached facade
 methods stop working when their owning plugin is unloaded. The audit entry and
 Plugin Guide inventory document its internal status.
 
-This facade does not evaluate source, create workers or authorize a native plugin
-object merely because a binding ID was supplied. Native plugin handlers must
+A binding ID alone does not authorize a native plugin object. Evaluation and
+controlled worker operations use the validated saved authority. Native plugin handlers must
 verify the object/binding association and current caller, and bind their own
 durable records before exposing personal operations. Actual user-facing job
 APIs, automation/definition ownership and tenant runtime isolation remain
@@ -170,3 +174,39 @@ SQLite paths. No browser token is needed by the evaluator. Recovery, controlled
 workers, nested-workflow budgets/replay, notifications and personal surfaces
 remain required work; successful pure computation does not complete that stage.
 The independent build task produces the same portable artifact used in Docker.
+
+## Workflow worker ancestry
+
+Migration 0154 adds the nullable `control_plane_threads.job_binding_id` reference
+and a unique index: one worker attempt can belong to one native thread, while
+ordinary threads retain null. The reference deliberately survives physical removal
+of a binding. Managed Workflows threads without a binding, or with a missing or
+mismatched binding, cannot execute. Old records are not silently assigned rights.
+
+A `workflow-worker` binding requires a workflow-run source, matching origin,
+owner/project and a currently approved worker profile. The source workflow's
+profile must also remain granted. Registration, thread insertion and mandatory
+native dispatch verify this graph. Owned worker origins add their own binding
+as a dependency, so launching another workflow from a worker cannot drop its
+parent's constraints. Traversal rejects cycles/missing edges, permits convergent
+dependencies and bounds the complete graph to 32 bindings.
+
+The worker adapter reserves authority before canonical thread creation, preserves
+the managed origin environment, and sets hidden child/lifecycle/provenance
+metadata internally. The public thread request has no new authority override.
+Creation failure retires the reserved binding. Metadata/send/stop methods check
+the exact parent-to-thread relationship. Safe stop disables the worker attempt;
+there is no unrestricted SDK fallback. A service-scoped monitor checks pending,
+starting and active mapped workers every 500 ms and calls canonical stop when
+current execution authority is lost. Server shutdown closes and awaits this
+monitor before closing the database-facing application boundary.
+
+Docker seeds mapped worker records beneath actual running native workflows, then
+uses the real personal CLI, daemon and stock Qwen to run shell probes. Stopping
+one native parent stops its mapped worker while preserving the other user's
+active worker. Resume is rejected before admitting a new user message, and the
+binding/source denial persists after restart. This proves the authority kernel,
+not a completed `agent()` bridge: worker seeding uses a private fixture, and
+successful `startWorker` through the native evaluator still needs end-to-end
+verification when that bridge is implemented. Personal job surfaces, replay,
+recovery, notifications and automations remain required work.

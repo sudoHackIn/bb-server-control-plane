@@ -3707,16 +3707,24 @@ path, UID, environment or credentials overrides. Every event, completion and per
 running check revalidates saved authority. Logs/phases run under the saved owner;
 revocation, deadline and cancellation stop only the registered process job.
 Frames/results/events are bounded. This member still does not provide controlled
-agent-worker or nested-workflow dispatch.
+nested-workflow dispatch. `startWorker` reserves a `workflow-worker` binding under
+an existing workflow-run and delegates to the canonical personal thread creation
+service. It accepts only call identity, prompt/title and an optional approved
+immutable profile version. UID/HOME/project/environment/provider/model/tool
+or command overrides are not accepted. `getWorker`, `sendWorker` and `stopWorker`
+validate the exact parent/worker relation; stopped attempts are disabled before
+native stop. Metadata reads and safe stopping remain possible after profile loss.
+These methods are wired to the shared server; the builtin evaluator's `agent()`
+bridge is still pending and does not yet consume them.
 
 Current callers are the builtin Workflows service, core plugin host,
 lifecycle/security tests and Docker fixtures. The allowlist uses the actual
 `workflows` and `automations` IDs from the builtin registry; the earlier
 `bb--workflows` / `bb--automations` spelling was incorrect. Workflows persists
 owner/binding references and scopes its native readers and resume/stop handlers.
-Its managed evaluator now runs in a separate registered-UID process. Agent and
-nested-workflow capabilities remain unavailable until controlled dispatch is
-implemented. Automations integration remains pending. Only
+Its managed evaluator now runs in a separate registered-UID process. Controlled
+worker authority/creation/lifecycle plumbing is implemented, while the builtin
+`agent()` and nested-workflow bridges remain unavailable until connected. Automations integration remains pending. Only
 these two builtin plugins are intended production consumers. The Plugin Guide's
 SDK inventory includes this member.
 

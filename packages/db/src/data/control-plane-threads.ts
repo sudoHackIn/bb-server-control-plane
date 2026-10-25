@@ -1,3 +1,8 @@
+import { CONTROL_PLANE_WORKFLOWS_PLUGIN_ID } from "@bb/domain";
+import {
+  requireControlPlaneJobDispatch,
+  ControlPlaneJobError,
+} from "./control-plane-jobs.js";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
@@ -40,6 +45,8 @@ export function requireControlPlaneThreadOwner(
     ownerUserId: string | undefined;
     profileVersionId: string | undefined;
     providerId: string;
+    jobBindingId?: string;
+    originPluginId?: string | null;
     relatedThreadIds: readonly (string | null | undefined)[];
   },
 ) {
@@ -48,6 +55,7 @@ export function requireControlPlaneThreadOwner(
     if (
       input.ownerUserId !== undefined ||
       input.profileVersionId !== undefined ||
+      input.jobBindingId !== undefined ||
       input.providerId === "qwen-server"
     )
       throw new ControlPlaneThreadError();
@@ -108,6 +116,26 @@ export function requireControlPlaneThreadOwner(
     : null;
   if (!profile || profile.version.definition.providerId !== input.providerId)
     throw new ControlPlaneThreadError();
+  if (
+    input.jobBindingId !== undefined ||
+    input.originPluginId === CONTROL_PLANE_WORKFLOWS_PLUGIN_ID
+  ) {
+    if (!input.jobBindingId) throw new ControlPlaneThreadError();
+    try {
+      const job = requireControlPlaneJobDispatch(db, input.jobBindingId);
+      if (
+        job.binding.kind !== "workflow-worker" ||
+        job.user.id !== user.id ||
+        job.project.projectId !== project.projectId ||
+        job.profileVersion.id !== profile.version.id
+      )
+        throw new ControlPlaneThreadError();
+    } catch (error) {
+      if (error instanceof ControlPlaneJobError)
+        throw new ControlPlaneThreadError();
+      throw error;
+    }
+  }
   return { user, project, profileVersion: profile.version };
 }
 
@@ -131,6 +159,8 @@ export function requireControlPlaneThreadDispatch(
     ownerUserId: owner?.ownerUserId,
     profileVersionId: owner?.profileVersionId ?? undefined,
     providerId: thread.providerId,
+    jobBindingId: owner?.jobBindingId ?? undefined,
+    originPluginId: thread.originPluginId,
     relatedThreadIds: [],
   });
   if (!context) return null;

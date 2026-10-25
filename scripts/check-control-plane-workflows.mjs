@@ -13,6 +13,7 @@ export async function verifyNativeWorkflows({
   origin,
   subjects,
   db,
+  userCommand,
 }) {
   const env = {
     ...process.env,
@@ -211,6 +212,143 @@ export async function verifyNativeWorkflows({
   } finally {
     runtimeStorage.close();
   }
+  async function workerFixture(mode, input) {
+    const child = launch([
+      "workflow-worker-check.mjs",
+      mode,
+      ...(input ? [JSON.stringify(input)] : []),
+    ]);
+    let output = "",
+      error = "";
+    child.stdout.on("data", (part) => (output += part));
+    child.stderr.on("data", (part) => (error += part));
+    child.stdin.end();
+    assert.equal((await once(child, "exit", { signal }))[0], 0, error);
+    return JSON.parse(output);
+  }
+  const parentRuns = [];
+  for (const subject of subjects) {
+    const parent = await cli(
+      [
+        "workflows",
+        "run",
+        "--script",
+        'export const meta = {name: "worker-authority", description: "Worker source cancellation"}; phase("worker-parent-ready"); return await new Promise(() => {});',
+        "--json",
+      ],
+      subject,
+    );
+    parentRuns.push({ parentRunId: parent.runId, userId: subject.user.id });
+  }
+  const parentStorage = new Database("/srv/bb/plugins/workflows/data.db", {
+    readonly: true,
+  });
+  try {
+    await wait(
+      () =>
+        parentRuns.every(
+          (parent) =>
+            parentStorage
+              .prepare("SELECT phase FROM workflow_runs WHERE id = ?")
+              .get(parent.parentRunId)?.phase === "worker-parent-ready",
+        ),
+      "running worker parent workflows",
+    );
+  } finally {
+    parentStorage.close();
+  }
+  const boundWorkers = await workerFixture("create", parentRuns);
+  for (const [index, worker] of boundWorkers.entries()) {
+    const subject = subjects[index];
+    await userCommand(
+      subject.user.login,
+      ["threads", "send", worker.threadId, "--message-stdin", "--json"],
+      `BB_PERSONAL_worker-hang-${subject.user.login}`,
+    );
+    await wait(async () => {
+      try {
+        const proof = JSON.parse(
+          await readFile(
+            `${subject.user.home}/bb-personal-worker-hang-${subject.user.login}.json`,
+            "utf8",
+          ),
+        );
+        assert.equal(proof.uid, subject.user.uid);
+        assert.equal(proof.home, subject.user.home);
+        assert.equal(proof.cwd, subject.project.cwd);
+        return (
+          db
+            .prepare("SELECT status FROM threads WHERE id = ?")
+            .get(worker.threadId)?.status === "active"
+        );
+      } catch (error) {
+        if (error.code === "ENOENT") return false;
+        throw error;
+      }
+    }, "actual bound Qwen worker UID and active tool");
+  }
+  await assert.rejects(() =>
+    userCommand(subjects[1].user.login, [
+      "threads",
+      "get",
+      boundWorkers[0].threadId,
+      "--json",
+    ]),
+  );
+  await cli(
+    ["workflows", "stop", parentRuns[0].parentRunId, "--json"],
+    subjects[0],
+  );
+  await wait(
+    () =>
+      db
+        .prepare("SELECT status FROM threads WHERE id = ?")
+        .get(boundWorkers[0].threadId)?.status === "idle",
+    "parent cancellation stops first bound Qwen worker",
+  );
+  assert.equal(
+    db
+      .prepare("SELECT status FROM threads WHERE id = ?")
+      .get(boundWorkers[1].threadId)?.status,
+    "active",
+  );
+  const beforeRejectedSend = db
+    .prepare(
+      "SELECT count(*) AS count FROM events WHERE thread_id = ? AND type = 'system/manager/user_message' ",
+    )
+    .get(boundWorkers[0].threadId).count;
+  await assert.rejects(() =>
+    userCommand(
+      subjects[0].user.login,
+      [
+        "threads",
+        "send",
+        boundWorkers[0].threadId,
+        "--message-stdin",
+        "--json",
+      ],
+      "Must not resume a cancelled worker source",
+    ),
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS count FROM events WHERE thread_id = ? AND type = 'system/manager/user_message' ",
+      )
+      .get(boundWorkers[0].threadId).count,
+    beforeRejectedSend,
+  );
+  await cli(
+    ["workflows", "stop", parentRuns[1].parentRunId, "--json"],
+    subjects[1],
+  );
+  await wait(
+    () =>
+      db
+        .prepare("SELECT status FROM threads WHERE id = ?")
+        .get(boundWorkers[1].threadId)?.status === "idle",
+    "parent cancellation stops second bound Qwen worker",
+  );
   const evaluatorCheck = launch([
     "workflow-evaluator-check.mjs",
     JSON.stringify(
@@ -243,15 +381,24 @@ export async function verifyNativeWorkflows({
       ...processProof,
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
+      actualBoundQwenWorkersUseOwnerUidHomeAndCwd: true,
+      parentWorkflowCancellationStopsMappedWorker: true,
+      otherUsersWorkerSurvivesUnrelatedCancellation: true,
+      cancelledWorkerResumeDeniedBeforeEvents: true,
+      foreignOwnedWorkerReadDenied: true,
       nativeWorkflowCancellationAndAuthorityDisable: true,
       nativeWorkflowAgentFallbackDenied: true,
       nativeWorkflowOutputSchemaEnforced: true,
       nativeWorkflowIsolatedEvaluatorCompleted: true,
       nativeWorkflowEvaluatorIdentityAndCredentialIsolation: true,
     },
-    afterRestart() {
+    async afterRestart() {
       verify();
-      return { nativeWorkflowOwnerBindingSurvivesRestart: true };
+      const workerRestart = await workerFixture("verify");
+      return {
+        ...workerRestart,
+        nativeWorkflowOwnerBindingSurvivesRestart: true,
+      };
     },
   };
 }

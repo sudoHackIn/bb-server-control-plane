@@ -11,6 +11,7 @@ import {
   createThread,
   createConnection,
   controlPlaneJobBindings,
+  controlPlaneThreads,
   controlPlaneProjectAccess,
   controlPlaneUsers,
   deleteControlPlaneJobBinding,
@@ -88,11 +89,23 @@ function fixture() {
 it("filters every job kind by current owner/project before pagination, including shared projects", () => {
   const { db, alice, bob } = fixture();
   try {
-    const aliceJobs = controlPlaneJobKindValues.map((kind) =>
-      createControlPlaneJobBinding(db, { ...alice.input, kind }),
-    );
-    for (const kind of controlPlaneJobKindValues)
-      createControlPlaneJobBinding(db, { ...bob.input, kind });
+    function allJobs(subject: typeof alice) {
+      const parent = createControlPlaneJobBinding(db, {
+        ...subject.input,
+        kind: "workflow-run",
+      });
+      return controlPlaneJobKindValues.map((kind) =>
+        kind === "workflow-run"
+          ? parent
+          : createControlPlaneJobBinding(db, {
+              ...subject.input,
+              kind,
+              sourceBindingId: kind === "workflow-worker" ? parent.id : null,
+            }),
+      );
+    }
+    const aliceJobs = allJobs(alice);
+    allJobs(bob);
     db.insert(controlPlaneProjectAccess)
       .values({
         projectId: alice.project.id,
@@ -486,6 +499,73 @@ it("adds a new immutable definition revision without moving its owner or changin
         profileVersionId: profile.id,
       }),
     ).toEqual(next);
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("checks worker-origin ancestry as a graph without rejecting convergent dependencies", () => {
+  const { db, alice } = fixture();
+  try {
+    const parent = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      kind: "workflow-run",
+    });
+    expect(() =>
+      createControlPlaneJobBinding(db, {
+        ...alice.input,
+        kind: "workflow-worker",
+      }),
+    ).toThrow(ControlPlaneJobError);
+    const worker = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      kind: "workflow-worker",
+      objectId: randomUUID(),
+      sourceBindingId: parent.id,
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: alice.project.id,
+      providerId: "qwen-server",
+      originPluginId: "workflows",
+      controlPlaneOwnerUserId: alice.user.id,
+      controlPlaneProfileVersionId: alice.profile.versionId,
+      controlPlaneJobBindingId: worker.id,
+    });
+    expect(
+      db
+        .select()
+        .from(controlPlaneThreads)
+        .where(eq(controlPlaneThreads.threadId, thread.id))
+        .get()?.jobBindingId,
+    ).toBe(worker.id);
+    const nested = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      objectId: randomUUID(),
+      kind: "workflow-run",
+      sourceBindingId: parent.id,
+      originThreadId: thread.id,
+    });
+    expect(requireControlPlaneJobDispatch(db, nested.id).user.id).toBe(
+      alice.user.id,
+    );
+    setControlPlaneJobEnabled(db, alice.user.id, worker.id, false);
+    expect(() => requireControlPlaneJobDispatch(db, nested.id)).toThrow(
+      ControlPlaneJobError,
+    );
+    setControlPlaneJobEnabled(db, alice.user.id, worker.id, true);
+    expect(requireControlPlaneJobDispatch(db, nested.id).binding.id).toBe(
+      nested.id,
+    );
+    db.update(controlPlaneJobBindings)
+      .set({ originThreadId: thread.id })
+      .where(eq(controlPlaneJobBindings.id, parent.id))
+      .run();
+    expect(() => requireControlPlaneJobDispatch(db, parent.id)).toThrow(
+      ControlPlaneJobError,
+    );
+    expect(() => requireControlPlaneJobDispatch(db, nested.id)).toThrow(
+      ControlPlaneJobError,
+    );
   } finally {
     db.$client.close();
   }

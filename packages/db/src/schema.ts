@@ -323,6 +323,7 @@ export const controlPlaneThreads = sqliteTable(
       .notNull()
       .references(() => controlPlaneUsers.id),
     qwenSessionId: text("qwen_session_id"),
+    jobBindingId: text("job_binding_id"),
     profileVersionId: text("profile_version_id").references(
       () => controlPlaneProfileVersions.id,
     ),
@@ -333,6 +334,7 @@ export const controlPlaneThreads = sqliteTable(
       table.threadId,
     ),
     uniqueIndex("control_plane_threads_session_idx").on(table.qwenSessionId),
+    uniqueIndex("control_plane_threads_job_idx").on(table.jobBindingId),
   ],
 );
 

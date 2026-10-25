@@ -71,6 +71,18 @@ function fixture() {
       return binding;
     },
     remove: retire,
+    async startWorker() {
+      throw new Error("Test workers not configured");
+    },
+    async getWorker() {
+      throw new Error("Test workers not configured");
+    },
+    async sendWorker() {
+      throw new Error("Test workers not configured");
+    },
+    async stopWorker() {
+      throw new Error("Test workers not configured");
+    },
     async evaluateWorkflow() {
       throw new Error("Test evaluator not configured");
     },

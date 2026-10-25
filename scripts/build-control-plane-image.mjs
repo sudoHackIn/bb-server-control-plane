@@ -71,6 +71,16 @@ try {
     cleanDist: false,
     entryPoint: join(
       repo,
+      "apps/server/test/fixtures/control-plane-workflow-worker-fixture.ts",
+    ),
+    outfile: join(directory, "workflow-worker-check.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
+  await buildNodeEsmEntry({
+    cleanDist: false,
+    entryPoint: join(
+      repo,
       "apps/server/test/fixtures/control-plane-workflow-evaluator-fixture.ts",
     ),
     outfile: join(directory, "workflow-evaluator-check.mjs"),

@@ -12,6 +12,7 @@ import type {
 } from "@bb/server-contract";
 import {
   ControlPlaneThreadError,
+  requireControlPlaneJobDispatch,
   controlPlaneProfileVersions,
   environments,
   getControlPlaneProject,
@@ -27,6 +28,7 @@ import type {
   ControlPlaneThreadStart,
   ControlPlaneThreadSend,
 } from "@bb/domain";
+import { CONTROL_PLANE_WORKFLOWS_PLUGIN_ID } from "@bb/domain";
 import type { AppDeps } from "../types.js";
 import { ApiError } from "../errors.js";
 import { withControlPlaneEnvironmentRead } from "./sdk-environment-read.js";
@@ -142,7 +144,36 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
         throw new ApiError(404, "project_not_found", "Project not found");
       return listControlPlaneThreads(deps.db, userId, options);
     },
-    async start(userId: string, input: ControlPlaneThreadStart) {
+    async start(
+      userId: string,
+      input: ControlPlaneThreadStart,
+      worker: { bindingId: string; callId: string } | null = null,
+    ) {
+      const job = worker
+        ? requireControlPlaneJobDispatch(deps.db, worker.bindingId)
+        : null;
+      if (
+        job &&
+        (job.binding.kind !== "workflow-worker" ||
+          job.user.id !== userId ||
+          job.project.projectId !== input.projectId ||
+          job.profileVersion.id !== input.profileVersionId ||
+          job.binding.originThreadId === null)
+      )
+        throw new ControlPlaneThreadError();
+      const parent = job?.binding.sourceBindingId
+        ? requireControlPlaneJobDispatch(deps.db, job.binding.sourceBindingId)
+        : null;
+      const originThreadId = job?.binding.originThreadId;
+      const jobOrigin =
+        job && originThreadId
+          ? requireControlPlaneThreadDispatch(deps.db, originThreadId)
+          : null;
+      if (
+        job &&
+        (!parent || !originThreadId || !jobOrigin?.thread.environmentId)
+      )
+        throw new ControlPlaneThreadError();
       const project = getControlPlaneProject(deps.db, userId, input.projectId);
       if (
         !project ||
@@ -166,6 +197,9 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
         .where(
           and(
             eq(environments.projectId, project.projectId),
+            jobOrigin?.thread.environmentId
+              ? eq(environments.id, jobOrigin.thread.environmentId)
+              : undefined,
             eq(environments.hostId, project.hostId),
             eq(environments.path, project.cwd),
             eq(environments.status, "ready"),
@@ -186,6 +220,22 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
               projectId: project.projectId,
               providerId: profile.version.definition.providerId,
               controlPlaneProfileVersionId: profile.version.id,
+              ...(job && worker && parent && originThreadId
+                ? {
+                    controlPlaneJobBindingId: job.binding.id,
+                    originPluginId: CONTROL_PLANE_WORKFLOWS_PLUGIN_ID,
+                    lifecycleOwnerThreadId: originThreadId,
+                    parentThreadId: originThreadId,
+                    visibility: "hidden" as const,
+                    parentNotifications: "off" as const,
+                    pluginMetadata: {
+                      workflowWorker: 1,
+                      runId: parent.binding.objectId,
+                      callId: worker.callId,
+                      originThreadId,
+                    },
+                  }
+                : {}),
               environment: environment
                 ? { type: "reuse", environmentId: environment.id }
                 : {
@@ -198,7 +248,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
               permissionMode: profile.version.definition.permissionMode,
               title: input.title,
               input: [{ type: "text", text: input.message, mentions: [] }],
-              origin: "sdk",
+              origin: job ? "plugin" : "sdk",
               startedOnBehalfOf: null,
             }),
         ),

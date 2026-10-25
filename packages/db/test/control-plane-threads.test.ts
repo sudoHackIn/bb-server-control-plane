@@ -4,6 +4,9 @@ import { expect, it } from "vitest";
 import { createMigratedConnection } from "../src/testing.js";
 import {
   ControlPlaneRegistry,
+  createControlPlaneJobBinding,
+  controlPlaneJobBindings,
+  setControlPlaneJobEnabled,
   listControlPlaneThreads,
   getControlPlaneThread,
   ControlPlaneThreadError,
@@ -491,6 +494,183 @@ it("preserves owned archived history but excludes deleted and invalid-source thr
       listControlPlaneThreads(db, alice.user.id, { cursor: null, limit: 50 })
         .threads,
     ).toEqual([]);
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("pins workflow worker ancestry before notifications and fences dispatch after parent revocation or missing linkage", () => {
+  const { db, alice, bob, start } = fixture();
+  try {
+    const origin = start();
+    const parent = createControlPlaneJobBinding(db, {
+      kind: "workflow-run",
+      objectId: randomUUID(),
+      revision: 1,
+      userId: alice.user.id,
+      projectId: alice.project.id,
+      profileVersionId: alice.profile.versionId,
+      originThreadId: origin.id,
+      sourceBindingId: null,
+    });
+    const binding = createControlPlaneJobBinding(db, {
+      kind: "workflow-worker",
+      objectId: randomUUID(),
+      revision: 1,
+      userId: alice.user.id,
+      projectId: alice.project.id,
+      profileVersionId: alice.profile.versionId,
+      originThreadId: origin.id,
+      sourceBindingId: parent.id,
+    });
+    const input = {
+      projectId: alice.project.id,
+      environmentId: alice.environment.id,
+      providerId: "qwen-server",
+      status: "starting" as const,
+      originPluginId: "workflows",
+      controlPlaneOwnerUserId: alice.user.id,
+      controlPlaneProfileVersionId: alice.profile.versionId,
+      controlPlaneJobBindingId: binding.id,
+    };
+    let observed = false;
+    const worker = createThread(
+      db,
+      {
+        ...noopNotifier,
+        notifyThread(id) {
+          const row = db
+            .select()
+            .from(controlPlaneThreads)
+            .where(eq(controlPlaneThreads.threadId, id))
+            .get();
+          expect(row?.jobBindingId).toBe(binding.id);
+          expect(requireControlPlaneThreadDispatch(db, id)?.user.id).toBe(
+            alice.user.id,
+          );
+          observed = true;
+        },
+      },
+      input,
+    );
+    expect(observed).toBe(true);
+    expect(() => createThread(db, noopNotifier, input)).toThrow();
+    expect(() => start(alice, { originPluginId: "workflows" })).toThrow(
+      ControlPlaneThreadError,
+    );
+    expect(() =>
+      start(bob, {
+        originPluginId: "workflows",
+        controlPlaneJobBindingId: binding.id,
+      }),
+    ).toThrow(ControlPlaneThreadError);
+    setControlPlaneJobEnabled(db, alice.user.id, parent.id, false);
+    expect(() => requireControlPlaneThreadDispatch(db, worker.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    expect(() =>
+      resolveControlPlaneQwenContext(db, {
+        threadId: worker.id,
+        sessionId: randomUUID(),
+        cwd: alice.cwd,
+      }),
+    ).toThrow(ControlPlaneThreadError);
+    expect(requireControlPlaneThreadDispatch(db, origin.id)?.user.id).toBe(
+      alice.user.id,
+    );
+    setControlPlaneJobEnabled(db, alice.user.id, parent.id, true);
+    expect(
+      requireControlPlaneThreadDispatch(db, worker.id)?.profileVersion.id,
+    ).toBe(alice.profile.versionId);
+    db.delete(controlPlaneJobBindings)
+      .where(eq(controlPlaneJobBindings.id, binding.id))
+      .run();
+    expect(
+      db
+        .select()
+        .from(controlPlaneThreads)
+        .where(eq(controlPlaneThreads.threadId, worker.id))
+        .get()?.jobBindingId,
+    ).toBe(binding.id);
+    expect(() => requireControlPlaneThreadDispatch(db, worker.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    db.update(controlPlaneThreads)
+      .set({ jobBindingId: null })
+      .where(eq(controlPlaneThreads.threadId, worker.id))
+      .run();
+    expect(() => requireControlPlaneThreadDispatch(db, worker.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("requires both the worker profile and source workflow profile grants and rejects profile substitution", () => {
+  const { db, alice, start } = fixture();
+  try {
+    const origin = start();
+    const parent = createControlPlaneJobBinding(db, {
+      kind: "workflow-run",
+      objectId: randomUUID(),
+      revision: 1,
+      userId: alice.user.id,
+      projectId: alice.project.id,
+      profileVersionId: alice.profile.versionId,
+      originThreadId: origin.id,
+      sourceBindingId: null,
+    });
+    const profile = createControlPlaneProfile(db, {
+      slug: "worker-profile",
+      name: "Worker",
+      definition: {
+        providerId: "qwen-server",
+        prompt: "Worker",
+        model: "another-model",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: [],
+        mcpServers: [],
+      },
+    });
+    setControlPlaneProfileAccess(db, profile.profileId, alice.user.id, true);
+    const binding = createControlPlaneJobBinding(db, {
+      kind: "workflow-worker",
+      objectId: randomUUID(),
+      revision: 1,
+      userId: alice.user.id,
+      projectId: alice.project.id,
+      profileVersionId: profile.versionId,
+      originThreadId: origin.id,
+      sourceBindingId: parent.id,
+    });
+    expect(() =>
+      start(alice, {
+        originPluginId: "workflows",
+        controlPlaneJobBindingId: binding.id,
+      }),
+    ).toThrow(ControlPlaneThreadError);
+    const worker = start(alice, {
+      originPluginId: "workflows",
+      controlPlaneJobBindingId: binding.id,
+      controlPlaneProfileVersionId: profile.versionId,
+    });
+    expect(
+      requireControlPlaneThreadDispatch(db, worker.id)?.profileVersion.id,
+    ).toBe(profile.versionId);
+    setControlPlaneProfileEnabled(db, alice.profile.profileId, false);
+    expect(() => requireControlPlaneThreadDispatch(db, worker.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    setControlPlaneProfileEnabled(db, alice.profile.profileId, true);
+    setControlPlaneProfileAccess(db, profile.profileId, alice.user.id, false);
+    expect(() => requireControlPlaneThreadDispatch(db, worker.id)).toThrow(
+      ControlPlaneThreadError,
+    );
+    expect(
+      requireControlPlaneThreadDispatch(db, origin.id)?.profileVersion.id,
+    ).toBe(alice.profile.versionId);
   } finally {
     db.$client.close();
   }

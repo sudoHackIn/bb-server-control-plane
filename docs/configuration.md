@@ -1470,3 +1470,11 @@ alongside `--service-user`, `--users-root` and the node/Qwen configuration. The
 installer pins the artifact SHA-256; deploying a new artifact requires rerunning
 the installer. All parent directories must be root-owned and not writable by
 other users. The launcher accepts no per-request evaluator command or Node flags.
+
+Mapped Workflows worker threads now retain an internal authority binding in the
+shared database. Both the worker's approved profile and the source workflow's
+current grants must permit execution. Cancelling the source prevents subsequent
+sends/resumes and stops pending or running mapped workers through a service-scoped
+monitor. These references are assigned internally; the personal thread API does
+not accept binding/UID/HOME/environment overrides. The isolated evaluator's
+`agent()` bridge and personal workflow controls remain unfinished.

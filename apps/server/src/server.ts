@@ -1,3 +1,4 @@
+import { createControlPlaneWorkflowWorkers } from "./control-plane/workflow-workers.js";
 import { createControlPlaneBackgroundJobs } from "./control-plane/background-jobs.js";
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import {
@@ -834,6 +835,9 @@ export function createApp(
     }
     return next();
   });
+  const workflowWorkers = controlPlane
+    ? createControlPlaneWorkflowWorkers(deps)
+    : null;
   const pluginService = createPluginService({
     machineEnrollments: getMachineEnrollmentService(deps),
     db: deps.db,
@@ -846,7 +850,12 @@ export function createApp(
     getAppUrl: () => deps.config.appUrl ?? null,
     getBackgroundJobs: (pluginId, builtin) =>
       controlPlane
-        ? createControlPlaneBackgroundJobs(deps.db, pluginId, builtin)
+        ? createControlPlaneBackgroundJobs(
+            deps.db,
+            pluginId,
+            builtin,
+            workflowWorkers,
+          )
         : null,
     sharedPorts: deps.sharedPorts,
     providerRegistry: deps.providerRegistry,
@@ -1133,7 +1142,8 @@ export function createApp(
     app,
     sdkFetch,
     sdkWebsocket: privateRealtime?.websocket,
-    closeWebSockets: () => {
+    closeWebSockets: async () => {
+      await workflowWorkers?.close();
       controlPlane?.close();
       privateRealtime?.close();
       return closeWebSocketServer({

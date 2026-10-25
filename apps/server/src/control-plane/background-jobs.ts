@@ -43,10 +43,14 @@ export function createControlPlaneBackgroundJobs(
   db: DbConnection,
   pluginId: string,
   builtin: boolean,
+  workers: Pick<
+    InternalDoNotUseBackgroundJobs,
+    "startWorker" | "getWorker" | "sendWorker" | "stopWorker"
+  > | null = null,
 ): InternalDoNotUseBackgroundJobs {
   const kinds: InternalDoNotUseBackgroundJobBinding["kind"][] =
     pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
-      ? ["workflow-definition", "workflow-run"]
+      ? ["workflow-definition", "workflow-run", "workflow-worker"]
       : pluginId === BUILTIN_AUTOMATIONS_PLUGIN_ID
         ? ["automation", "automation-run", "schedule"]
         : [];
@@ -171,6 +175,22 @@ export function createControlPlaneBackgroundJobs(
           : null,
         id,
       );
+    },
+    startWorker(id, input) {
+      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      return workers.startWorker(id, input);
+    },
+    getWorker(id, threadId) {
+      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      return workers.getWorker(id, threadId);
+    },
+    sendWorker(id, threadId, message) {
+      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      return workers.sendWorker(id, threadId, message);
+    },
+    stopWorker(id, threadId) {
+      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      return workers.stopWorker(id, threadId);
     },
     async evaluateWorkflow(id, input, signal, onEvent) {
       const binding = required(id);
