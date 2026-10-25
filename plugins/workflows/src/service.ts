@@ -1458,24 +1458,57 @@ export function createWorkflowService(
     signal: AbortSignal,
   ): Promise<void> {
     if (backgroundJobs) {
-      let error = "Managed workflow execution requires an isolated evaluator";
       try {
         const binding = bindingFor(run);
         if (!binding)
           throw new Error(
             "Workflow owner is unassigned; administrative migration is required",
           );
-        backgroundJobs.withAuthority(binding.id, () => null);
-      } catch (failure) {
-        error = message(failure);
-      }
-      try {
+        const parsed = parseWorkflowSource(run.source);
+        const settings = settingsForRun(run);
+        const result = await backgroundJobs.evaluateWorkflow(
+          binding.id,
+          {
+            body: parsed.body,
+            args: parseJson(run.argsJson, "workflow args"),
+            maxAgentCalls: settings.maxAgentCalls,
+            maxConcurrentAgents: settings.maxConcurrentAgents,
+            timeoutMs: settings.totalRunTimeoutMs,
+          },
+          signal,
+          (event) => {
+            if (event.type === "phase") {
+              updateRunPhase(db, run.id, event.value);
+              publishRunsChanged(run.originThreadId);
+            } else bb.log.info(`[${run.id}] ${event.value}`);
+          },
+        );
+        if (shuttingDown && signal.aborted) return;
+        if (parsed.metadata.outputSchema !== null) {
+          const validation = validateValue(
+            parsed.metadata.outputSchema,
+            result,
+          );
+          if (!validation.valid)
+            throw new Error(`Workflow result is invalid: ${validation.error}`);
+        }
         await settleRunAndStopOutstanding({
           id: run.id,
-          status: "failed",
-          result: null,
-          error,
+          status: "succeeded",
+          result,
+          error: null,
         });
+      } catch (error) {
+        const latest = getRunRequired(db, run.id);
+        if (shuttingDown && signal.aborted && latest.status === "running")
+          return;
+        if (latest.status !== "cancelled")
+          await settleRunAndStopOutstanding({
+            id: run.id,
+            status: signal.aborted ? "cancelled" : "failed",
+            result: null,
+            error: message(error),
+          });
       } finally {
         controllers.delete(run.id);
       }

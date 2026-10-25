@@ -3,10 +3,21 @@
   "globalEnv": ["BB_BUILD_TOOLCHAIN"],
   "globalPassThroughEnv": ["npm_config_store_dir", "pnpm_config_store_dir"],
   "tasks": {
+    "@bb/server#build:control-plane-workflow-evaluator": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../plugins/workflows/src/**",
+        "../../scripts/build-control-plane-workflow-evaluator.mjs",
+        "../../scripts/build-utils.mjs"
+      ],
+      "outputs": [".control-plane-runtime/workflow-evaluator.mjs"]
+    },
     "@bb/server#build:control-plane-image": {
       "cache": false,
       "dependsOn": [
         "@bb/server#build",
+        "@bb/server#build:control-plane-workflow-evaluator",
         "@bb/cli#build",
         "@bb/app#build",
         "@bb/host-daemon#build",

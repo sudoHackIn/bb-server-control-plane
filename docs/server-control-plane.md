@@ -1120,3 +1120,57 @@ deployment enables the installed builtin through administrator CLI, starts runs
 for two managed origins, verifies native owner/profile/binding records and
 confirms their persistence after a server restart. The final build/deployment
 passes all 61 tasks. See `control-plane-phase-27-verification.json`.
+
+## Twenty-eighth increment: registered-UID workflow evaluation
+
+Managed pure computation workflows now execute in a separate process under the
+registered user's UID/GID, HOME and project cwd. The builtin Workflows service
+uses the internal `evaluateWorkflow` adapter and persists successful results and
+phase updates in its existing SQLite history. Output schema validation remains
+mandatory. No source is evaluated in the service process as a fallback.
+
+The root launcher accepts a fixed `launch-workflow` operation. Its installer
+validates root-owned immutable paths and pins the evaluator artifact's SHA-256;
+launch rejects changed artifacts or caller-supplied program arguments. The
+existing user manifest, safe project traversal, cleared groups,
+no-new-privileges, user/PID/mount namespace and per-job descendant supervisor
+remain the execution boundary. Workflow processes receive no backend API key.
+They use a fixed Node heap cap and the existing bounded QuickJS runtime. This
+reuses the process boundary already deployed for Qwen; it does not add an
+unrestricted command launcher to the plugin or public API.
+
+The adapter accepts bounded JSON args, parsed body, runtime budgets, deadline
+and abort signal. It validates protocol order, frame/output/event limits and
+matches the trusted runner's actual UID/HOME/cwd against saved authority. Launch,
+events, result and completion recheck the binding; an additional 500 ms check
+stops running evaluation after revocation. Cancellation, deadline and protocol
+failure call the fixed stop helper and await process close. Log/phase callbacks
+run under saved user authority. Pending promises keep the evaluator alive until
+completion or explicit cancellation.
+
+A dedicated Turbo build task emits the portable artifact under
+`apps/server/.control-plane-runtime/`; generated output is ignored by Git. The
+Docker build consumes the same artifact and configures it through the root
+installer. Non-Docker installation is documented in `configuration.md`.
+
+Verification: 256 Workflows tests, 44 selected server security/lifecycle tests,
+402 Plugin SDK tests and 75 Plugin Guide tests pass, with strict
+server/SDK/Workflows/guide typechecks and portable declarations. A byte-by-byte
+Unicode pipe test verifies UTF-8 decoding across arbitrary chunk boundaries.
+Changed-file lint/format/diff checks and Python compilation pass. Actual Docker tests use the
+installed builtin and real CLI for two users, verify computed results and phase
+history after restart, deny agent fallback, validate output schemas and cancel
+a pending native run while disabling its binding. Additional actual-core
+adapter checks cancel a running evaluator, revoke authority while it runs,
+expire its deadline and reject an oversized result. Independent root process
+inspection verifies external UIDs, PID namespaces, cleared capabilities and
+no-new-privileges. Foreign stop/cwd and command override attempts fail; stopping
+one user preserves another evaluator, and completed cancellations leave no
+running workflow supervisor. The final build/deployment passes all 63 tasks.
+See `control-plane-phase-28-verification.json`.
+
+Agent workers and nested workflows still fail explicitly until controlled
+bidirectional dispatch, profile/tool-aware replay and worker ancestry checks are
+connected. Scoped notifications, restart recovery, personal job surfaces,
+definitions, automations and schedules remain open. This increment proves
+isolated pure computation, not completion of the background stage or the goal.

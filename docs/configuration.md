@@ -1455,7 +1455,18 @@ On shared control-plane servers, the builtin Workflows plugin now records each
 managed run's owner and immutable authority binding in its existing SQLite
 history. Its native readers and resume/stop operations scope user access; old
 unassigned history remains administrative. This does not open personal workflow
-APIs or tenant execution. Managed workflows currently fail before script
-evaluation until registered-UID execution and controlled child dispatch are
-connected; standalone Workflows execution is unchanged. See
+APIs. Managed pure computation workflows now use a fixed evaluator process under
+the registered UID/HOME/cwd. Agent calls and nested workflows still fail explicitly
+until controlled dispatch is connected; standalone Workflows execution is unchanged. See
 [background execution integration](control-plane-background-execution.md).
+
+The Docker image installs the workflow evaluator automatically. For a Linux host
+without Docker, build the portable artifact with
+`pnpm exec turbo run build:control-plane-workflow-evaluator --filter=@bb/server`,
+copy `apps/server/.control-plane-runtime/workflow-evaluator.mjs` to a root-owned
+immutable path (normally `/opt/bb-control-plane/workflow-evaluator.mjs`), and pass
+`--workflow-evaluator <absolute-path>` to the existing root launcher installer
+alongside `--service-user`, `--users-root` and the node/Qwen configuration. The
+installer pins the artifact SHA-256; deploying a new artifact requires rerunning
+the installer. All parent directories must be root-owned and not writable by
+other users. The launcher accepts no per-request evaluator command or Node flags.

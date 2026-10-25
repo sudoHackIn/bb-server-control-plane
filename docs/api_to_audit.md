@@ -3700,20 +3700,27 @@ administrative metadata mode, not an unauthenticated public fallback.
 
 The host wraps cached facade methods with its lifecycle guard. An unloaded
 plugin cannot keep using a captured facade. No new HTTP, daemon RPC or public
-CLI authority endpoint is exposed. No tenant evaluator or worker dispatch is
-implemented by this member.
+CLI authority endpoint is exposed. `evaluateWorkflow` is restricted to workflow-run
+bindings and uses the fixed installed evaluator under the registered UID/HOME/cwd.
+It accepts parsed body/JSON args/bounded limits and an abort signal, never command,
+path, UID, environment or credentials overrides. Every event, completion and periodic
+running check revalidates saved authority. Logs/phases run under the saved owner;
+revocation, deadline and cancellation stop only the registered process job.
+Frames/results/events are bounded. This member still does not provide controlled
+agent-worker or nested-workflow dispatch.
 
 Current callers are the builtin Workflows service, core plugin host,
 lifecycle/security tests and Docker fixtures. The allowlist uses the actual
 `workflows` and `automations` IDs from the builtin registry; the earlier
 `bb--workflows` / `bb--automations` spelling was incorrect. Workflows persists
 owner/binding references and scopes its native readers and resume/stop handlers.
-Its managed evaluator is closed until registered-UID execution and controlled
-worker dispatch are implemented. Automations integration remains pending. Only
+Its managed evaluator now runs in a separate registered-UID process. Agent and
+nested-workflow capabilities remain unavailable until controlled dispatch is
+implemented. Automations integration remains pending. Only
 these two builtin plugins are intended production consumers. The Plugin Guide's
 SDK inventory includes this member.
 
 Before any public stabilization, complete native plugin persistence, source
-filtering, controlled child creation, registered-UID script evaluation, retries,
+filtering, controlled child creation, recovery of registered-UID evaluation, retries,
 replay, notifications, scheduling, revocation and restart acceptance tests.
 Keep it internal while that integration is incomplete.

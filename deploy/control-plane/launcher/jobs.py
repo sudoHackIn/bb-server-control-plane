@@ -1,4 +1,6 @@
 import ctypes
+import hashlib
+import stat
 import json
 import os
 import signal
@@ -126,10 +128,26 @@ def stop_job(user_id, uid, session_id, lock):
     raise RuntimeError('Job supervisor did not stop')
 
 
-def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, launch_policy=None):
+def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, launch_policy=None, runtime='qwen'):
     path = lease_path(session_id)
-    if not policy.get('node') or not policy.get('cli'):
-        raise ValueError('Qwen execution is not configured')
+    entry = policy.get('workflowEvaluator') if runtime == 'workflow' else policy.get('cli')
+    if runtime not in ('qwen', 'workflow') or not policy.get('node') or not entry:
+        raise ValueError('Agent execution is not configured')
+    if runtime == 'workflow':
+        if arguments or launch_policy is not None:
+            raise ValueError('Workflow evaluator arguments cannot be overridden')
+        current = entry
+        while True:
+            info = os.lstat(current)
+            if stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError('Untrusted workflow evaluator path')
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+        with open(entry, 'rb') as artifact:
+            if hashlib.sha256(artifact.read()).hexdigest() != policy.get('workflowEvaluatorSha256'):
+                raise ValueError('Workflow evaluator artifact changed')
     if os.path.exists(path):
         with open(path, encoding='utf8') as file:
             old = json.load(file)
@@ -165,7 +183,7 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
     signal.signal(signal.SIGINT, interrupt)
     env = {'PATH': '/usr/local/bin:/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': home,
            'USER': user_id, 'LOGNAME': user_id, 'PWD': cwd, 'BB_AGENT_JOB_ID': session_id}
-    for name in ('OPENAI_API_KEY', 'OPENAI_BASE_URL'):
+    for name in (('OPENAI_API_KEY', 'OPENAI_BASE_URL') if runtime == 'qwen' else ()):
         if name in os.environ:
             env[name] = os.environ[name]
     os.umask(0o077)
@@ -184,7 +202,7 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
                                   '--clear-groups', '--no-new-privs', '--', '/usr/bin/unshare',
                                   '--user', '--map-user=' + str(uid), '--map-group=' + str(uid),
                                   '--pid', '--fork', '--mount-proc', policy['node'],
-                                  '--dns-result-order=ipv4first', *preloads, policy['cli'], *arguments],
+                                  '--dns-result-order=ipv4first', *preloads, *(['--max-old-space-size=128'] if runtime == 'workflow' else []), entry, *arguments],
                                  env=env, close_fds=True, start_new_session=True)
         while clients_alive(clients):
             try:

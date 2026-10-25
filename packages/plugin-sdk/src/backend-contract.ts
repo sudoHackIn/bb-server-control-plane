@@ -1963,6 +1963,19 @@ export interface InternalDoNotUseBackgroundJobs {
     id: string,
     run: (binding: InternalDoNotUseBackgroundJobBinding) => T,
   ): T;
+  /** Runs the fixed isolated workflow evaluator under current saved authority. No command or environment overrides. */
+  evaluateWorkflow(
+    id: string,
+    input: {
+      body: string;
+      args: JsonValue;
+      maxAgentCalls: number;
+      maxConcurrentAgents: number;
+      timeoutMs: number;
+    },
+    signal: AbortSignal,
+    onEvent: (event: { type: "log" | "phase"; value: string }) => void,
+  ): Promise<JsonValue>;
 }
 
 export interface PluginServerApi {
@@ -1974,7 +1987,7 @@ export interface PluginServerApi {
    * explicit administrative request. Background registration requires an adopted
    * saved user scope. No UID, HOME, credentials or userId override is accepted.
    * A null profileVersionId inherits the managed origin thread's pinned version.
-   * This adapter does not provide tenant script evaluation or worker dispatch.
+   * Evaluation uses a fixed registered-UID runtime; controlled worker dispatch remains separate.
    */
   readonly internal_DO_NOT_USE_backgroundJobs: InternalDoNotUseBackgroundJobs | null;
 

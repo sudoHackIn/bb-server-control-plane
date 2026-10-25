@@ -2,22 +2,22 @@
 
 This is a source inventory and integration plan for the required personal
 workflow/automation/schedule stage. The authority-binding foundation and native
-workflow owner/binding persistence are implemented. Tenant workflow execution and
-automation integration remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
+workflow owner/binding persistence and isolated pure evaluation are implemented.
+Controlled agent/nested dispatch and automation integration remain unfinished. The acceptance checklist in `server-control-plane.md` remains authoritative.
 
 ## Existing persistence and execution
 
-| Area                         | Source                                                                                                                                | Current boundary and required integration                                                                                                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Workflow entry points        | `plugins/workflows/src/server.ts`, `cli.ts`, `ui-contract.ts`, `workflow-input.ts`                                                    | Agent tool, CLI and UI RPC accept origin/run identifiers. Source loading can read workspace workflow files. Bind verified owner/project authority before loading tenant source or exposing a run. Origin metadata is not authentication.                                                                                                                                                                           |
-| Workflow durability          | `plugins/workflows/src/data.ts`, `service.ts`                                                                                         | Existing runs, calls, workers, replay, retries, recovery and notifications remain the durable workflow store. Owner/binding references and owner-filtered native readers are now attached to runs. Definition ownership and controlled runtime recovery remain open.                                                                                                                                               |
-| Workflow execution           | `plugins/workflows/src/runtime.ts`, `service.ts`                                                                                      | Standalone QuickJS executes in the service; managed evaluation is currently closed. Existing standalone worker threads use `bb.sdk.threads.spawn` with the origin environment and selected provider/model/reasoning/mode. Tenant script evaluation needs a separate registered-UID process; worker creation needs the saved binding and approved profile. A VM alone does not meet the Unix isolation requirement. |
-| Automation definitions/runs  | `plugins/automations/src/data.ts`, `service.ts`, `rpc.ts`, `cli.ts`                                                                   | Plugin-owned SQLite stores definitions, triggers, runs and output, with project/creator metadata. Add ownership through binding references at create/edit/read/run boundaries. Shared project membership must not reveal another user's personal automation.                                                                                                                                                       |
-| Automation dispatch/recovery | `plugins/automations/src/run.ts`, `sweep.ts`, `server.ts`                                                                             | New-thread dispatch, target-thread sends, script execution, due sweeps and reconciliation must use saved user authority. Restart and callback execution cannot inherit service privileges.                                                                                                                                                                                                                         |
-| Automation workspace scripts | `plugins/automations/src/script-runner.ts`, `script-files.ts`, `working-directory.ts`                                                 | Current direct `spawn` has cwd/env but no registered UID/GID. Route tenant scripts through the restricted launcher; resolve cwd/HOME from registry/project authority. Do not expose the service CLI credential or database.                                                                                                                                                                                        |
-| Platform plugin schedules    | `packages/db/src/data/plugin-schedules.ts`, `apps/server/src/services/plugins/plugin-service.ts`                                      | `plugin_schedules` identifies centrally registered callbacks by pluginId/name. This is a trusted plugin timer, not a personal job owner. Preserve its atomic claim; personal due objects still require their own authority and lifecycle.                                                                                                                                                                          |
-| Native queued/delayed sends  | `packages/db/src/data/queued-thread-messages.ts`, `apps/server/src/services/threads/queued-messages.ts`, `queued-message-dispatch.ts` | Messages persist thread identity, schedule/claim/retry state and origin metadata. Authorize actual execution through the owned thread and job ancestry when supplied. A sender/origin ID alone grants no rights.                                                                                                                                                                                                   |
-| Periodic retries/restart     | `apps/server/src/services/system/periodic-sweeps.ts`                                                                                  | Separate idle queue delivery, due scheduled delivery, failed retry, orphaned wait cleanup and plugin schedule sweeps exist. Audit actual dispatch and recovery, not just the initial HTTP request.                                                                                                                                                                                                                 |
+| Area                         | Source                                                                                                                                | Current boundary and required integration                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflow entry points        | `plugins/workflows/src/server.ts`, `cli.ts`, `ui-contract.ts`, `workflow-input.ts`                                                    | Agent tool, CLI and UI RPC accept origin/run identifiers. Source loading can read workspace workflow files. Bind verified owner/project authority before loading tenant source or exposing a run. Origin metadata is not authentication.                                                                                                                                                                                                  |
+| Workflow durability          | `plugins/workflows/src/data.ts`, `service.ts`                                                                                         | Existing runs, calls, workers, replay, retries, recovery and notifications remain the durable workflow store. Owner/binding references and owner-filtered native readers are now attached to runs. Definition ownership and controlled runtime recovery remain open.                                                                                                                                                                      |
+| Workflow execution           | `plugins/workflows/src/runtime.ts`, `service.ts`                                                                                      | Standalone QuickJS executes in the service; managed pure evaluation uses the fixed registered-UID process. Existing standalone worker threads use `bb.sdk.threads.spawn` with the origin environment and selected provider/model/reasoning/mode. Tenant script evaluation needs a separate registered-UID process; worker creation needs the saved binding and approved profile. A VM alone does not meet the Unix isolation requirement. |
+| Automation definitions/runs  | `plugins/automations/src/data.ts`, `service.ts`, `rpc.ts`, `cli.ts`                                                                   | Plugin-owned SQLite stores definitions, triggers, runs and output, with project/creator metadata. Add ownership through binding references at create/edit/read/run boundaries. Shared project membership must not reveal another user's personal automation.                                                                                                                                                                              |
+| Automation dispatch/recovery | `plugins/automations/src/run.ts`, `sweep.ts`, `server.ts`                                                                             | New-thread dispatch, target-thread sends, script execution, due sweeps and reconciliation must use saved user authority. Restart and callback execution cannot inherit service privileges.                                                                                                                                                                                                                                                |
+| Automation workspace scripts | `plugins/automations/src/script-runner.ts`, `script-files.ts`, `working-directory.ts`                                                 | Current direct `spawn` has cwd/env but no registered UID/GID. Route tenant scripts through the restricted launcher; resolve cwd/HOME from registry/project authority. Do not expose the service CLI credential or database.                                                                                                                                                                                                               |
+| Platform plugin schedules    | `packages/db/src/data/plugin-schedules.ts`, `apps/server/src/services/plugins/plugin-service.ts`                                      | `plugin_schedules` identifies centrally registered callbacks by pluginId/name. This is a trusted plugin timer, not a personal job owner. Preserve its atomic claim; personal due objects still require their own authority and lifecycle.                                                                                                                                                                                                 |
+| Native queued/delayed sends  | `packages/db/src/data/queued-thread-messages.ts`, `apps/server/src/services/threads/queued-messages.ts`, `queued-message-dispatch.ts` | Messages persist thread identity, schedule/claim/retry state and origin metadata. Authorize actual execution through the owned thread and job ancestry when supplied. A sender/origin ID alone grants no rights.                                                                                                                                                                                                                          |
+| Periodic retries/restart     | `apps/server/src/services/system/periodic-sweeps.ts`                                                                                  | Separate idle queue delivery, due scheduled delivery, failed retry, orphaned wait cleanup and plugin schedule sweeps exist. Audit actual dispatch and recovery, not just the initial HTTP request.                                                                                                                                                                                                                                        |
 
 `plugins/scheduled-send/server.ts` is currently a stub; delayed-message behavior is
 implemented by the native queue paths above. Scheduler, workflow replay and the
@@ -60,7 +60,7 @@ invoke another user's binding. Async callbacks preserve that principal; the
 caller's previous scope is restored afterward. This is internal server plumbing,
 not a public capability token. The internal builtin-only Plugin SDK facade now
 wraps these same operations. Native workflow runs now retain binding references;
-tenant execution and automation integration remain pending.
+controlled worker dispatch and automation integration remain pending.
 
 ## Remaining integration
 
@@ -73,8 +73,9 @@ tenant execution and automation integration remain pending.
   result/history reads and replay before returning data or accepting actions.
 - Propagate the binding into child/worker creation and mandatory native dispatch,
   retries, resumes and tools. Recheck immediately before each actual operation.
-- Isolate tenant workflow evaluation and automation scripts under their registered
-  Unix identity; keep centrally installed trusted plugin code in the service.
+- Complete isolated automation scripts and controlled workflow capabilities under
+  saved authority. Pure workflow evaluation now uses the registered Unix identity;
+  centrally installed trusted plugin code remains in the service.
 - Preserve timezone/schedule/run state, concurrency and duplicate/retry semantics.
   Legacy unbound objects require explicit administrative assignment or disabling;
   their existing metadata must not become an administrative execution context.
@@ -137,10 +138,35 @@ a future resumed run. Replay profile/tool identity still needs integration
 before tenant execution opens.
 
 The origin selection comes from the internal pinned-profile reader, rather than
-unrestricted thread defaults. Managed worker execution revalidates the saved
-binding and currently fails before QuickJS evaluation with an explicit missing
-isolated-evaluator error. Unassigned queued legacy workflows fail with an
+unrestricted thread defaults. Managed execution revalidates the saved binding
+and evaluates pure workflows in the fixed registered-UID process. Agent/nested
+capabilities still fail explicitly pending controlled worker integration. Unassigned queued legacy workflows fail with an
 administrative-migration error. Managed notifications do not use unrestricted
 thread sends. Standalone execution remains covered by its existing full tests.
-The evaluator, child dispatch, scoped notifications, personal routes and
-recovery/cleanup authorization still require implementation and Docker proof.
+Controlled child dispatch, nested workflows, scoped notifications, personal routes
+and recovery/cleanup authorization still require implementation and Docker proof.
+
+## Registered-UID evaluator
+
+`evaluateWorkflow` launches only the root-installed, SHA-256-pinned artifact via
+`helper.py launch-workflow`. The existing launcher validates the immutable user
+manifest and project path, then uses the same UID/GID, cleared groups,
+no-new-privileges, user/PID/mount namespace and descendant supervision as Qwen.
+Workflow jobs receive no model backend credential and no Node options from the
+caller. Normal cancellation uses the same per-job lease, including pre-launch
+stop fencing and client-ancestor death cleanup.
+
+The core adapter validates bounded input and protocol frames. The trusted runner
+reports its actual UID/HOME/cwd before evaluation; the adapter matches all three
+against saved authority. QuickJS exposes deterministic JSON computation, log and
+phase. Node globals are not exposed. Agent/nested capabilities do not fall back
+to the service process or unrestricted SDK. The adapter rechecks current
+execution grants at launch, each event/result, completion and every 500 ms while
+running. Abort, deadline, protocol violation or revocation invoke the fixed stop
+helper and await process close. Result/output/event limits bound the transport.
+
+Native managed runs persist successful results and phases through their existing
+SQLite paths. No browser token is needed by the evaluator. Recovery, controlled
+workers, nested-workflow budgets/replay, notifications and personal surfaces
+remain required work; successful pure computation does not complete that stage.
+The independent build task produces the same portable artifact used in Docker.

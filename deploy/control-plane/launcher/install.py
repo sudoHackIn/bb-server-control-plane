@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--service-user', required=True)
     parser.add_argument('--users-root', required=True)
     parser.add_argument('--qwen-cli')
+    parser.add_argument('--workflow-evaluator')
     parser.add_argument('--node', default='/usr/local/bin/node')
     args = parser.parse_args()
     if os.geteuid() != 0:
@@ -56,8 +57,9 @@ def main():
         os.chown(target, 0, 0)
         os.chmod(target, 0o644)
     settings = {'root': str(root), 'serviceUid': service.pw_uid}
-    if args.qwen_cli:
-        for name, value in (('node', args.node), ('cli', args.qwen_cli)):
+    if args.qwen_cli or args.workflow_evaluator:
+        executables = [('node', args.node)] + ([('cli', args.qwen_cli)] if args.qwen_cli else [])
+        for name, value in executables:
             target = pathlib.Path(value).resolve(strict=True)
             if not target.is_file():
                 raise ValueError('Executable must be a regular file')
@@ -70,6 +72,7 @@ def main():
                     break
                 current = current.parent
             settings[name] = str(target)
+    if args.qwen_cli:
         cli_root = pathlib.Path(settings['cli']).parent
         digest = hashlib.sha256()
         for target in sorted(cli_root.rglob('*.js'), key=lambda path: path.relative_to(cli_root).as_posix()):
@@ -84,6 +87,20 @@ def main():
             digest.update(target.relative_to(cli_root).as_posix().encode() + b'\0' + hashlib.sha256(target.read_bytes()).digest())
         if digest.hexdigest() != 'f722cb0a432c07047f16ddb3b480840dc77167795d508498180850d31bf9b7aa':
             raise ValueError('Unverified Qwen CLI artifact; review native policy and rerun deployment tests before approving this build')
+    if args.workflow_evaluator:
+        target = pathlib.Path(args.workflow_evaluator)
+        if not target.is_absolute() or target.is_symlink() or not target.is_file():
+            raise ValueError('Expected a regular workflow evaluator artifact')
+        current = target
+        while True:
+            info = current.lstat()
+            if current.is_symlink() or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError('Workflow evaluator must be root-owned and immutable')
+            if current.parent == current:
+                break
+            current = current.parent
+        settings['workflowEvaluator'] = str(target)
+        settings['workflowEvaluatorSha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
     policy = pathlib.Path('/etc/bb-agent-launcher/policy.json')
     policy.write_text(json.dumps(settings) + '\n')
     os.chown(policy, 0, 0)

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { randomUUID } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import Database from "better-sqlite3";
 
 export async function verifyNativeWorkflows({
@@ -60,7 +63,7 @@ export async function verifyNativeWorkflows({
   const runs = [];
   for (const subject of subjects) {
     const source =
-      'export const meta = {name: "managed-owner-check", description: "Native ownership check"}; return "must not evaluate in service process";';
+      'export const meta = {name: "managed-owner-check", description: "Native ownership check"}; phase("computed"); return {value: 42};';
     const run = await cli(
       ["workflows", "run", "--script", source, "--json"],
       subject,
@@ -104,9 +107,10 @@ export async function verifyNativeWorkflows({
         assert.equal(row.origin_model, profile.model);
         assert.equal(row.origin_reasoning_level, profile.reasoningLevel);
         assert.equal(row.origin_permission_mode, profile.permissionMode);
-        assert.equal(row.status, "failed");
-        assert.match(row.error, /isolated evaluator/u);
-        assert.equal(row.result_json, null);
+        assert.equal(row.status, "succeeded");
+        assert.equal(row.error, null);
+        assert.equal(row.phase, "computed");
+        assert.deepEqual(JSON.parse(row.result_json), { value: 42 });
       }
     } finally {
       storage.close();
@@ -119,16 +123,324 @@ export async function verifyNativeWorkflows({
     } catch {
       return false;
     }
-  }, "native workflow owner persistence and execution guard");
+  }, "native workflow ownership and isolated result");
   verify();
+  const first = subjects[0];
+  const negativeRuns = [];
+  for (const [body, reason] of [
+    [
+      'return await agent("must not spawn an unrestricted worker");',
+      /scoped worker integration/u,
+    ],
+    ['return "x";', /Workflow result is invalid/u],
+  ]) {
+    const outputSchema = reason.source.includes("result")
+      ? ', outputSchema: {type: "number"}'
+      : "";
+    const run = await cli(
+      [
+        "workflows",
+        "run",
+        "--script",
+        `export const meta = {name: "managed-denial", description: "Scoped execution check"${outputSchema}}; ${body}`,
+        "--json",
+      ],
+      first,
+    );
+    negativeRuns.push({ id: run.runId, reason });
+  }
+  const pending = await cli(
+    [
+      "workflows",
+      "run",
+      "--script",
+      'export const meta = {name: "managed-cancel", description: "Native cancellation"}; phase("waiting"); return await new Promise(() => {});',
+      "--json",
+    ],
+    first,
+  );
+  const runtimeStorage = new Database("/srv/bb/plugins/workflows/data.db", {
+    readonly: true,
+  });
+  try {
+    await wait(
+      () =>
+        runtimeStorage
+          .prepare("SELECT phase FROM workflow_runs WHERE id = ?")
+          .get(pending.runId)?.phase === "waiting",
+      "native pending evaluator",
+    );
+    await cli(["workflows", "stop", pending.runId, "--json"], first);
+    assert.equal(
+      runtimeStorage
+        .prepare("SELECT status FROM workflow_runs WHERE id = ?")
+        .get(pending.runId).status,
+      "cancelled",
+    );
+    const pendingRow = runtimeStorage
+      .prepare("SELECT authority_binding_id FROM workflow_runs WHERE id = ?")
+      .get(pending.runId);
+    assert.equal(
+      db
+        .prepare("SELECT enabled FROM control_plane_job_bindings WHERE id = ?")
+        .get(pendingRow.authority_binding_id).enabled,
+      0,
+    );
+    for (const { id, reason } of negativeRuns) {
+      await wait(
+        () =>
+          runtimeStorage
+            .prepare("SELECT status FROM workflow_runs WHERE id = ?")
+            .get(id)?.status === "failed",
+        "managed capability/schema denial",
+      );
+      const row = runtimeStorage
+        .prepare("SELECT error, result_json FROM workflow_runs WHERE id = ?")
+        .get(id);
+      assert.match(row.error, reason);
+      assert.equal(row.result_json, null);
+      assert.equal(
+        runtimeStorage
+          .prepare(
+            "SELECT count(*) AS count FROM workflow_calls WHERE run_id = ?",
+          )
+          .get(id).count,
+        0,
+      );
+    }
+  } finally {
+    runtimeStorage.close();
+  }
+  const evaluatorCheck = launch([
+    "workflow-evaluator-check.mjs",
+    JSON.stringify(
+      subjects.map((subject) => ({
+        userId: subject.user.id,
+        projectId: subject.project.projectId,
+        originThreadId: subject.thread.id,
+      })),
+    ),
+  ]);
+  let evaluatorOutput = "",
+    evaluatorError = "";
+  evaluatorCheck.stdout.on("data", (part) => (evaluatorOutput += part));
+  evaluatorCheck.stderr.on("data", (part) => (evaluatorError += part));
+  evaluatorCheck.stdin.end();
+  assert.equal(
+    (await once(evaluatorCheck, "exit", { signal }))[0],
+    0,
+    evaluatorError,
+  );
+  const evaluatorProof = JSON.parse(evaluatorOutput);
+  const processProof = await verifyEvaluatorProcesses({
+    launch,
+    signal,
+    wait,
+    subjects,
+  });
   return {
     verification: {
+      ...processProof,
+      ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
-      nativeWorkflowServiceEvaluatorDenied: true,
+      nativeWorkflowCancellationAndAuthorityDisable: true,
+      nativeWorkflowAgentFallbackDenied: true,
+      nativeWorkflowOutputSchemaEnforced: true,
+      nativeWorkflowIsolatedEvaluatorCompleted: true,
+      nativeWorkflowEvaluatorIdentityAndCredentialIsolation: true,
     },
     afterRestart() {
       verify();
       return { nativeWorkflowOwnerBindingSurvivesRestart: true };
     },
   };
+}
+
+async function verifyEvaluatorProcesses({ launch, signal, wait, subjects }) {
+  const helper = "/opt/bb-control-plane/launcher/helper.py";
+  async function invoke(args) {
+    const child = launch(["-n", "--", helper, ...args], {
+      file: "/usr/bin/sudo",
+    });
+    let output = "",
+      error = "";
+    child.stdout.on("data", (part) => (output += part));
+    child.stderr.on("data", (part) => (error += part));
+    child.stdin.end();
+    return { code: (await once(child, "exit", { signal }))[0], output, error };
+  }
+  const active = [];
+  try {
+    for (const subject of subjects) {
+      const jobId = randomUUID();
+      const child = launch(
+        [
+          "-n",
+          "--",
+          helper,
+          "launch-workflow",
+          subject.user.id,
+          String(subject.user.uid),
+          jobId,
+          subject.project.cwd,
+        ],
+        {
+          file: "/usr/bin/sudo",
+          env: {
+            PATH: "/usr/local/bin:/usr/bin:/bin",
+            OPENAI_API_KEY: "must-not-reach-workflow",
+            NEURALDEAP_KEY: "must-not-reach-workflow",
+          },
+        },
+      );
+      const completed = once(child, "exit", { signal });
+      let probe,
+        error = "";
+      const lines = createInterface({ input: child.stdout });
+      lines.on("line", (line) => {
+        const event = JSON.parse(line);
+        if (event.type === "ready") probe = event;
+      });
+      child.stderr.on("data", (part) => (error += part));
+      active.push({ child, completed, subject, jobId, lines, stopped: false });
+      child.stdin.end(
+        JSON.stringify({
+          body: "return await new Promise(() => {});",
+          args: null,
+          maxAgentCalls: 1,
+          maxConcurrentAgents: 1,
+          timeoutMs: 60000,
+        }),
+      );
+      await wait(() => {
+        assert.equal(child.exitCode, null, error);
+        return probe;
+      }, "isolated workflow process readiness");
+      assert.deepEqual(probe, {
+        type: "ready",
+        uid: subject.user.uid,
+        home: subject.user.home,
+        cwd: subject.project.cwd,
+        backendCredential: false,
+      });
+      const lease = JSON.parse(
+        await readFile(`/var/lib/bb-agent-launcher/jobs/${jobId}.json`, "utf8"),
+      );
+      assert.equal(lease.userId, subject.user.id);
+      assert.equal(lease.uid, subject.user.uid);
+      let found = false;
+      for (const name of await readdir("/proc")) {
+        if (!/^\d+$/u.test(name)) continue;
+        try {
+          const command = await readFile(`/proc/${name}/cmdline`, "utf8");
+          if (!command.split("\0")[0].endsWith("/node")) continue;
+          if (!command.includes("/opt/bb-control-plane/workflow-evaluator.mjs"))
+            continue;
+          const status = await readFile(`/proc/${name}/status`, "utf8");
+          if (Number(status.match(/^Uid:\s+(\d+)/mu)[1]) !== subject.user.uid)
+            continue;
+          assert.match(status, /^NoNewPrivs:\s+1$/mu);
+          assert.equal(
+            BigInt(`0x${status.match(/^CapEff:\s+(\w+)/mu)[1]}`),
+            0n,
+          );
+          assert.ok(
+            status
+              .match(/^NSpid:\s+(.+)/mu)[1]
+              .trim()
+              .split(/\s+/u).length >= 2,
+          );
+          found = true;
+        } catch (error) {
+          if (error.code !== "ENOENT" && error.code !== "ESRCH") throw error;
+        }
+      }
+      assert.equal(
+        found,
+        true,
+        "No evaluator process with the registered external UID",
+      );
+    }
+    const [alice, bob] = active;
+    const foreign = await invoke([
+      "stop",
+      bob.subject.user.id,
+      String(bob.subject.user.uid),
+      alice.jobId,
+    ]);
+    assert.notEqual(foreign.code, 0);
+    assert.equal(alice.child.exitCode, null);
+    const stopped = await invoke([
+      "stop",
+      alice.subject.user.id,
+      String(alice.subject.user.uid),
+      alice.jobId,
+    ]);
+    assert.equal(stopped.code, 0, stopped.error);
+    await alice.completed;
+    alice.stopped = true;
+    assert.equal(bob.child.exitCode, null);
+    await assert.rejects(
+      readFile(`/var/lib/bb-agent-launcher/jobs/${alice.jobId}.json`),
+      (error) => error.code === "ENOENT",
+    );
+    const injection = await invoke([
+      "launch-workflow",
+      alice.subject.user.id,
+      String(alice.subject.user.uid),
+      randomUUID(),
+      alice.subject.project.cwd,
+      "--",
+      "--eval",
+      "process.exit(0)",
+    ]);
+    assert.notEqual(injection.code, 0);
+    assert.equal(injection.output, "");
+    const wrongCwd = await invoke([
+      "launch-workflow",
+      alice.subject.user.id,
+      String(alice.subject.user.uid),
+      randomUUID(),
+      bob.subject.project.cwd,
+    ]);
+    assert.notEqual(wrongCwd.code, 0);
+    return {
+      workflowExternalUidHomeCwdAndPidNamespace: true,
+      workflowNoNewPrivilegesOrBackendCredential: true,
+      workflowForeignStopAndCwdDenied: true,
+      workflowSameUserCommandOverrideDenied: true,
+      workflowStopPreservesOtherUsersEvaluator: true,
+      workflowEvaluatorsReapedAfterCancellationAndRevocation: true,
+    };
+  } finally {
+    for (const item of active) {
+      if (!item.stopped) {
+        const result = await invoke([
+          "stop",
+          item.subject.user.id,
+          String(item.subject.user.uid),
+          item.jobId,
+        ]);
+        assert.equal(result.code, 0, result.error);
+        await item.completed;
+      }
+      item.lines.close();
+    }
+    for (const file of await readdir("/var/lib/bb-agent-launcher/jobs")) {
+      const lease = JSON.parse(
+        await readFile(`/var/lib/bb-agent-launcher/jobs/${file}`, "utf8"),
+      );
+      if (!lease.pid) continue;
+      try {
+        const command = await readFile(`/proc/${lease.pid}/cmdline`, "utf8");
+        assert.equal(
+          command.includes("\0launch-workflow\0"),
+          false,
+          "A workflow supervisor survived completed cancellation",
+        );
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.code !== "ESRCH") throw error;
+      }
+    }
+  }
 }

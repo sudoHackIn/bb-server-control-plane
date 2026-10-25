@@ -1091,6 +1091,13 @@ export function createPluginApi(options: {
         assertLive();
         return source.withAuthority(id, run);
       },
+      evaluateWorkflow(id, input, signal, onEvent) {
+        assertLive();
+        return source.evaluateWorkflow(id, input, signal, (event) => {
+          assertLive();
+          onEvent(event);
+        });
+      },
     };
     return backgroundJobs;
   }

@@ -29,6 +29,7 @@ import {
   BUILTIN_WORKFLOWS_PLUGIN_ID,
   BUILTIN_AUTOMATIONS_PLUGIN_ID,
 } from "../services/plugins/builtin-registry.js";
+import { evaluateControlPlaneWorkflow } from "./workflow-evaluator.js";
 import { withControlPlaneJobAuthority } from "./job-authority.js";
 
 function denied(): never {
@@ -169,6 +170,23 @@ export function createControlPlaneBackgroundJobs(
           ? job.ownerUserId
           : null,
         id,
+      );
+    },
+    async evaluateWorkflow(id, input, signal, onEvent) {
+      const binding = required(id);
+      if (binding.kind !== "workflow-run") return denied();
+      return withControlPlaneJobAuthority(db, id, (context) =>
+        evaluateControlPlaneWorkflow(
+          context,
+          input,
+          signal,
+          (event) => {
+            withControlPlaneJobAuthority(db, id, () => onEvent(event));
+          },
+          () => {
+            withControlPlaneJobAuthority(db, id, () => undefined);
+          },
+        ),
       );
     },
     withAuthority(id, run) {

@@ -18,6 +18,10 @@ try {
   );
   for (const [source, target] of [
     ["apps/server/dist", "server"],
+    [
+      "apps/server/.control-plane-runtime/workflow-evaluator.mjs",
+      "workflow-evaluator.mjs",
+    ],
     ["packages/bundled-plugins/dist", "server/builtin-plugins"],
     ["apps/app/dist", "app"],
     ["apps/cli/dist", "cli"],
@@ -63,6 +67,16 @@ try {
   ]) {
     await cp(join(repo, source), join(directory, target), { recursive: true });
   }
+  await buildNodeEsmEntry({
+    cleanDist: false,
+    entryPoint: join(
+      repo,
+      "apps/server/test/fixtures/control-plane-workflow-evaluator-fixture.ts",
+    ),
+    outfile: join(directory, "workflow-evaluator-check.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
   await buildNodeEsmEntry({
     cleanDist: false,
     entryPoint: join(

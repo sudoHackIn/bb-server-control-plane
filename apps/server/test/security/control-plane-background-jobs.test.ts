@@ -66,6 +66,56 @@ it("admits only approved builtin hosts and captures the current user without acc
     const b = await withControlPlaneUser(bob.user.id, () =>
       jobs.bind(bob.input),
     );
+    await expect(
+      withControlPlaneUser(bob.user.id, () =>
+        jobs.evaluateWorkflow(
+          a.id,
+          {
+            body: "return null",
+            args: null,
+            maxAgentCalls: 1,
+            maxConcurrentAgents: 1,
+            timeoutMs: 1000,
+          },
+          new AbortController().signal,
+          () => {},
+        ),
+      ),
+    ).rejects.toThrow("not authorized");
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(
+      withControlPlaneUser(alice.user.id, () =>
+        jobs.evaluateWorkflow(
+          a.id,
+          {
+            body: "return null",
+            args: null,
+            maxAgentCalls: 1,
+            maxConcurrentAgents: 1,
+            timeoutMs: 1000,
+          },
+          aborted.signal,
+          () => {},
+        ),
+      ),
+    ).rejects.toThrow("cancelled before");
+    await expect(
+      withControlPlaneUser(alice.user.id, () =>
+        jobs.evaluateWorkflow(
+          a.id,
+          {
+            body: "return null",
+            args: null,
+            maxAgentCalls: 0,
+            maxConcurrentAgents: 1,
+            timeoutMs: 1000,
+          },
+          new AbortController().signal,
+          () => {},
+        ),
+      ),
+    ).rejects.toThrow();
     expect(a.ownerUserId).toBe(alice.user.id);
     expect(a.profileVersionId).toBe(alice.profile.versionId);
     expect(b.ownerUserId).toBe(bob.user.id);

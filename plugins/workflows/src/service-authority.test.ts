@@ -71,6 +71,9 @@ function fixture() {
       return binding;
     },
     remove: retire,
+    async evaluateWorkflow() {
+      throw new Error("Test evaluator not configured");
+    },
     withAuthority(id, run) {
       const binding = bindings.get(id);
       if (!binding) throw new Error("Missing test binding");
@@ -178,7 +181,7 @@ it("retires a cross-database reservation when the real native SQLite insert fail
   }
 });
 
-it("never evaluates managed or unassigned scripts in the shared service process", async () => {
+it("delegates managed evaluation and never evaluates unassigned scripts in the shared service process", async () => {
   const test = fixture();
   const controller = new AbortController();
   let worker: Promise<void> | undefined;
@@ -206,7 +209,9 @@ it("never evaluates managed or unassigned scripts in the shared service process"
       expect(test.service.get(owned.id)?.status).toBe("failed");
       expect(test.service.get(legacy.id)?.status).toBe("failed");
     });
-    expect(test.service.get(owned.id)?.error).toContain("isolated evaluator");
+    expect(test.service.get(owned.id)?.error).toContain(
+      "Test evaluator not configured",
+    );
     expect(test.service.get(legacy.id)?.error).toContain("unassigned");
     expect(test.service.get(owned.id)?.resultJson).toBeNull();
     expect(test.spawn).not.toHaveBeenCalled();

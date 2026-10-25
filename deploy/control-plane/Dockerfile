@@ -9,14 +9,15 @@ WORKDIR /opt/bb
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git util-linux python3 sudo acl && rm -rf /var/lib/apt/lists/* && mkdir -p /srv/bb && chown node:node /srv/bb
 COPY launcher /opt/bb-control-plane/launcher
 COPY --from=dependencies /opt/bb/node_modules ./node_modules
-RUN python3 -I /opt/bb-control-plane/launcher/install.py --service-user node --users-root /srv/agent-users --qwen-cli /opt/bb/node_modules/@qwen-code/sdk/dist/cli/cli.js
+COPY workflow-evaluator.mjs /opt/bb-control-plane/workflow-evaluator.mjs
+RUN python3 -I /opt/bb-control-plane/launcher/install.py --service-user node --users-root /srv/agent-users --qwen-cli /opt/bb/node_modules/@qwen-code/sdk/dist/cli/cli.js --workflow-evaluator /opt/bb-control-plane/workflow-evaluator.mjs
 COPY package.json ./
 COPY server ./apps/server/dist
 COPY app ./apps/app/dist
 COPY cli ./apps/cli/dist
 COPY host-daemon ./apps/host-daemon/dist
 COPY --chown=node:node control-plane-tool-plugin /srv/bb-tool-fixture
-COPY check-control-plane-workflows.mjs job-bindings-check.mjs check-control-plane-approvals.mjs check-control-plane-user-threads.mjs check-control-plane-browser-handshake.mjs ./
+COPY workflow-evaluator-check.mjs check-control-plane-workflows.mjs job-bindings-check.mjs check-control-plane-approvals.mjs check-control-plane-user-threads.mjs check-control-plane-browser-handshake.mjs ./
 COPY configure.mjs deployment-check.mjs namespace-denial.mjs check-control-plane-user-deployment.mjs check-control-plane-qwen-jobs.mjs check-control-plane-managed-runtime.mjs qwen-job-client.mjs qwen-server-query.mjs qwen-runtime-fixture.mjs ./
 ENV NODE_ENV=production BB_DATA_DIR=/srv/bb BB_SERVER_PORT=8080 BB_SERVER_BIND_HOST=0.0.0.0 BB_CONTROL_PLANE_REQUIRED=1 BB_TELEMETRY=0
 USER node
