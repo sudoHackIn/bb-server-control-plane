@@ -1,5 +1,5 @@
+import { controlPlaneBodyLimit, readControlPlaneJson } from "./request-body.js";
 import type { Context, Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import {
   controlPlaneProfileCreateSchema,
@@ -36,8 +36,8 @@ export function installControlPlaneProfileRoutes(
 ) {
   const admin = "/control-plane/admin/profiles";
   const user = "/control-plane/user/profiles";
-  app.use(`${admin}*`, bodyLimit({ maxSize: 1048576 }));
-  app.use(`${admin}*`, async (context, next) => {
+  app.use(`${admin}/*`, controlPlaneBodyLimit(1048576));
+  app.use(`${admin}/*`, async (context, next) => {
     if (
       !["admin", "service"].includes(currentControlPlanePrincipal()?.kind ?? "")
     )
@@ -130,7 +130,7 @@ export function installControlPlaneProfileRoutes(
     admin,
     handled(async (context) => {
       const parsed = controlPlaneProfileCreateSchema.safeParse(
-        await context.req.json().catch(() => null),
+        await readControlPlaneJson(context),
       );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
@@ -147,7 +147,7 @@ export function installControlPlaneProfileRoutes(
       const parsed = z
         .object({ definition: controlPlaneProfileDefinitionSchema })
         .strict()
-        .safeParse(await context.req.json().catch(() => null));
+        .safeParse(await readControlPlaneJson(context));
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
       const profileId = context.req.param("id") ?? "";
@@ -170,7 +170,7 @@ export function installControlPlaneProfileRoutes(
       path,
       handled(async (context) => {
         const parsed = enabledSchema.safeParse(
-          await context.req.json().catch(() => null),
+          await readControlPlaneJson(context),
         );
         if (!parsed.success)
           return context.json({ error: "invalid_request" }, 400);
@@ -188,7 +188,7 @@ export function installControlPlaneProfileRoutes(
     `${admin}/:id/access/:userId`,
     handled(async (context) => {
       const parsed = allowedSchema.safeParse(
-        await context.req.json().catch(() => null),
+        await readControlPlaneJson(context),
       );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);

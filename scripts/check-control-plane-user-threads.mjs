@@ -121,7 +121,15 @@ export function createUserThreadFixture({ db, users }) {
       const ca = await readFile("/tmp/bb-test-certificates/ca.crt");
       const send = async (
         path,
-        { token, certificate, method = "GET", body, form } = {},
+        {
+          token,
+          certificate,
+          method = "GET",
+          body,
+          form,
+          rawBody,
+          headers: extraHeaders = {},
+        } = {},
       ) => {
         const key = certificate
           ? await readFile(`/tmp/bb-test-certificates/${certificate}.key`)
@@ -147,6 +155,7 @@ export function createUserThreadFixture({ db, users }) {
                       "content-type": "application/x-www-form-urlencoded",
                     }
                   : {}),
+                ...extraHeaders,
               },
             },
             (res) => {
@@ -158,12 +167,26 @@ export function createUserThreadFixture({ db, users }) {
                 try {
                   value = JSON.parse(text);
                 } catch {}
-                resolve({ status: res.statusCode, body: value, text });
+                resolve({
+                  status: res.statusCode,
+                  body: value,
+                  text,
+                  headers: res.headers,
+                });
               });
             },
           );
-          req.on("error", reject);
-          req.end(form ?? (body ? JSON.stringify(body) : undefined));
+          req.on("error", (error) =>
+            reject(
+              new Error(
+                `${method} ${path} (reused socket: ${req.reusedSocket}): ${error.message}`,
+                {
+                  cause: error,
+                },
+              ),
+            ),
+          );
+          req.end(rawBody ?? form ?? (body ? JSON.stringify(body) : undefined));
         });
       };
       const cliBase = ["apps/cli/dist/index.js", "server", "access"];
@@ -436,6 +459,16 @@ export function createUserThreadFixture({ db, users }) {
         });
       }
       const [alice, bob] = created;
+      const inputLimits = await verifyControlPlaneInputLimits({
+        send,
+        db,
+        alice,
+        bob,
+        token: sessions.get("alice").token,
+        adminToken,
+        origin,
+        password,
+      });
       async function bindingCheck(mode, subjects) {
         const child = launch([
           "job-bindings-check.mjs",
@@ -877,6 +910,7 @@ export function createUserThreadFixture({ db, users }) {
       saved = { command, alice, wait, shutdownStream, bindingCheck, workflows };
       return {
         ...productionBrowser,
+        ...inputLimits,
         ...jobBindings,
         ...workflows.verification,
         personalThreadCertificateCliAndFreshEnvironment: true,
@@ -949,5 +983,368 @@ export function createUserThreadFixture({ db, users }) {
         personalNativeQwenSessionResumedWithHistory: true,
       };
     },
+  };
+}
+
+async function verifyControlPlaneInputLimits({
+  send,
+  db,
+  alice,
+  bob,
+  token,
+  adminToken,
+  origin,
+  password,
+}) {
+  const verifier = "body-cap-fixture-" + "a".repeat(32);
+  const start = await send("/control-plane/auth/start", {
+    method: "POST",
+    body: {
+      clientName: "Bounded input fixture",
+      challenge: createHash("sha256").update(verifier).digest("base64url"),
+    },
+  });
+  assert.equal(start.status, 200);
+  const flowId = start.body.flowId;
+  const path = new URL(start.body.authorizationUrl).pathname;
+  const page = await send(path, { certificate: "alice" });
+  assert.equal(page.status, 200);
+  const csrf = page.text.match(/name="csrf" value="([^"]+)"/u)?.[1];
+  assert.ok(csrf);
+  const approval = new URLSearchParams({
+    csrf,
+    decision: "approve",
+  }).toString();
+  assert.equal(
+    (
+      await send(path, {
+        certificate: "alice",
+        method: "POST",
+        form: approval + "&csrf=" + csrf,
+      })
+    ).status,
+    400,
+  );
+  async function sized(
+    path,
+    raw,
+    identity,
+    type,
+    framing,
+    certificate,
+    method = "POST",
+  ) {
+    return send(path, {
+      method,
+      token: identity,
+      certificate,
+      rawBody: raw,
+      headers: {
+        origin,
+        "content-type": type,
+        ...(framing === "length"
+          ? { "content-length": String(Buffer.byteLength(raw)) }
+          : { "transfer-encoding": "chunked" }),
+      },
+    });
+  }
+  for (const framing of ["length", "chunked"]) {
+    const result = await sized(
+      path,
+      approval + "&".repeat(4096),
+      null,
+      "application/x-www-form-urlencoded",
+      framing,
+      "alice",
+    );
+    assert.equal(result.status, 413, `certificate approval form ${framing}`);
+    assert.equal(
+      db
+        .prepare("SELECT status FROM control_plane_auth_flows WHERE id = ?")
+        .get(flowId).status,
+      "pending",
+    );
+  }
+  assert.equal(
+    (await send(path, { certificate: "alice", method: "POST", form: approval }))
+      .status,
+    200,
+  );
+  const tables = [
+    "control_plane_users",
+    "control_plane_projects",
+    "control_plane_profiles",
+    "control_plane_profile_versions",
+    "control_plane_profile_access",
+    "control_plane_user_sessions",
+    "control_plane_auth_flows",
+    "control_plane_job_bindings",
+    "threads",
+    "queued_thread_messages",
+  ];
+  function snapshot() {
+    return {
+      counts: tables.map(
+        (table) =>
+          db.prepare(`SELECT count(*) AS value FROM ${table}`).get().value,
+      ),
+      flow: db
+        .prepare("SELECT status FROM control_plane_auth_flows WHERE id = ?")
+        .get(flowId).status,
+      version: db
+        .prepare(
+          "SELECT enabled FROM control_plane_profile_versions WHERE id = ?",
+        )
+        .get(alice.profile.body.version.id).enabled,
+      profile: db
+        .prepare("SELECT enabled FROM control_plane_profiles WHERE id = ?")
+        .get(alice.profile.body.profile.id).enabled,
+      ownThreads: db
+        .prepare("SELECT id,status FROM threads WHERE id IN (?,?) ORDER BY id")
+        .all(alice.thread.id, bob.thread.id),
+    };
+  }
+  const before = snapshot();
+  const profile = `/control-plane/admin/profiles/${alice.profile.body.profile.id}`;
+  const thread = `/control-plane/user/threads/${alice.thread.id}`;
+  const definition = alice.profile.body.version.definition;
+  const cases = [
+    {
+      path: "/control-plane/user/threads",
+      limit: 1048576,
+      identity: token,
+      payload: {
+        projectId: alice.project.projectId,
+        profileVersionId: alice.profile.body.version.id,
+        message: "Must not start oversized input",
+      },
+    },
+    {
+      path: thread + "/send",
+      limit: 1048576,
+      identity: token,
+      payload: { message: "Must not send oversized input" },
+    },
+    {
+      path: thread + "/interactions/missing/resolve",
+      limit: 1048576,
+      identity: token,
+      payload: {},
+    },
+    { path: thread + "/stop", limit: 1048576, identity: token, payload: {} },
+    {
+      path: "/control-plane/admin/profiles",
+      limit: 1048576,
+      identity: adminToken,
+      payload: {
+        slug: "body-limit-rejected",
+        name: "Body limit rejected",
+        definition,
+      },
+    },
+    {
+      path: profile + "/versions",
+      limit: 1048576,
+      identity: adminToken,
+      payload: { definition },
+    },
+    {
+      path: profile + "/enabled",
+      limit: 1048576,
+      identity: adminToken,
+      payload: { enabled: false },
+      method: "PUT",
+    },
+    {
+      path: profile + "/versions/" + alice.profile.body.version.id + "/enabled",
+      limit: 1048576,
+      identity: adminToken,
+      payload: { enabled: false },
+      method: "PUT",
+    },
+    {
+      path: profile + "/access/" + alice.user.id,
+      limit: 1048576,
+      identity: adminToken,
+      payload: { allowed: false },
+      method: "PUT",
+    },
+    {
+      path: "/control-plane/user/projects",
+      limit: 4096,
+      identity: token,
+      payload: { slug: "body-limit-rejected", name: "Body limit rejected" },
+    },
+    {
+      path: "/control-plane/user/environment",
+      limit: 1024,
+      identity: token,
+      payload: {},
+    },
+    {
+      path: "/control-plane/user/logout",
+      limit: 1024,
+      identity: token,
+      payload: {},
+    },
+    {
+      path: "/control-plane/logout",
+      limit: 1024,
+      identity: adminToken,
+      payload: {},
+    },
+    {
+      path: "/control-plane/auth/start",
+      limit: 4096,
+      payload: { clientName: "Must not register", challenge: "a".repeat(43) },
+    },
+    {
+      path: "/control-plane/auth/exchange",
+      limit: 4096,
+      payload: { flowId, verifier },
+    },
+    {
+      path: "/control-plane/login",
+      limit: 8192,
+      payload: { login: "operator", password },
+    },
+    {
+      path: "/control-plane/user/login",
+      limit: 1024,
+      certificate: "alice",
+      payload: {},
+    },
+    {
+      path: "/control-plane/user/workflows",
+      limit: 4194304,
+      identity: token,
+      payload: {
+        originThreadId: alice.thread.id,
+        script:
+          'export const meta={name:"oversized",description:"Must not register"}; return 1;',
+      },
+    },
+    {
+      path: "/control-plane/user/workflows/missing/stop",
+      limit: 4194304,
+      identity: token,
+      payload: {},
+    },
+  ];
+  for (const framing of ["length", "chunked"]) {
+    for (const row of cases) {
+      const result = await sized(
+        row.path,
+        JSON.stringify(row.payload) + " ".repeat(row.limit),
+        row.identity,
+        "application/json",
+        framing,
+        row.certificate,
+        row.method ?? "POST",
+      );
+      assert.equal(result.status, 413, `${framing} ${row.path}`);
+      assert.equal(result.headers.connection, "close");
+      assert.deepEqual(snapshot(), before);
+    }
+    const form =
+      new URLSearchParams({ login: "operator", password }).toString() +
+      "&".repeat(8192);
+    assert.equal(
+      (
+        await sized(
+          "/control-plane/login",
+          form,
+          null,
+          "application/x-www-form-urlencoded",
+          framing,
+        )
+      ).status,
+      413,
+    );
+    assert.deepEqual(snapshot(), before);
+  }
+  for (const [path, identity] of [
+    [thread + "/stop", token],
+    ["/control-plane/user/logout", token],
+    ["/control-plane/logout", adminToken],
+  ]) {
+    assert.equal(
+      (
+        await send(path, {
+          token: identity,
+          method: "POST",
+          body: { model: "must-not-be-ignored" },
+        })
+      ).status,
+      400,
+    );
+    assert.deepEqual(snapshot(), before);
+  }
+  assert.equal(
+    (await send("/control-plane/session", { token: adminToken })).status,
+    200,
+  );
+  assert.equal((await send("/control-plane/user", { token })).status, 200);
+  assert.equal(
+    (
+      await send("/control-plane/auth/start", {
+        method: "POST",
+        rawBody: "{invalid",
+        headers: { "content-type": "application/json" },
+      })
+    ).status,
+    400,
+  );
+  const exchanged = await send("/control-plane/auth/exchange", {
+    method: "POST",
+    body: { flowId, verifier },
+  });
+  assert.equal(exchanged.status, 200);
+  assert.equal(exchanged.body.status, "authorized");
+  assert.equal(
+    (
+      await send("/control-plane/user/logout", {
+        method: "POST",
+        token: exchanged.body.accessToken,
+        body: {},
+      })
+    ).status,
+    200,
+  );
+  const form = await send("/control-plane/login", {
+    method: "POST",
+    form: new URLSearchParams({ login: "operator", password }).toString(),
+  });
+  assert.equal(form.status, 303);
+  const adminCookie = form.headers["set-cookie"]?.find((value) =>
+    value.startsWith("bb_admin_session="),
+  );
+  assert.ok(adminCookie);
+  const extraToken = adminCookie.match(/^bb_admin_session=([^;]+)/u)?.[1];
+  assert.ok(extraToken);
+  assert.equal(
+    (
+      await send("/control-plane/logout", {
+        method: "POST",
+        token: decodeURIComponent(extraToken),
+        body: {},
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await send("/control-plane/session", { token: adminToken })).status,
+    200,
+  );
+  assert.equal((await send("/control-plane/user", { token })).status, 200);
+  return {
+    rootAndNestedControlPlaneInputBudgets: true,
+    contentLengthAndChunkedLimitsRejectBeforeMutation: true,
+    certificateApprovalFormLimitAndNoDecision: true,
+    browserCertificateLoginBodyLimit: true,
+    oversizedExchangePreservesApprovedFlowAndSessions: true,
+    boundedFormAndJsonReadersPreserveNormalLogin: true,
+    unknownStopAndLogoutFieldsRejectedBeforeMutation: true,
+    duplicateCertificateFormFieldsRejected: true,
   };
 }

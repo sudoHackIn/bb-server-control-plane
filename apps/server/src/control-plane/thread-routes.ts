@@ -1,5 +1,9 @@
+import {
+  controlPlaneBodyLimit,
+  readControlPlaneJson,
+  hasControlPlaneEmptyBody,
+} from "./request-body.js";
 import type { Context, Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import {
   controlPlaneTimelinePageSchema,
@@ -50,13 +54,13 @@ export function installControlPlaneThreadRoutes(
   authenticate: (context: Context) => { user: { id: string } } | null,
 ) {
   const base = "/control-plane/user/threads";
-  app.use(`${base}*`, async (context, next) => {
+  app.use(`${base}/*`, async (context, next) => {
     if (!authenticate(context))
       return context.json({ error: "authentication_required" }, 401);
     context.header("cache-control", "no-store");
     return next();
   });
-  app.use(`${base}*`, bodyLimit({ maxSize: 1048576 }));
+  app.use(`${base}/*`, controlPlaneBodyLimit(1048576));
   const handled =
     (run: (context: Context, userId: string) => Response | Promise<Response>) =>
     async (context: Context) => {
@@ -89,7 +93,7 @@ export function installControlPlaneThreadRoutes(
     base,
     handled(async (context, userId) => {
       const parsed = controlPlaneThreadStartSchema.safeParse(
-        await context.req.json().catch(() => null),
+        await readControlPlaneJson(context),
       );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
@@ -187,7 +191,7 @@ export function installControlPlaneThreadRoutes(
       const id = context.req.param("id") ?? "";
       service.get(userId, id);
       const parsed = controlPlaneThreadSendSchema.safeParse(
-        await context.req.json().catch(() => null),
+        await readControlPlaneJson(context),
       );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
@@ -196,9 +200,13 @@ export function installControlPlaneThreadRoutes(
   );
   app.post(
     `${base}/:id/stop`,
-    handled(async (context, userId) =>
-      context.json(await service.stop(userId, context.req.param("id") ?? "")),
-    ),
+    handled(async (context, userId) => {
+      if (!(await hasControlPlaneEmptyBody(context)))
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(
+        await service.stop(userId, context.req.param("id") ?? ""),
+      );
+    }),
   );
   app.get(
     `${base}/:id/interactions`,
@@ -212,7 +220,7 @@ export function installControlPlaneThreadRoutes(
       const id = context.req.param("id") ?? "";
       service.get(userId, id);
       const parsed = controlPlaneThreadResolutionSchema.safeParse(
-        await context.req.json().catch(() => null),
+        await readControlPlaneJson(context),
       );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);

@@ -1558,3 +1558,29 @@ not reduce the advertised source/argument bounds. The wildcard covers the root
 and nested workflow routes. Oversized streams propagate the body-limit error;
 invalid JSON remains a 400 response. This bound does not increase native script,
 argument, result, process or execution budgets.
+
+Shared-server control-plane bodies are bounded before parsing and mutation:
+
+| Interface                                                            | HTTP body limit |
+| -------------------------------------------------------------------- | --------------- |
+| Administrative login, JSON or form                                   | 8 KiB           |
+| Certificate/PKCE flow start, approval and exchange                   | 4 KiB           |
+| Personal project creation                                            | 4 KiB           |
+| Administrative profile create/version/enable/access                  | 1 MiB           |
+| Personal thread start/send/resolve/stop                              | 1 MiB           |
+| Environment provisioning, certificate browser login and both logouts | 1 KiB           |
+| Personal workflow routes                                             | 4 MiB           |
+
+A body-limit rejection returns JSON `payload_too_large` with HTTP 413 and
+`Connection: close`, so another request does not follow an unread oversized
+body on that socket. Both Content-Length and streamed/chunked requests
+use the same budgets. JSON syntax errors remain 400, and form parsing retains
+its original Content-Type after the bounded read. Duplicate form fields are
+rejected instead of choosing one value.
+
+Thread/workflow stop and both logout actions accept an empty body or `{}`;
+additional fields are rejected before stopping work or revoking a session.
+Certificate browser sign-in continues to require an empty body. These changes
+add no configuration override, CLI option or Plugin SDK member. The budgets
+cover the existing control-plane body-consuming actions; they do not constitute
+a complete audit of native BB APIs, daemon RPC or all request metadata.

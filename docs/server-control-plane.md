@@ -1620,3 +1620,48 @@ lint/format/diff checks pass. The final Docker build/deployment passes all 63
 tasks in 6 minutes 12 seconds, including the escaped HTTP envelope and personal
 API cancellation of actual running Qwen workers. No full-repository or overall
 background-stage completion is claimed.
+
+## Thirty-ninth increment: control-plane body-consuming input boundaries
+
+Administrative profile budgets/guards and personal-thread middleware used the
+Hono `/base*` pattern, which did not cover the intended root and nested routes.
+They now use `/base/*`. A shared bounded JSON/form reader propagates stream-size
+errors before schema parsing, database writes, session issuance or cancellation.
+JSON syntax remains a 400 response. Form parsing preserves its original
+Content-Type after the bounded read, including ordinary URL-encoded browser
+forms, and rejects duplicate fields rather than choosing a value.
+
+All existing body budgets remain unchanged. Both logout endpoints now have a
+1 KiB budget; thread/workflow stop and both logouts reject action fields while
+accepting an empty body or optional `{}`. The certificate browser-login body
+remains strictly empty. Administrative profile module guards also deny a user
+principal at root/nested entry points independently of the outer access gate.
+
+The first real-network matrix observed `socket hang up` on a request following an
+early oversized-body rejection. The common rejection response now emits JSON
+HTTP 413 with `Connection: close`. No client retry or exemption is added. The
+normal keep-alive client remains in the Docker matrix and requires HTTP 413,
+not a generic connection failure, for every oversized input.
+
+Verification uses real migrated SQLite and root/nested Content-Length/streamed
+requests, including valid payloads padded beyond the budget. It asserts that
+no profiles, grants, projects, threads, jobs or sessions change. Docker additionally
+uses actual client certificates for approval/browser-login bodies, verifies an
+oversized exchange does not consume its approved flow, rejects duplicate form
+fields and performs valid login/exchange/logout afterwards. Completed evidence
+is recorded in `control-plane-phase-39-verification.json`.
+
+This closes the enumerated body-consuming control-plane boundaries. Query/other
+request metadata, native BB/daemon admission, personal workflow definitions/UI,
+automations, schedules, legacy assignment and remaining recovery checks are
+still separate required work. No overall multi-user/background completion is
+claimed.
+
+Final verification passes 16 server tests across access, certificate auth,
+profiles, threads, workflows and browser context/UI, including the real-SQLite
+32-case body-budget matrix and direct profile-module role guards. Strict server
+types and changed-file lint/format/diff checks pass. The final Docker build and
+deployment pass all 63 tasks in 5 minutes 44 seconds. Its 42 oversized-body probes
+require HTTP 413 using the normal keep-alive client and preserve the saved state;
+normal certificate approval, login/exchange and the existing actual Qwen,
+workflow/restart/crash checks also pass.

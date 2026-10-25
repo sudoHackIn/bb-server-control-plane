@@ -1,7 +1,7 @@
+import { controlPlaneBodyLimit } from "./request-body.js";
 import { createHash, randomBytes } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { bodyLimit } from "hono/body-limit";
 import type { ControlPlaneRegistry } from "@bb/db";
 import { controlPlaneBrowserReturnTo } from "@bb/server-contract";
 
@@ -59,7 +59,7 @@ export function createControlPlaneBrowserAccess({
       controlPlaneBrowserToken(context) !== null,
     install(app: Hono, signOutAdministrator: (context: Context) => void) {
       const path = "/control-plane/user/login";
-      app.use(path, bodyLimit({ maxSize: 1024 }));
+      app.use(path, controlPlaneBodyLimit(1024));
       app.get(path, (context) => {
         const login = certificateLogin(context);
         if (!login)

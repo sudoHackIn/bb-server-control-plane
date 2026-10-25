@@ -1,4 +1,10 @@
 import {
+  controlPlaneBodyLimit,
+  readControlPlaneJson,
+  readControlPlaneForm,
+  hasControlPlaneEmptyBody,
+} from "./request-body.js";
+import {
   installControlPlaneWorkflowRoutes,
   isControlPlaneWorkflowPath,
 } from "./workflow-routes.js";
@@ -18,7 +24,6 @@ import {
   listControlPlaneProfiles,
 } from "@bb/db";
 import type { Context, Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { createControlPlaneProvisioner } from "./provisioning.js";
 import type { ControlPlaneProjectService } from "./projects.js";
@@ -207,7 +212,7 @@ export function createControlPlaneUserAccess(
           },
         });
       });
-      app.use("/control-plane/user/projects", bodyLimit({ maxSize: 4096 }));
+      app.use("/control-plane/user/projects", controlPlaneBodyLimit(4096));
       app.get("/control-plane/user/projects", (context) => {
         const value = authenticate(context);
         if (!value)
@@ -255,7 +260,7 @@ export function createControlPlaneUserAccess(
             slug: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/u),
           })
           .strict()
-          .safeParse(await context.req.json().catch(() => null));
+          .safeParse(await readControlPlaneJson(context));
         if (!parsed.success)
           return context.json({ error: "invalid_request" }, 400);
         if (!projects || value.user.environmentStatus !== "ready")
@@ -280,7 +285,7 @@ export function createControlPlaneUserAccess(
             : context.json({ error: "project_unavailable" }, 503);
         }
       });
-      app.use("/control-plane/user/environment", bodyLimit({ maxSize: 1024 }));
+      app.use("/control-plane/user/environment", controlPlaneBodyLimit(1024));
       app.get("/control-plane/user/environment", (context) => {
         const value = authenticate(context);
         if (!value)
@@ -322,10 +327,10 @@ export function createControlPlaneUserAccess(
           return context.json({ error: "environment_unavailable" }, 503);
         }
       });
-      app.use("/control-plane/auth/*", bodyLimit({ maxSize: 4096 }));
+      app.use("/control-plane/auth/*", controlPlaneBodyLimit(4096));
       app.post("/control-plane/auth/start", async (context) => {
         const parsed = startSchema.safeParse(
-          await context.req.json().catch(() => null),
+          await readControlPlaneJson(context),
         );
         if (!parsed.success)
           return context.json({ error: "invalid_request" }, 400);
@@ -369,7 +374,7 @@ export function createControlPlaneUserAccess(
         if (context.req.header("origin") !== publicOrigin)
           return context.json({ error: "forbidden_origin" }, 403);
         const parsed = decisionSchema.safeParse(
-          await context.req.parseBody().catch(() => null),
+          await readControlPlaneForm(context),
         );
         if (!parsed.success)
           return context.json({ error: "invalid_request" }, 400);
@@ -404,7 +409,7 @@ export function createControlPlaneUserAccess(
       });
       app.post("/control-plane/auth/exchange", async (context) => {
         const parsed = exchangeSchema.safeParse(
-          await context.req.json().catch(() => null),
+          await readControlPlaneJson(context),
         );
         if (!parsed.success)
           return context.json({ error: "invalid_request" }, 400);
@@ -456,10 +461,13 @@ export function createControlPlaneUserAccess(
           expiresAt: value.expiresAt,
         });
       });
-      app.post("/control-plane/user/logout", (context) => {
+      app.use("/control-plane/user/logout", controlPlaneBodyLimit(1024));
+      app.post("/control-plane/user/logout", async (context) => {
         const value = authenticate(context);
         if (!value)
           return context.json({ error: "authentication_required" }, 401);
+        if (!(await hasControlPlaneEmptyBody(context)))
+          return context.json({ error: "invalid_request" }, 400);
         registry.revoke(value.digest);
         if (browser.usesCookie(context)) {
           browser.clear(context);

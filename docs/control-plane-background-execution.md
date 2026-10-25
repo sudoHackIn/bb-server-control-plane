@@ -414,3 +414,21 @@ Inline source and bounded JSON arguments are the initial authoring interface.
 CLI `--file` reads locally. Definitions, dedicated job progress subscriptions,
 workflow UI, automation/schedule operations and the remaining pending-execution/
 recovery audit are not completed by this increment.
+
+## HTTP input boundaries for personal execution
+
+The personal thread middleware and administrative profile guards now use the
+verified root-and-nested Hono wildcard. Bounded JSON/form readers preserve
+transport size failures instead of turning them into malformed-JSON errors.
+Workflow bodies retain their 4 MiB envelope and tighter source/argument bounds.
+Cancelling a thread/run or signing out accepts no action parameters beyond an
+optional empty object, so a caller cannot accidentally send ignored overrides.
+
+HTTP 413 responses explicitly close the connection and contain a structured
+error. Docker retains a normal keep-alive client, submits Content-Length and
+chunked oversized requests across the control-plane body consumers, and then
+performs valid authenticated requests. It checks unchanged profiles, grants,
+projects, threads, job bindings and sessions; an oversized exchange leaves its
+approved certificate flow unconsumed. Normal JSON/form login and certificate
+approval still work, and a valid exchange can subsequently consume that flow.
+The execution, retry, recovery and UI work listed above remains required.

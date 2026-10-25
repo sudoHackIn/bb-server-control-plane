@@ -1,5 +1,9 @@
+import {
+  controlPlaneBodyLimit,
+  readControlPlaneJson,
+  hasControlPlaneEmptyBody,
+} from "./request-body.js";
 import type { Context, Hono } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { ControlPlaneThreadError } from "@bb/db";
 import { controlPlaneWorkflowStartSchema } from "@bb/domain";
@@ -21,7 +25,7 @@ export function installControlPlaneWorkflowRoutes(
   authenticate: (context: Context) => { user: { id: string } } | null,
 ) {
   const base = "/control-plane/user/workflows";
-  app.use(`${base}/*`, bodyLimit({ maxSize: 4 * 1024 * 1024 }));
+  app.use(`${base}/*`, controlPlaneBodyLimit(4 * 1024 * 1024));
   function route(run: (context: Context, userId: string) => Promise<Response>) {
     return async (context: Context) => {
       const identity = authenticate(context);
@@ -61,15 +65,9 @@ export function installControlPlaneWorkflowRoutes(
   app.post(
     base,
     route(async (context, userId) => {
-      let body: unknown;
-      try {
-        body = await context.req.json();
-      } catch (error) {
-        if (error instanceof SyntaxError)
-          return context.json({ error: "invalid_request" }, 400);
-        throw error;
-      }
-      const parsed = controlPlaneWorkflowStartSchema.safeParse(body);
+      const parsed = controlPlaneWorkflowStartSchema.safeParse(
+        await readControlPlaneJson(context),
+      );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
       return context.json(await service.start(userId, parsed.data), 201);
@@ -101,7 +99,7 @@ export function installControlPlaneWorkflowRoutes(
     const handler = route(async (context, userId) => {
       if (
         Object.keys(context.req.query()).length ||
-        (operation === "stop" && (await context.req.text()).length)
+        (operation === "stop" && !(await hasControlPlaneEmptyBody(context)))
       )
         return context.json({ error: "invalid_request" }, 400);
       return context.json(

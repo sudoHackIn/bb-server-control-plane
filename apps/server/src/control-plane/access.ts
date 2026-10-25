@@ -1,3 +1,9 @@
+import {
+  controlPlaneBodyLimit,
+  readControlPlaneJson,
+  readControlPlaneForm,
+  hasControlPlaneEmptyBody,
+} from "./request-body.js";
 import { dispatchControlPlaneDispatchRead } from "./sdk-dispatch-read.js";
 import { dispatchControlPlaneEnvironmentRead } from "./sdk-environment-read.js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -5,7 +11,6 @@ import { createHash, randomBytes } from "node:crypto";
 import type { Context, Hono } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { WebSocket, WebSocketServer } from "ws";
 import type { ControlPlaneConfig } from "./config.js";
@@ -311,7 +316,7 @@ export function createControlPlaneAccess(
       );
       app.post(
         "/control-plane/login",
-        bodyLimit({ maxSize: 8192 }),
+        controlPlaneBodyLimit(8192),
         async (context) => {
           const json =
             context.req.header("content-type")?.split(";")[0] ===
@@ -335,9 +340,9 @@ export function createControlPlaneAccess(
             return context.json({ error: "try_again_later" }, 429);
           }
           const parsed = loginSchema.safeParse(
-            await (json ? context.req.json() : context.req.parseBody()).catch(
-              () => null,
-            ),
+            await (json
+              ? readControlPlaneJson(context)
+              : readControlPlaneForm(context)),
           );
           if (!parsed.success)
             return context.json({ error: "invalid_login" }, 400);
@@ -393,7 +398,10 @@ export function createControlPlaneAccess(
           '<!doctype html><html lang="en"><meta charset="utf-8"><title>BB sign out</title><form method="post" action="/control-plane/logout"><button type="submit">Sign out of BB administration</button></form></html>',
         ),
       );
-      app.post("/control-plane/logout", (context) => {
+      app.use("/control-plane/logout", controlPlaneBodyLimit(1024));
+      app.post("/control-plane/logout", async (context) => {
+        if (!(await hasControlPlaneEmptyBody(context)))
+          return context.json({ error: "invalid_request" }, 400);
         const value = session(context);
         if (value) revoke(value.key);
         context.header("clear-site-data", '"cache", "storage"');
