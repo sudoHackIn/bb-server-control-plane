@@ -432,6 +432,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     { manifest: PluginManifest; brandingAssets: PluginBrandingAssetSet }
   >();
   const hungServices = new Map<string, Set<string>>();
+  const pendingDisposals = new Map<string, Promise<void>>();
   const needsConfiguration = new Map<string, string>();
   const agentToolProblems = new Map<string, string>();
   const handlerStats = new Map<string, PluginHandlerStats>();
@@ -846,6 +847,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): Promise<
     { ok: true; value: T } | { ok: false; error: string; cause: unknown }
   > {
+    if (disposingPluginIds.has(id))
+      return {
+        ok: false,
+        error: `plugin "${id}" is disposing`,
+        cause: new Error("Plugin is disposing"),
+      };
     const stats = statsFor(id);
     const startedAt = performance.now();
     let settle!: () => void;
@@ -884,15 +891,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   async function drainInvocations(id: string): Promise<void> {
     const pending = pendingInvocations.get(id);
     if (!pending || pending.size === 0) return;
-    const drained = await settledWithin(
-      Promise.all([...pending]),
-      serviceStopTimeoutMs,
-    );
-    if (!drained) {
-      logger.warn(
-        `plugin ${id}: ${pending.size} in-flight invocation(s) did not settle before dispose; proceeding`,
-      );
-    }
+    await Promise.all([...pending]);
     if (pending.size === 0) pendingInvocations.delete(id);
   }
 
@@ -1562,6 +1561,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       logger.warn(`plugin ${row.id} not loaded (${status}): ${detail}`);
       return detail;
     }
+    if (pendingDisposals.has(row.id)) {
+      const detail = "Plugin cleanup is still running";
+      setStatus(row.id, "degraded", detail);
+      return detail;
+    }
     const hung = hungServices.get(row.id);
     if (hung !== undefined && hung.size > 0) {
       const detail = hungServicesDetail(hung);
@@ -1629,6 +1633,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         return context.machineEnrollments.forOwner(row.id);
       },
       getAppUrl: deps.getAppUrl ?? (() => null),
+      isBackgroundExecutionStopping: () =>
+        backgroundServicesQuiesced || disposingPluginIds.has(row.id),
       getBackgroundJobs: () =>
         deps.getBackgroundJobs?.(row.id, row.provenance === "builtin") ?? null,
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
@@ -1918,12 +1924,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (previous !== undefined) {
       await disposePluginInstance(row.id, previous);
       const hungAfterDispose = hungServices.get(row.id);
-      if (hungAfterDispose !== undefined && hungAfterDispose.size > 0) {
+      if (
+        (hungAfterDispose !== undefined && hungAfterDispose.size > 0) ||
+        pendingDisposals.has(row.id)
+      ) {
         for (const rollback of rollbackGenerations.reverse()) rollback();
         loaded.delete(row.id);
         deps.sharedPorts?.clearDeclarationsForOwner(row.id);
         discardCandidateHandle(handle);
-        return hungServicesDetail(hungAfterDispose);
+        return hungAfterDispose?.size
+          ? hungServicesDetail(hungAfterDispose)
+          : "Plugin cleanup is still running";
       }
       releaseMutableRoots(
         [...previous.moduleRootUrls].filter(
@@ -1977,6 +1988,29 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     id: string,
     plugin: LoadedPlugin,
   ): Promise<void> {
+    if (pendingDisposals.has(id)) return;
+    let deferred = false;
+    async function finish() {
+      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+        try {
+          await hook();
+        } catch (error) {
+          logger.warn(
+            `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      await drainInvocations(id);
+      for (const database of plugin.handle.databaseHandles.splice(0)) {
+        try {
+          database.close();
+        } catch (error) {
+          logger.warn(
+            `plugin ${id} database close failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+    }
     disposingPluginIds.add(id);
     try {
       plugin.handle.closeWebSockets();
@@ -2002,28 +2036,34 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         );
       }
       await stopServices(id, plugin);
-      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
-        try {
-          await hook();
-        } catch (error) {
+      const completion = Promise.allSettled(
+        plugin.services.flatMap((service) =>
+          service.current ? [service.current] : [],
+        ),
+      ).then(finish);
+      if (!(await settledWithin(completion, serviceStopTimeoutMs))) {
+        deferred = true;
+        if (!hungServices.get(id)?.size)
+          setStatus(id, "degraded", "Plugin cleanup is still running");
+        const task = completion.finally(() => {
+          releaseMutableRoots(plugin.moduleRootUrls);
+          pendingDisposals.delete(id);
+          plugin.handle.invalidate();
+          disposingPluginIds.delete(id);
+        });
+        pendingDisposals.set(id, task);
+        void task.catch((error: unknown) =>
           logger.warn(
-            `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-      await drainInvocations(id);
-      for (const database of plugin.handle.databaseHandles.splice(0)) {
-        try {
-          database.close();
-        } catch (error) {
-          logger.warn(
-            `plugin ${id} database close failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
+            `plugin ${id} deferred cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
+        return;
       }
     } finally {
-      plugin.handle.invalidate();
-      disposingPluginIds.delete(id);
+      if (!deferred) {
+        plugin.handle.invalidate();
+        disposingPluginIds.delete(id);
+      }
     }
   }
 
@@ -2034,7 +2074,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     loaded.delete(id);
     deps.hub.notifyPluginChanged(id, null);
     await disposePluginInstance(id, plugin);
-    releaseMutableRoots(plugin.moduleRootUrls);
+    if (!pendingDisposals.has(id)) releaseMutableRoots(plugin.moduleRootUrls);
     hostArtifacts.delete(id);
     deps.sharedPorts?.clearDeclarationsForOwner(id);
   }
@@ -2064,7 +2104,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     find: (plugin: LoadedPlugin) => T | undefined,
   ): PluginWireLookup<T> {
     const plugin = loaded.get(id);
-    if (!plugin) {
+    if (!plugin || disposingPluginIds.has(id)) {
       const row = getInstalledPlugin(deps.db, id);
       if (!row) return { outcome: "unknown-plugin" };
       return {

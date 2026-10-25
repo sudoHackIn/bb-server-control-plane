@@ -11,9 +11,11 @@ export async function verifyScriptAutomations({
   commandProcesses,
   userRequest,
   userCommand,
+  setPluginEnabled,
 }) {
   const definitions = [];
   let crashCases = [];
+  let shutdownCases = [];
   async function create(subject, source, runAt = Date.now() + 3600000) {
     const value = await rpc("automations_create", {
       projectId: subject.project.projectId,
@@ -232,6 +234,34 @@ export async function verifyScriptAutomations({
       .get(scheduled.id).n,
     1,
   );
+  const unloading = await Promise.all(subjects.map(hanging));
+  await setPluginEnabled(false);
+  for (const item of unloading) {
+    await terminal(item.started.id, "cancelled");
+    assert.equal((await commandProcesses(item.marker)).length, 0);
+    assert.equal(
+      (
+        await userRequest(
+          item.subject.user.login,
+          `/control-plane/user/automations/${item.value.id}`,
+        )
+      ).status,
+      503,
+    );
+  }
+  await setPluginEnabled(true);
+  const fresh = await run(unloading[0].value);
+  await wait(
+    async () => (await commandProcesses(unloading[0].marker)).length > 0,
+    "re-enabled script controller admits a fresh run",
+  );
+  assert.notEqual(fresh.id, unloading[0].started.id);
+  await rpc("controlPlaneAutomationStop", {
+    ...input(unloading[0].value),
+    runId: fresh.id,
+  });
+  await terminal(fresh.id, "cancelled");
+  assert.equal((await commandProcesses(unloading[0].marker)).length, 0);
   return {
     verification: {
       nativeScriptAutomationsTwoOwnerUidHomeCwd: true,
@@ -244,6 +274,9 @@ export async function verifyScriptAutomations({
       nativeScriptCancellationPreservesOtherOwnerAndFailureBudget: true,
       nativeScriptDeleteReapsBeforeRemoval: true,
       nativeScriptOnceScheduleSingleFire: true,
+      scriptPluginUnloadReapsBothOwnerCommandsBeforeStorageClose: true,
+      disabledScriptPluginPublicApiUnavailable: true,
+      reenabledScriptControllerAdmitsFreshRun: true,
     },
     async beforeCrash(serverPid) {
       crashCases = await Promise.all(subjects.map(hanging));
@@ -305,6 +338,7 @@ export async function verifyScriptAutomations({
       }
     },
     async beforeRestart() {
+      shutdownCases = await Promise.all(subjects.map(hanging));
       const value = await create(
         subjects[1],
         'console.log("offline-script");',
@@ -312,7 +346,25 @@ export async function verifyScriptAutomations({
       );
       return value;
     },
-    afterShutdown(offline) {
+    async afterShutdown(offline) {
+      for (const item of shutdownCases) {
+        assert.equal(row(item.started.id).status, "cancelled");
+        assert.equal((await commandProcesses(item.marker)).length, 0);
+        assert.equal(
+          storage
+            .prepare(
+              "SELECT cleanup_error FROM automation_script_attempts WHERE run_id=?",
+            )
+            .get(item.started.id).cleanup_error,
+          null,
+        );
+        assert.equal(
+          storage
+            .prepare("SELECT consecutive_failures FROM automations WHERE id=?")
+            .get(item.value.id).consecutive_failures,
+          0,
+        );
+      }
       assert.equal(
         storage
           .prepare(
@@ -338,7 +390,10 @@ export async function verifyScriptAutomations({
           .get(offline.id).n,
         1,
       );
-      return { nativeScriptScheduleRestoresOwnerAndSingleFire: true };
+      return {
+        nativeScriptScheduleRestoresOwnerAndSingleFire: true,
+        activeScriptGracefulShutdownPersistsCancelAndReapsCommands: true,
+      };
     },
   };
 }

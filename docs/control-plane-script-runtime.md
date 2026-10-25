@@ -161,10 +161,12 @@ schedule/failure budget intact. Pause/delete fence source admission and stop
 script attempts before reporting success; delete waits for cleanup before
 removing persistence. Failed cleanup retains a running native run and error
 metadata. Subsequent sweeps and controller restarts retry cleanup under saved
-ownership even after execution grants disappear. The service loop aborts
-and awaits active script tasks in its finally path. The host still applies its
-generic hung-service timeout during disposal; forced unload/pending cleanup after
-that timeout remains part of the broader lifecycle acceptance.
+ownership even after execution grants disappear. The service loop closes admission, persists cancellation for active scripts and
+awaits attachment/cleanup tasks in its finally path. The host still bounds how
+long disable/reload waits, but retains storage, SDK cleanup access and artifact
+roots while an aborted service is pending. A replacement cannot activate until
+service cleanup, admitted RPC invocations, dispose hooks and storage close finish. This is separate from
+forced operating-system process termination and the broader shutdown audit.
 
 A restarted controller never relaunches a script attempt whose execution might
 already have had side effects. It first stops/fences the saved job UUID, then
@@ -199,3 +201,26 @@ delete controls. Output is loaded only on demand and rendered as escaped text;
 access errors hide cached output. Terminal output is a bounded snapshot, not a
 live stdout stream. `bb server access automations` provides script/stdio input,
 timeout and output commands; see the machines guide for exact flags.
+
+## Quiescence and pending plugin disposal
+
+Automations closes local create/update/resume/manual/scheduled admission as soon
+as its service signal aborts. It rechecks after async binding and re-enable,
+rolls back an interrupted re-enable and waits for pending attachment before final
+shutdown. A worker born after cancellation is attached to durable cancellation
+state and stopped. Script cancellation intent is written before abort so even a
+pre-launch cancellation does not consume the failure budget.
+
+The core private background facade also rejects new bind/enable/start/send,
+workflow evaluation and script execution while the host is quiescing or that
+plugin is disposing. Metadata/current-owner rechecks, disable/remove and stop/
+release/archive remain live for trusted cleanup. This gate is host-owned and
+not an optional plugin policy. It does not yet fence every full SDK/HTTP thread
+or queue entry point.
+
+If an aborted service exceeds the existing host stop timeout, fresh RPC lookup
+and replacement activation stay unavailable. Storage and SDK cleanup liveness
+are retained until its promise and dispose hooks finish, then storage closes and
+cached API handles become stale. A hung trusted service can remain degraded and
+retain resources indefinitely; this change does not invent a terminal cleanup
+acknowledgement. Process death still uses the persisted job/lease recovery path.

@@ -27,6 +27,7 @@ export function createManagedScripts(
   jobs: InternalDoNotUseBackgroundJobs,
   emit: (row: AutomationRow) => void,
 ) {
+  let closing = false;
   const active = new Map<
     string,
     { controller: AbortController; done: Promise<void> }
@@ -122,6 +123,15 @@ export function createManagedScripts(
       ).run(message(error), run.id);
     }
   }
+  function requestShutdown() {
+    closing = true;
+    for (const [id, item] of active) {
+      db.prepare(
+        "UPDATE automation_run_authorities SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE run_id=?",
+      ).run(Date.now(), id);
+      item.controller.abort();
+    }
+  }
   return {
     has(runId: string) {
       return attempt(runId) !== null;
@@ -129,6 +139,7 @@ export function createManagedScripts(
     async reconcile(row: AutomationRow, run: AutomationRunRow) {
       await recover(row, run);
     },
+    requestShutdown,
     launch(
       row: AutomationRow,
       run: AutomationRunRow,
@@ -136,6 +147,7 @@ export function createManagedScripts(
       input: { source: string; timeoutMs: number },
       lifecycle: AbortSignal | undefined,
     ) {
+      if (closing) throw new Error("Script controller is stopping");
       db.prepare(
         "INSERT INTO automation_script_attempts(run_id,job_id) VALUES(?,?)",
       ).run(run.id, jobId);
@@ -187,8 +199,8 @@ export function createManagedScripts(
       }
     },
     async shutdown() {
+      requestShutdown();
       const running = [...active.values()];
-      for (const item of running) item.controller.abort();
       await Promise.allSettled(running.map((item) => item.done));
     },
   };

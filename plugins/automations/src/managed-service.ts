@@ -83,6 +83,22 @@ export function createManagedAutomationService({
   const dispatching = new Set<string>();
   let ticking = false;
   let lifecycleSignal: AbortSignal | undefined;
+  let stopping = false;
+  const shutdownController = new AbortController();
+  const pendingDispatches = new Set<Promise<void>>();
+  let shutdownTask: Promise<void> | null = null;
+  function beginShutdown() {
+    stopping = true;
+    scripts.requestShutdown();
+    shutdownController.abort();
+  }
+  function admit() {
+    if (stopping || lifecycleSignal?.aborted)
+      throw new experimental_PluginRpcRefusal({
+        code: "conflict",
+        message: "Automation controller is stopping",
+      });
+  }
   const cancelTasks = new Map<string, Promise<boolean>>();
   const scripts = createManagedScripts(db, jobs, emit);
   function head(row: AutomationRow) {
@@ -243,10 +259,17 @@ export function createManagedAutomationService({
       "INSERT INTO automation_run_authorities(run_id,automation_id,definition_binding_id,definition_revision,execution_json) VALUES(?,?,?,?,?)",
     ).run(run.id, row.id, saved.bindingId, saved.revision, row.execution);
   }
-  async function dispatch(row: AutomationRow, run: AutomationRunRow) {
+  function dispatch(row: AutomationRow, run: AutomationRunRow) {
+    const task = dispatchRun(row, run);
+    pendingDispatches.add(task);
+    void task.finally(() => pendingDispatches.delete(task)).catch(() => {});
+    return task;
+  }
+  async function dispatchRun(row: AutomationRow, run: AutomationRunRow) {
     dispatching.add(run.id);
     let parentId: string | null = null;
     try {
+      admit();
       const saved = runHead(run.id);
       if (!saved) throw new Error("Automation run is missing saved authority");
       const version = z
@@ -278,6 +301,7 @@ export function createManagedAutomationService({
         db.prepare(
           "UPDATE automation_run_authorities SET binding_id=? WHERE run_id=? AND binding_id IS NULL",
         ).run(binding.id, run.id);
+        admit();
         if (selected.mode === "script") {
           if (!selected.script) throw new Error("Missing script source");
           scripts.launch(
@@ -285,7 +309,7 @@ export function createManagedAutomationService({
             run,
             binding.id,
             { source: selected.script, timeoutMs: selected.timeoutMs },
-            lifecycleSignal,
+            shutdownController.signal,
           );
           return;
         }
@@ -297,7 +321,7 @@ export function createManagedAutomationService({
             title: row.name,
             profileVersionId: null,
           },
-          lifecycleSignal,
+          shutdownController.signal,
         );
         setAutomationRunThread(db, {
           runId: run.id,
@@ -309,12 +333,22 @@ export function createManagedAutomationService({
           threadId: worker.threadId,
           now: Date.now(),
         });
+        if (stopping) {
+          db.prepare(
+            "UPDATE automation_run_authorities SET cancel_requested_at=COALESCE(cancel_requested_at,?) WHERE run_id=?",
+          ).run(Date.now(), run.id);
+          await finishCancellation(row, run.id);
+        }
       });
     } catch (error) {
+      if (cancellationRequested(run.id)) {
+        await reconcileCancellation(row, run.id);
+        return;
+      }
       closeAutomationRun(db, {
         runId: run.id,
-        status: "failed",
-        error: message(error),
+        status: stopping ? "cancelled" : "failed",
+        error: stopping ? null : message(error),
         now: Date.now(),
       });
       if (parentId)
@@ -559,12 +593,25 @@ export function createManagedAutomationService({
     }
   }
   return {
-    managedShutdown: () => scripts.shutdown(),
+    managedShutdown() {
+      beginShutdown();
+      shutdownTask ??= (async () => {
+        await Promise.allSettled([...pendingDispatches]);
+        await scripts.shutdown();
+        lifecycleSignal?.removeEventListener("abort", beginShutdown);
+      })();
+      return shutdownTask;
+    },
     async managedTick(startup, signal) {
       if (jobs.userId !== null)
         throw new Error("Managed automation sweep requires service scope");
-      if (signal.aborted) return;
-      lifecycleSignal = signal;
+      if (lifecycleSignal !== signal) {
+        lifecycleSignal?.removeEventListener("abort", beginShutdown);
+        lifecycleSignal = signal;
+        signal.addEventListener("abort", beginShutdown, { once: true });
+      }
+      if (signal.aborted) beginShutdown();
+      if (stopping) return;
       if (ticking) return;
       ticking = true;
       try {
@@ -578,7 +625,7 @@ export function createManagedAutomationService({
           now: Date.now(),
           limit: 100,
         })) {
-          if (signal.aborted) break;
+          if (signal.aborted || stopping) break;
           try {
             const root = head(row);
             const claim = jobs.withAuthority(root.bindingId, () =>
@@ -681,6 +728,7 @@ export function createManagedAutomationService({
       return "problem" in value ? value : detail(value);
     },
     async create(input) {
+      admit();
       const now = Date.now();
       validate(input.trigger, now);
       const value = execution(
@@ -711,6 +759,7 @@ export function createManagedAutomationService({
       });
       let created: AutomationRow;
       try {
+        admit();
         created = jobs.withAuthority(binding.id, () =>
           db
             .transaction(() => {
@@ -743,6 +792,7 @@ export function createManagedAutomationService({
       return detail(toAutomationResponse(created));
     },
     async update(input) {
+      admit();
       const row = required(input),
         root = head(row);
       if (
@@ -834,6 +884,7 @@ export function createManagedAutomationService({
       return toAutomationResponse(next);
     },
     async resume(input) {
+      admit();
       const row = required(input),
         root = head(row);
       execution(row, parseAutomationExecution(row.execution));
@@ -841,6 +892,12 @@ export function createManagedAutomationService({
         now = Date.now();
       validate(trigger, now);
       await jobs.setEnabled(root.bindingId, true);
+      try {
+        admit();
+      } catch (error) {
+        await jobs.setEnabled(root.bindingId, false);
+        throw error;
+      }
       const next = setAutomationEnabled(db, {
         ...input,
         enabled: true,
@@ -853,6 +910,7 @@ export function createManagedAutomationService({
       return toAutomationResponse(next);
     },
     async run(input) {
+      admit();
       const row = required(input),
         root = head(row);
       const result = jobs.withAuthority(root.bindingId, () =>

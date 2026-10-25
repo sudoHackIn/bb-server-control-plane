@@ -1852,7 +1852,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     },
 
     getApi(id) {
-      return loaded.get(id)?.handle.api;
+      const result = wireLookup(id, (plugin) => plugin.handle.api);
+      return result.outcome === "found" ? result.value : undefined;
     },
 
     isPluginExpectedToRun(id) {

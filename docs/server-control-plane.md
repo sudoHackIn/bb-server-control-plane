@@ -25,6 +25,8 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Connect approved `bb` MCP tools through the native Qwen SDK/BB tool channel, revalidate context on MCP requests and invoke the mandatory core guard; verify actual two-user model → plugin → model round trips in Docker. Other MCP transports and interactive approvals remain pending.
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
+- [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
+- [ ] Complete the reusable agent experience on top of approved versioned profiles: catalog/editor, explicit selection for chats and automations, and workflow steps pinned to agent versions. Ship the same operations through UI, limited SDK and CLI.
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
 - [x] Persist personal workflow definitions and immutable source/default-argument revisions, with stable source authority and API/SDK/CLI/UI controls for create/read/update/run/enable/disable/delete.
@@ -46,6 +48,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add a private bounded TypeScript script runner with saved automation authority, live grant rechecks, shared output budget and acknowledged cancellation/deadline cleanup. Durable controller and public script surfaces remain pending.
 - [x] Integrate supported inline Node scripts with native Automations persistence, saved UUID execution, pending cancellation/cleanup retry, pause/delete and interrupted-run recovery. Personal script definition/output contracts remain pending.
 - [x] Expose personal script create/edit/definition and exact-run output through limited API/SDK/CLI and the personal editor, with strict descriptors, source CAS, output budgets and owner/access checks.
+- [x] Fence managed Automations and private background execution during quiescence/disposal, await in-flight attachment and active script cleanup, and retain plugin storage/artifacts across a hung service stop until teardown completes. Universal HTTP/SDK/queue admission remains pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -60,6 +63,74 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Complete the mandatory [per-user workflows, automations and schedules stage](#per-user-workflows-automations-and-schedules), including background execution and isolation tests.
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
 - [ ] Package and verify this fork in the Docker lab, including direct API/CLI bypass attempts from a user's UID, certificate login and user-to-user denials.
+
+## Remaining delivery packages after increment 52
+
+Increment numbers describe verified implementation slices, not a fixed count of
+product features. As a planning estimate, the remaining scope including project
+MCP connections and the reusable agent experience needs approximately 8–12
+additional implementation increments after 52, putting the expected final number
+around 60–65. This is not a completion guarantee or a time estimate. Integration
+findings may split packages; close the existing requirements by evidence rather
+than treating a target increment number as acceptance.
+
+1. Mandatory execution admission across HTTP, SDK, CLI, daemon RPC and queued
+   work, including quiescence and current user/project/profile authority.
+2. Composite background acceptance: retries, schedules, restart/replay, child
+   workers, results/events/notifications, revocation and legacy owner assignment.
+3. Complete supported provider/profile translation and resume behavior, with
+   explicit rejection of unsupported settings.
+4. Project MCP catalog/connections, per-user credentials, actual provider
+   integration and UI/SDK/CLI management. Expect multiple increments for storage,
+   execution and end-to-end acceptance.
+5. Reusable agent catalog/editor and explicit agent selection in automations;
+   verify multi-agent workflow orchestration using pinned profile versions.
+6. Finish user/admin UI boundaries, identity-switch cache cleanup and centrally
+   managed plugin access.
+7. Final Docker/browser acceptance with two users and an administrator, direct
+   API/CLI/RPC bypass attempts, revocation and recovery.
+
+Packages overlap and do not replace the unchecked requirements below. Project
+MCP and agent product work can follow 52 without waiting for every audit package;
+new execution paths must enforce authority from their first implementation.
+
+## Project MCP connections
+
+MCP is a project integration, available to ordinary project conversations without
+requiring a reusable agent. An administrator installs and maintains connector
+entries centrally, for example Jira and Confluence. Users with project-management
+permission attach authorized entries to a project through the limited API, SDK,
+CLI and project UI. No arbitrary server executable or unapproved connector
+installation is exposed to users.
+
+Keep the connector entry, project connection and personal credential binding
+separate. Project connections contain approved non-secret parameters; credentials
+belong to the authenticated user and remain in server-side secret storage. Even
+in a shared project Alice and Bob resolve their own credential bindings. Responses,
+logs, workflow history and UI bootstrap data must never contain credential values.
+A one-click attachment reuses an already authorized personal credential; otherwise
+the user completes the connector's supported login/token setup first.
+
+At actual thread start and resume, BB resolves the persisted user/project
+principal, current grants, enabled project connections and that user's credentials,
+then delivers the supported resolved MCP configuration through the provider
+adapter. Agent/profile restrictions may narrow project tools; a profile does not
+silently grant unconnected or forbidden integrations. Define ordinary-thread MCP
+policy explicitly rather than treating the existing profile MCP list as proof
+that project connections already execute. Background and workflow workers use
+the saved execution owner and recheck the same authority without browser tokens.
+
+Connection changes apply to subsequent starts/resumes; do not promise live
+reconfiguration of a running harness until supported and tested. Define and test
+revocation behavior for active tool calls and sessions. Missing credentials,
+unsupported transports or failed authorization must produce an explicit
+connection/execution state rather than fall back to another user's credentials.
+
+Acceptance requires real provider-to-MCP calls in Docker with two users, distinct
+credentials, project/connector access denial, revoked credentials/connections,
+resume and no secret disclosure. Include a shared-project case proving that
+personal credentials cannot cross users. This remains planned work; the existing
+verified BB MCP bridge alone does not satisfy this requirement.
 
 ## Per-user workflows, automations and schedules
 
@@ -2196,3 +2267,46 @@ the old overall browser watchdog after browser scenarios completed; the final
 run preserves all restart/crash and UI assertions with the documented larger
 aggregate browser budget. `control-plane-phase-51-verification.json` records
 complete proof, timings and remaining acceptance.
+
+## Fifty-second increment: quiescent Automations and pending plugin cleanup
+
+Managed Automations closes new definition/edit/resume/run/schedule admission on
+service abort and rechecks after asynchronous binding/re-enable. Shutdown waits
+for in-flight attachment; a late worker is attached to durable cancellation and
+stopped. Active script cancellation intent is persisted before abort and shutdown
+awaits its cleanup/result persistence. The core private background facade also
+fences bind/re-enable/start/send/notify/evaluate/script operations during host
+quiescence or disposal. Metadata, current-authority rechecks and safe cleanup
+remain available; the gate is supplied by core rather than an optional policy.
+
+A service stop timeout no longer closes storage under pending callbacks. The old
+trusted instance retains storage, SDK cleanup liveness and artifact roots until
+its service, admitted invocations and dispose hooks settle. Fresh RPC lookup and replacement activation
+remain blocked. Storage then closes and cached handles become stale. A permanently
+hung service stays degraded with retained resources; it is not declared cleaned.
+
+Real-SQLite tests cover the two teardown barriers, cached background admission,
+active cancellation and a binding that returns after shutdown. The restart fixture
+now dispatches RPC to its current controller and drops dead transport callbacks,
+so it cannot accidentally use the pre-restart controller. Docker adds two-owner
+active script plugin disable/re-enable and active graceful server shutdown with
+actual detached process checks and durable cancellation. Full HTTP/SDK thread/
+queue admission, forced process handling and the composite background audit remain
+open. No database, daemon wire, Plugin SDK or UI surface changes.
+
+Teardown now drains admitted RPC invocations to completion rather than closing
+storage after an invocation timeout. The caller's bounded stop wait can return a
+degraded pending state while cleanup remains alive. Fresh wire lookup, cached
+handler invocation and replacement activation are refused during disposal. A
+file-gated real-SQLite RPC test verifies a database write after the caller timeout
+and successful storage close/reload only after the admitted handler settles.
+Global HTTP/SDK thread and queue admission during server shutdown is not claimed
+complete by this increment.
+
+Verification passes 229 targeted tests (84 server/plugin lifecycle and 145 native
+Automations), eight typecheck tasks, changed-file lint/format and all 63 Docker
+deployment tasks in 7 minutes 59.665 seconds. The final image contains the checked
+QA scripts; all prior restart/crash assertions remain enabled and deployment
+watchdogs are unchanged. The UI is unchanged; browser acceptance remains the
+increment 51 baseline. `control-plane-phase-52-verification.json` records the
+complete deployment proof and the remaining composite requirements.

@@ -151,6 +151,155 @@ describe("plugin background services", () => {
     );
   });
 
+  it("keeps storage and cleanup SDK alive past the stop timeout and blocks replacement until cleanup finishes", async () => {
+    const gate = join(workDir, "cleanup-release");
+    const hookGate = join(workDir, "hook-release");
+    const events = join(workDir, "cleanup-events");
+    const root = await writePlugin(workDir, {
+      name: "bb-plugin-retained",
+      serverSource: `
+      import { existsSync, appendFileSync } from "node:fs";
+      import type { BbPluginApi } from "@get-bb/plugin-sdk";
+      export default function plugin(bb: BbPluginApi) {
+        const db=bb.storage.database();
+        db.exec("CREATE TABLE IF NOT EXISTS cleanup_probe(value TEXT)");
+        const log=(value:string)=>appendFileSync(${JSON.stringify(events)},value+String.fromCharCode(10));
+        const wait=async(path:string)=>{while(!existsSync(path))await new Promise(resolve=>setTimeout(resolve,5));};
+        bb.background.service("cleanup",{async start(signal:AbortSignal){
+          log("start");
+          await new Promise<void>(resolve=>signal.addEventListener("abort",()=>resolve(),{once:true}));
+          log("abort");
+          await wait(${JSON.stringify(gate)});
+          db.prepare("INSERT INTO cleanup_probe VALUES(?)").run("service");
+          bb.realtime.publish("cleanup",{});
+          log("service-done");
+        }});
+        bb.onDispose(async()=>{log("hook-start");await wait(${JSON.stringify(hookGate)});db.prepare("INSERT INTO cleanup_probe VALUES(?)").run("hook");log("hook-done");});
+      }
+    `,
+    });
+    await service.installPath(root);
+    const api = service.getApi("retained");
+    if (!api) throw new Error("Missing cleanup fixture API");
+    const storage = api.storage.database();
+    try {
+      expect((await service.reload("retained")).ok).toBe(false);
+      expect(service.getApi("retained")).toBeUndefined();
+      expect(
+        storage.prepare("SELECT count(*) AS n FROM cleanup_probe").get(),
+      ).toEqual({ n: 0 });
+      expect((await service.reload("retained")).ok).toBe(false);
+      expect(await readFile(events, "utf8")).not.toContain("hook-start");
+      await writeFile(gate, "release");
+      await expect
+        .poll(async () => await readFile(events, "utf8"))
+        .toContain("hook-start");
+      expect(storage.prepare("SELECT value FROM cleanup_probe").all()).toEqual([
+        { value: "service" },
+      ]);
+      expect((await service.reload("retained")).ok).toBe(false);
+      await writeFile(hookGate, "release");
+      await expect
+        .poll(() => {
+          try {
+            storage.prepare("SELECT 1").get();
+            return false;
+          } catch {
+            return true;
+          }
+        })
+        .toBe(true);
+      await expect
+        .poll(async () => (await service.reload("retained")).ok)
+        .toBe(true);
+    } finally {
+      await writeFile(gate, "release");
+      await writeFile(hookGate, "release");
+    }
+  });
+
+  it("retains storage for an admitted RPC past disposal timeout and refuses fresh RPC or replacement", async () => {
+    const gate = join(workDir, "rpc-release");
+    const entered = join(workDir, "rpc-entered");
+    const root = await writePlugin(workDir, {
+      name: "bb-plugin-rpc-drain",
+      serverSource: `
+      import { existsSync, writeFileSync } from "node:fs";
+      import { defineRpcContract } from "@get-bb/plugin-sdk";
+      import type { BbPluginApi } from "@get-bb/plugin-sdk";
+      import { z } from "zod";
+      export default function plugin(bb: BbPluginApi) {
+        const db=bb.storage.database();db.exec("CREATE TABLE IF NOT EXISTS rpc_cleanup(value TEXT)");
+        bb.rpc.register(defineRpcContract({wait:{input:z.null(),output:z.literal("done")}}),{async wait(){
+          writeFileSync(${JSON.stringify(entered)},"entered");
+          while(!existsSync(${JSON.stringify(gate)}))await new Promise(resolve=>setTimeout(resolve,5));
+          db.prepare("INSERT INTO rpc_cleanup VALUES(?)").run("done");return "done" as const;
+        }});
+      }
+    `,
+    });
+    await service.installPath(root);
+    const api = service.getApi("rpc-drain");
+    const handler = service.getRpcHandler("rpc-drain", "wait");
+    if (!api || handler.outcome !== "found")
+      throw new Error("Missing RPC fixture");
+    const storage = api.storage.database();
+    const pending = service.invokeRpcHandler(
+      "rpc-drain",
+      "wait",
+      handler.value,
+      null,
+      { kind: "client" },
+    );
+    try {
+      await expect
+        .poll(async () => {
+          try {
+            return await readFile(entered, "utf8");
+          } catch {
+            return "";
+          }
+        })
+        .toBe("entered");
+      await service.setEnabled("rpc-drain", false);
+      expect(service.getRpcHandler("rpc-drain", "wait").outcome).not.toBe(
+        "found",
+      );
+      expect(
+        storage.prepare("SELECT count(*) AS n FROM rpc_cleanup").get(),
+      ).toEqual({ n: 0 });
+      expect(
+        (
+          await service.invokeRpcHandler(
+            "rpc-drain",
+            "wait",
+            handler.value,
+            null,
+            { kind: "client" },
+          )
+        ).ok,
+      ).toBe(false);
+      await service.setEnabled("rpc-drain", true);
+      expect(service.getApi("rpc-drain")).toBeUndefined();
+      await writeFile(gate, "release");
+      expect(await pending).toMatchObject({ ok: true, result: "done" });
+      await expect
+        .poll(() => {
+          try {
+            storage.prepare("SELECT 1").get();
+            return false;
+          } catch {
+            return true;
+          }
+        })
+        .toBe(true);
+      expect((await service.reload("rpc-drain")).ok).toBe(true);
+    } finally {
+      await writeFile(gate, "release");
+      await pending;
+    }
+  });
+
   it("starts services after load and aborts them on reload", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-connector",

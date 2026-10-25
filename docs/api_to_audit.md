@@ -3924,3 +3924,12 @@ lifecycle guard applies to both methods. Only the native managed Automations
 controller, security tests and Docker fixtures call these members. Stabilization
 requires the remaining personal script API/SDK/CLI/UI contract and full lifecycle
 acceptance, not a public general-purpose process API.
+
+During host background quiescence or plugin disposal, the cached internal
+background facade rejects new bind/re-enable/start/send/notify/evaluate/script
+execution with a conflict refusal. Metadata, saved-authority rechecks and safe
+cleanup stay live until disposal actually finishes. A stop-timeout retains the
+old instance's storage and mutable module roots for pending service cleanup;
+replacement activation and fresh RPC lookup remain blocked until service/invocation/hook/
+storage teardown completes. This does not constitute the remaining universal
+SDK/HTTP/queue shutdown admission gate.

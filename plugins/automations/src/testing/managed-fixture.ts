@@ -12,8 +12,12 @@ export default function fixture(bb: BbPluginApi) {
     pluginDataDir: "/unused/managed",
     serverUrl: "http://unused",
   };
+  let lifecycle = new AbortController();
   let service = createAutomationService(configuration);
-  bb.rpc.register(automationRpcContract, createRpcHandlers(service));
+  const current = new Proxy(service, {
+    get: (_target, property): unknown => Reflect.get(service, property),
+  });
+  bb.rpc.register(automationRpcContract, createRpcHandlers(current));
   return {
     scriptAttempt(runId: string) {
       return db
@@ -31,11 +35,15 @@ export default function fixture(bb: BbPluginApi) {
           .get(runId) !== undefined
       );
     },
+    abort() {
+      lifecycle.abort();
+    },
+    shutdown: () => service.managedShutdown?.(),
     restart() {
+      lifecycle = new AbortController();
       service = createAutomationService(configuration);
     },
-    tick: (startup = false) =>
-      service.managedTick?.(startup, new AbortController().signal),
+    tick: (startup = false) => service.managedTick?.(startup, lifecycle.signal),
     fault(enabled: boolean) {
       if (enabled)
         db.exec(

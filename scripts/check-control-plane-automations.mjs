@@ -717,6 +717,13 @@ export async function verifyNativeAutomations({
       commandProcesses,
       userRequest,
       userCommand,
+      setPluginEnabled: (enabled) =>
+        cli([
+          "plugin",
+          enabled ? "enable" : "disable",
+          "automations",
+          "--json",
+        ]),
     });
     const boundedRunner = launch([
       "script-runner-check.mjs",
@@ -804,7 +811,7 @@ export async function verifyNativeAutomations({
         );
       },
       async afterShutdown() {
-        scriptAutomation.afterShutdown(offlineScript);
+        await scriptAutomation.afterShutdown(offlineScript);
         if (offline) {
           while (Date.now() < offline.trigger.runAt) {
             signal.throwIfAborted();

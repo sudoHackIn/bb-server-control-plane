@@ -400,6 +400,30 @@ describe("plugin bb.sdk bind gate", () => {
     expect(
       await withControlPlaneUser(bob.user.id, () => jobs.get(a.id)),
     ).toBeNull();
+    await service.quiesceBackgroundServices();
+    expect(jobs.get(a.id)?.id).toBe(a.id);
+    expect(() => jobs.bind(alice.input)).toThrow("stopping");
+    expect(jobs.withAuthority(a.id, () => a.id)).toBe(a.id);
+    expect(() => jobs.setEnabled(a.id, true)).toThrow("stopping");
+    expect(() =>
+      jobs.startWorker(a.id, {
+        callId: "late",
+        prompt: "late",
+        title: null,
+        profileVersionId: null,
+      }),
+    ).toThrow("stopping");
+    expect(() => jobs.sendWorker(a.id, "worker", "late")).toThrow("stopping");
+    expect(() => jobs.notifyOrigin(a.id, "late")).toThrow("stopping");
+    expect(() =>
+      jobs.runAutomationScript(
+        a.id,
+        { source: "throw 0", timeoutMs: 1 },
+        new AbortController().signal,
+      ),
+    ).toThrow("stopping");
+    await jobs.setEnabled(a.id, false);
+    expect(jobs.get(a.id)?.enabled).toBe(false);
     await service.setEnabled("jobs-lifecycle", false);
     expect(() => jobs.userId).toThrow();
     expect(() => jobs.readOrigin(alice.thread.id)).toThrow();

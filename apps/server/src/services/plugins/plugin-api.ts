@@ -1,3 +1,4 @@
+import { experimental_PluginRpcRefusal } from "@get-bb/plugin-sdk";
 import { rpcInvalidationTags } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import { assertServiceRealtimePrincipal } from "../../control-plane/access.js";
 import type { ContractTagDeclarations } from "@bb/domain";
@@ -507,6 +508,7 @@ export function createPluginApi(options: {
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getBackgroundJobs: () => PluginServerApi["internal_DO_NOT_USE_backgroundJobs"];
+  isBackgroundExecutionStopping: () => boolean;
   getLoopbackBaseUrl: () => string | undefined;
   openTunnelIngress: (audience: string) => Promise<TunnelIngressLease>;
 
@@ -661,6 +663,14 @@ export function createPluginApi(options: {
     if (invalidated) throw new PluginContextStaleError(pluginId);
   }
 
+  function assertBackgroundAdmission(): void {
+    assertLive();
+    if (options.isBackgroundExecutionStopping())
+      throw new experimental_PluginRpcRefusal({
+        code: "conflict",
+        message: "Background execution is stopping",
+      });
+  }
   const prefix = `[plugin:${pluginId}]`;
   function emitLog(
     level: "debug" | "info" | "warn" | "error",
@@ -1068,7 +1078,7 @@ export function createPluginApi(options: {
         return source.readOrigin(id);
       },
       bind(input) {
-        assertLive();
+        assertBackgroundAdmission();
         return source.bind(input);
       },
       get(id) {
@@ -1080,7 +1090,8 @@ export function createPluginApi(options: {
         return source.list(input);
       },
       setEnabled(id, enabled) {
-        assertLive();
+        if (enabled) assertBackgroundAdmission();
+        else assertLive();
         return source.setEnabled(id, enabled);
       },
       remove(id) {
@@ -1100,7 +1111,7 @@ export function createPluginApi(options: {
         return source.resolveWorkerProfile(id, profileVersionId);
       },
       startWorker(id, input, signal) {
-        assertLive();
+        assertBackgroundAdmission();
         return source.startWorker(id, input, signal);
       },
       getWorker(id, threadId) {
@@ -1108,11 +1119,11 @@ export function createPluginApi(options: {
         return source.getWorker(id, threadId);
       },
       notifyOrigin(id, message) {
-        assertLive();
+        assertBackgroundAdmission();
         return source.notifyOrigin(id, message);
       },
       sendWorker(id, threadId, message) {
-        assertLive();
+        assertBackgroundAdmission();
         return source.sendWorker(id, threadId, message);
       },
       stopWorker(id, threadId) {
@@ -1128,7 +1139,7 @@ export function createPluginApi(options: {
         return source.archiveWorker(id, threadId);
       },
       runAutomationScript(id, input, signal) {
-        assertLive();
+        assertBackgroundAdmission();
         return source.runAutomationScript(id, input, signal);
       },
       stopAutomationScript(id) {
@@ -1136,7 +1147,7 @@ export function createPluginApi(options: {
         return source.stopAutomationScript(id);
       },
       evaluateWorkflow(id, input, signal, onEvent, onAgent) {
-        assertLive();
+        assertBackgroundAdmission();
         return source.evaluateWorkflow(
           id,
           input,
@@ -1147,7 +1158,7 @@ export function createPluginApi(options: {
           },
           onAgent
             ? (prompt, options, callSignal) => {
-                assertLive();
+                assertBackgroundAdmission();
                 return onAgent(prompt, options, callSignal);
               }
             : undefined,

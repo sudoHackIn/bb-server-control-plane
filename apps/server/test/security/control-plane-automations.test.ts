@@ -201,6 +201,8 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
             scriptAttempt(runId: string): unknown;
             cancelRequested(runId: string): boolean;
             restart(): void;
+            abort(): void;
+            shutdown(): Promise<void> | undefined;
             tick(startup?: boolean): Promise<void> | undefined;
             fault(enabled: boolean): void;
             versions(id: string): unknown;
@@ -951,6 +953,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         error: "Script cleanup unavailable",
         result: null,
       });
+      pendingScripts.clear();
       native.restart();
       await native.tick(true);
       const states = async () =>
@@ -981,7 +984,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         firstScript.id,
       );
       expect(scriptOutput.status).toBe("cancelled");
-      expect(scriptOutput.result?.jobId).toBe(attempt.jobId);
+      expect(scriptOutput.result).toBeNull();
       expect(scriptOutput.cleanupPending).toBe(false);
       await expect(
         foreign.output(scriptDefinition.id, firstScript.id),
@@ -1004,6 +1007,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         }),
       ).run;
       expect(scriptCalls[1]?.source).toBe("console.log('revised')");
+      pendingScripts.clear();
       native.restart();
       await native.tick(true);
       await expect
@@ -1014,6 +1018,73 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         )
         .toBe("failed");
       expect(scriptCalls).toHaveLength(2);
+      await native.tick(true);
+      const shuttingDownRun = await mine.run(scriptDefinition.id, {
+        idempotencyKey: "shutdown-active",
+      });
+      const shuttingDownJob = scriptCalls.at(-1)?.id;
+      if (!shuttingDownJob) throw new Error("No active script job");
+      let closed = false;
+      native.abort();
+      const stopping = native.shutdown()?.then(() => {
+        closed = true;
+      });
+      await Promise.resolve();
+      expect(closed).toBe(false);
+      expect(native.cancelRequested(shuttingDownRun.id)).toBe(true);
+      await expect(mine.run(scriptDefinition.id)).rejects.toThrow("409");
+      await expect(
+        mine.create({
+          originThreadId: alice.thread.id,
+          name: "late",
+          prompt: "owned prompt",
+          trigger: { triggerType: "once", runAt: Date.now() + 3600000 },
+        }),
+      ).rejects.toThrow("409");
+      await jobs.stopAutomationScript(shuttingDownJob);
+      await stopping;
+      expect(closed).toBe(true);
+      expect(
+        (await mine.output(scriptDefinition.id, shuttingDownRun.id)).status,
+      ).toBe("cancelled");
+      pendingScripts.clear();
+      native.restart();
+      await native.tick(true);
+      const originalBind = jobs.bind;
+      let arrived: () => void = () => {};
+      let release: () => void = () => {};
+      const bound = new Promise<void>((resolve) => {
+        arrived = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      jobs.bind = async (input) => {
+        const value = await originalBind(input);
+        if (input.kind === "automation-run") {
+          arrived();
+          await gate;
+        }
+        return value;
+      };
+      const beforeLate = scriptCalls.length;
+      try {
+        const late = mine.run(scriptDefinition.id, {
+          idempotencyKey: "shutdown-attachment",
+        });
+        await bound;
+        native.abort();
+        const shutdown = native.shutdown();
+        release();
+        expect((await late).status).toBe("cancelled");
+        await shutdown;
+        expect(scriptCalls).toHaveLength(beforeLate);
+      } finally {
+        release();
+        jobs.bind = originalBind;
+      }
+      pendingScripts.clear();
+      native.restart();
       await invoke(alice.user.id, "automations_delete", {
         projectId: alice.project.id,
         automationId: scriptDefinition.id,
