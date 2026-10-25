@@ -493,3 +493,46 @@ not silently advance the editing revision. Run cannot replace the owner or
 ignore disabled source authority. Refresh failures hide cached controls, and
 unmount discards pending reads. Personal clients retain their limited UI/API;
 legacy assignment and automations/schedules remain unfinished.
+
+## Native automation agent ownership
+
+The builtin native automation controller uses `automation_authorities`,
+`automation_versions` and `automation_run_authorities` in its own SQLite store.
+The stable central `automation` binding and native immutable revision are
+distinct. Claim inserts its saved execution/revision in the same native
+transaction as the existing manual/scheduled run. Dispatch reserves a central
+`automation-run` source child before the kernel creates an `automation-worker`.
+Profile/owner/project/source grants are checked at each step; no browser token
+is persisted. Source pause/delete stops descendants through kernel guards.
+Native UI/RPC/CLI route through `createAutomationService`; configured managed
+mode selects this controller, and standalone mode keeps existing behavior.
+
+Owner predicates precede native personal metadata reads. A shared project
+member does not become a personal automation owner. Missing native owner
+records disable legacy scheduling at startup; they do not grant service
+execution. Immutable execution/configuration records preserve prior revisions.
+Recovery reattaches known central workers by saved run binding. Missing saved
+authority or interrupted dispatch without an attached worker is recorded as
+failure, without blindly replaying unknown effects. Native cron/once due times,
+single-flight, idempotency, bounded retries and pause behavior are reused.
+
+Completed idle workers release physical runtime processes without archiving or
+fencing their thread/session history. Core and plugins share the same release
+path; host protocol 253 preserves active-turn races across environments.
+Managed scripts, target-thread reuse and arbitrary execution overrides are
+rejected. Limited personal automation API/UI, isolated scripts, full legacy
+assignment and the remaining recovery/admission audit are still required.
+
+During server shutdown, core first quiesces every registered plugin background
+service before stopping the managed daemon. All service abort signals are sent
+before waiting for slow stops, and late activation/restart cannot start another
+service. Plugin SDK/database handles remain live for cleanup until ordinary
+plugin disposal. This keeps once jobs from being claimed while the host is
+already draining. It does not replace the remaining audit of every manual,
+queued and plugin-scheduler admission path.
+
+Completed native automation runs persist their observed completion sequence
+and daemon runtime-release acknowledgement. Pending idle release is retried;
+a newer/active turn marks the runtime retained and prevents background cleanup
+from interrupting an interactive continuation. Source authority and recorded
+Qwen session IDs remain intact.

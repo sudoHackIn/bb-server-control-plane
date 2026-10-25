@@ -3871,3 +3871,45 @@ slot, with explicit saved revisions, CAS editing, owner/project inventory and
 source enable/delete controls. Personal clients do not load this frontend or
 gain native RPC access. No new public Plugin SDK member is introduced by that
 panel. Legacy assignment remains later work.
+
+### Native automation authority and completed-runtime release
+
+The builtin Automations controller now uses the existing internal background
+facade for `automation`, `automation-run` and the added `automation-worker` kind.
+Workflow and automation worker adapters filter their own kinds/plugin identity
+before list/get/actions. Root owner/profile/source identity is server-derived;
+user-principal native RPC additionally filters native ownership before reads.
+Agent dispatch/sweeps/recovery use the same owner-bound thread service as
+Workflows, while managed script/target-thread/host/service-tier paths reject
+unsupported execution. Standalone behavior is retained.
+
+`InternalDoNotUseBackgroundJobs.releaseWorker(parentBindingId,threadId,
+completedSequence)` is builtin-only lifecycle-guarded cleanup. It verifies the
+owned worker and observed idle completion, then calls the shared
+`releaseIdleThreadRuntime` helper also used by core explicit stop. It does not
+archive the thread, disable its binding, change profile or discard session
+history. It returns false for a newer/active turn. Host release now keeps active
+turns in other environments as well as the current one; explicit interrupt
+retains its behavior. Host daemon protocol 253 requires matching semantics.
+
+Only builtin Workflows/Automations may obtain this facade; the initial caller
+is Automations after an observed completed run. No user HTTP or generic process
+launch surface is added. Stabilization requires permission/lifecycle/restart
+checks, idle/active race coverage and proof that physical processes are released
+while owned history remains resumable. Personal automation API/UI, isolated
+scripts, target-thread sends and the remaining scheduler/admission audit remain
+unfinished. The Plugin Guide includes the release method in its SDK inventory.
+
+During server shutdown, core first quiesces every registered plugin background
+service before stopping the managed daemon. All service abort signals are sent
+before waiting for slow stops, and late activation/restart cannot start another
+service. Plugin SDK/database handles remain live for cleanup until ordinary
+plugin disposal. This keeps once jobs from being claimed while the host is
+already draining. It does not replace the remaining audit of every manual,
+queued and plugin-scheduler admission path.
+
+Completed native automation runs persist their observed completion sequence
+and daemon runtime-release acknowledgement. Pending idle release is retried;
+a newer/active turn marks the runtime retained and prevents background cleanup
+from interrupting an interactive continuation. Source authority and recorded
+Qwen session IDs remain intact.

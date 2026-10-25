@@ -154,7 +154,8 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
         : null;
       if (
         job &&
-        (job.binding.kind !== "workflow-worker" ||
+        ((job.binding.kind !== "workflow-worker" &&
+          job.binding.kind !== "automation-worker") ||
           job.user.id !== userId ||
           job.project.projectId !== input.projectId ||
           job.profileVersion.id !== input.profileVersionId ||
@@ -223,13 +224,18 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
               ...(job && worker && parent && originThreadId
                 ? {
                     controlPlaneJobBindingId: job.binding.id,
-                    originPluginId: CONTROL_PLANE_WORKFLOWS_PLUGIN_ID,
+                    originPluginId:
+                      job.binding.kind === "workflow-worker"
+                        ? CONTROL_PLANE_WORKFLOWS_PLUGIN_ID
+                        : "automations",
                     lifecycleOwnerThreadId: originThreadId,
                     parentThreadId: originThreadId,
                     visibility: "hidden" as const,
                     parentNotifications: "off" as const,
                     pluginMetadata: {
-                      workflowWorker: 1,
+                      ...(job.binding.kind === "workflow-worker"
+                        ? { workflowWorker: 1 }
+                        : { automationWorker: 1 }),
                       runId: parent.binding.objectId,
                       callId: worker.callId,
                       originThreadId,

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CronExpressionParser } from "cron-parser";
@@ -96,6 +96,59 @@ describe("plugin background services", () => {
   afterEach(async () => {
     await service.stop();
     await rm(workDir, { recursive: true, force: true });
+  });
+
+  it("quiesces every service before awaiting slow stops, keeps SDK cleanup live and prevents later service starts", async () => {
+    const path = join(workDir, "quiescence.log");
+    function source(name: string, delay: number) {
+      return `
+        import { appendFileSync } from "node:fs";
+        import type { BbPluginApi } from "@get-bb/plugin-sdk";
+        export default function plugin(bb: BbPluginApi) {
+          const path=${JSON.stringify(path)};
+          bb.background.service("probe",{ start(signal: AbortSignal) {
+            appendFileSync(path,${JSON.stringify(name + ":start\n")});
+            return new Promise<void>(resolve=>signal.addEventListener("abort",()=>{
+              appendFileSync(path,${JSON.stringify(name + ":abort\n")});
+              setTimeout(()=>{appendFileSync(path,${JSON.stringify(name + ":done\n")});resolve();},${delay});
+            },{once:true}));
+          }});
+        }
+      `;
+    }
+    await service.installPath(
+      await writePlugin(workDir, {
+        name: "bb-plugin-first",
+        serverSource: source("first", 50),
+      }),
+    );
+    await service.installPath(
+      await writePlugin(workDir, {
+        name: "bb-plugin-second",
+        serverSource: source("second", 0),
+      }),
+    );
+    const api = service.getApi("first");
+    if (!api) throw new Error("Missing plugin API");
+    const storage = api.storage.database();
+    await service.quiesceBackgroundServices();
+    expect(storage.prepare("SELECT 1 AS value").get()).toEqual({ value: 1 });
+    const events = (await readFile(path, "utf8")).trim().split("\n");
+    expect(events.indexOf("second:abort")).toBeLessThan(
+      events.indexOf("first:done"),
+    );
+    const later = await service.installPath(
+      await writePlugin(workDir, {
+        name: "bb-plugin-later",
+        serverSource: source("later", 0),
+      }),
+    );
+    expect(later.services).toEqual([{ name: "probe", state: "stopped" }]);
+    expect(await readFile(path, "utf8")).not.toContain("later:start");
+    await service.reload("first");
+    expect((await readFile(path, "utf8")).match(/first:start/gu)).toHaveLength(
+      1,
+    );
   });
 
   it("starts services after load and aborts them on reload", async () => {

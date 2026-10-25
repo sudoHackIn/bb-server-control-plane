@@ -1624,10 +1624,11 @@ async function stopThreadUntilSettled(
       return null;
     }
     const args = manualThreadStopArgs(threadId, environment);
-    const released = await runAwaitedThreadStopCommand(deps, {
-      command: buildThreadStopCommand({ ...args, intent: "release" }),
-      hostId: args.hostId,
-    });
+    const released = await releaseIdleThreadRuntime(
+      deps,
+      threadId,
+      environment,
+    );
     if (released.failure !== null) {
       return released.failure;
     }
@@ -1676,6 +1677,18 @@ function reviveThreadFromRetainedTurn(
   }
   const revived = getThread(deps.db, threadId);
   return revived !== null && hasLiveThreadRuntime(deps, revived);
+}
+
+export async function releaseIdleThreadRuntime(
+  deps: RequestThreadStopForCurrentStateDeps,
+  threadId: string,
+  environment: RequestThreadStopForCurrentStateEnvironment,
+): Promise<AwaitedThreadStopOutcome> {
+  const args = manualThreadStopArgs(threadId, environment);
+  return runAwaitedThreadStopCommand(deps, {
+    command: buildThreadStopCommand({ ...args, intent: "release" }),
+    hostId: args.hostId,
+  });
 }
 
 async function runAwaitedThreadStopCommand(

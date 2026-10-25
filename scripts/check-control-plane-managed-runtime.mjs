@@ -233,7 +233,16 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   const wait = async (check, label, timeoutMs = 30000) => {
     const deadline = Date.now() + timeoutMs;
     while (!signal.aborted && Date.now() < deadline) {
-      assert.equal(child?.exitCode, null, log);
+      assert.equal(
+        child?.exitCode,
+        null,
+        `Server exited during ${label}; exit=${child?.exitCode},signal=${child?.signalCode}`,
+      );
+      assert.equal(
+        child?.signalCode,
+        null,
+        `Server killed during ${label}; exit=${child?.exitCode},signal=${child?.signalCode}`,
+      );
       try {
         const value = await check();
         if (value) return value;
@@ -765,12 +774,20 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       userLiveTimelineStream: true,
     };
   } catch (error) {
+    const memoryEvents = await readFile(
+      "/sys/fs/cgroup/memory.events",
+      "utf8",
+    ).catch(() => "unavailable");
+    const processState = {
+      exitCode: child?.exitCode,
+      signalCode: child?.signalCode,
+    };
     const daemonLog = await readFile(
       "/srv/bb/logs/host-daemon.1.log",
       "utf8",
     ).catch(() => "unavailable");
     throw new Error(
-      `Managed runtime check failed: ${error instanceof Error ? error.message : String(error)}\nServer log: ${log}\nDaemon log: ${daemonLog.slice(-24000)}`,
+      `Managed runtime check failed: ${error instanceof Error ? error.message : String(error)}\nServer state: ${JSON.stringify(processState)}; memory events: ${memoryEvents}\nServer log: ${log}\nDaemon log: ${daemonLog.slice(-24000)}`,
       { cause: error },
     );
   } finally {

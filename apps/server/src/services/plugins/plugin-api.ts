@@ -1119,6 +1119,10 @@ export function createPluginApi(options: {
         assertLive();
         return source.stopWorker(id, threadId);
       },
+      releaseWorker(id, threadId, completedSequence) {
+        assertLive();
+        return source.releaseWorker(id, threadId, completedSequence);
+      },
       archiveWorker(id, threadId) {
         assertLive();
         return source.archiveWorker(id, threadId);

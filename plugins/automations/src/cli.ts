@@ -1229,7 +1229,7 @@ export function registerAutomationCli(args: {
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
           run: (input, ctx) =>
             attempt(async () => {
-              const updated = service.pause({
+              const updated = await service.pause({
                 projectId: requireProjectId(input.options.project, ctx),
                 automationId: input.positionals.automationId,
               });
@@ -1247,7 +1247,7 @@ export function registerAutomationCli(args: {
           options: { project: PROJECT_OPTION, json: JSON_OPTION },
           run: (input, ctx) =>
             attempt(async () => {
-              const updated = service.resume({
+              const updated = await service.resume({
                 projectId: requireProjectId(input.options.project, ctx),
                 automationId: input.positionals.automationId,
               });

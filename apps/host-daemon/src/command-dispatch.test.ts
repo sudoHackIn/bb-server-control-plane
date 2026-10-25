@@ -1021,61 +1021,64 @@ describe("dispatchCommand", () => {
     });
   });
 
-  it("reports a retained turn instead of releasing a turn that started after the server read the thread", async () => {
-    const runtime = createRuntime();
-    const manager = new RuntimeManager({
-      createRuntime: () => runtime,
-      provisionWorkspace: async () => createWorkspace("/tmp/bb-release-race"),
-    });
-    await manager.ensureEnvironment({
-      environmentId: "env-release-race",
-      workspacePath: "/tmp/bb-release-race",
-    });
-    runtime.setActiveTurn("thread-1", "turn-new");
-    const options = {
-      dataDir: "/tmp/bb-data",
-      logger: silentLogger,
-      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
-      fetchProjectAttachment: async () => {
-        throw new Error("Unexpected project attachment fetch");
-      },
-      fetchPluginHostArtifact: fetchDispatchTestArtifact,
-      ...unexpectedProviderMaintenance,
-      runtimeManager: manager,
-      threadStorageRootPath: "/tmp/bb-thread-storage",
-    };
-
-    const result = await dispatchCommand(
-      {
-        type: "thread.stop",
-        intent: "release",
+  it.each(["env-release-race", "env-release-other"])(
+    "retains a newer active turn when releasing through %s",
+    async (targetEnvironmentId) => {
+      const runtime = createRuntime();
+      const manager = new RuntimeManager({
+        createRuntime: () => runtime,
+        provisionWorkspace: async () => createWorkspace("/tmp/bb-release-race"),
+      });
+      await manager.ensureEnvironment({
         environmentId: "env-release-race",
-        threadId: "thread-1",
-      },
-      options,
-    );
+        workspacePath: "/tmp/bb-release-race",
+      });
+      runtime.setActiveTurn("thread-1", "turn-new");
+      const options = {
+        dataDir: "/tmp/bb-data",
+        logger: silentLogger,
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      };
 
-    expect(runtime.stopThread).not.toHaveBeenCalled();
-    expect(runtime.getActiveTurnId("thread-1")).toBe("turn-new");
-    expect(result).toEqual({
-      providerCheckpointId: null,
-      activeTurnRetained: true,
-    });
+      const result = await dispatchCommand(
+        {
+          type: "thread.stop",
+          intent: "release",
+          environmentId: targetEnvironmentId,
+          threadId: "thread-1",
+        },
+        options,
+      );
 
-    const interrupted = await dispatchCommand(
-      {
-        type: "thread.stop",
-        intent: "interrupt",
-        environmentId: "env-release-race",
-        threadId: "thread-1",
-      },
-      options,
-    );
+      expect(runtime.stopThread).not.toHaveBeenCalled();
+      expect(runtime.getActiveTurnId("thread-1")).toBe("turn-new");
+      expect(result).toEqual({
+        providerCheckpointId: null,
+        activeTurnRetained: true,
+      });
 
-    expect(runtime.stopThread).toHaveBeenCalledWith({ threadId: "thread-1" });
-    expect(runtime.getActiveTurnId("thread-1")).toBeNull();
-    expect(interrupted).toEqual({ providerCheckpointId: null });
-  });
+      const interrupted = await dispatchCommand(
+        {
+          type: "thread.stop",
+          intent: "interrupt",
+          environmentId: targetEnvironmentId,
+          threadId: "thread-1",
+        },
+        options,
+      );
+
+      expect(runtime.stopThread).toHaveBeenCalledWith({ threadId: "thread-1" });
+      expect(runtime.getActiveTurnId("thread-1")).toBeNull();
+      expect(interrupted).toEqual({ providerCheckpointId: null });
+    },
+  );
 
   it("treats thread.stop as successful when no runtime holds the thread", async () => {
     const manager = new RuntimeManager({

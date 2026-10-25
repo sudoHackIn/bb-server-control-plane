@@ -1908,6 +1908,7 @@ export interface InternalDoNotUseBackgroundJobBinding {
     | "workflow-worker"
     | "automation"
     | "automation-run"
+    | "automation-worker"
     | "schedule";
   objectId: string;
   revision: number;
@@ -2014,6 +2015,12 @@ export interface InternalDoNotUseBackgroundJobs {
   ): Promise<"accepted" | "unavailable" | "denied">;
   sendWorker(id: string, threadId: string, message: string): Promise<void>;
   stopWorker(id: string, threadId: string): Promise<void>;
+  /** Releases only the observed completed idle runtime, preserving authority and history. A newer active turn is retained. */
+  releaseWorker(
+    id: string,
+    threadId: string,
+    completedSequence: number,
+  ): Promise<boolean>;
   archiveWorker(id: string, threadId: string): Promise<void>;
   /** Runs the fixed isolated workflow evaluator under current saved authority. No command or environment overrides. */
   evaluateWorkflow(

@@ -1,5 +1,9 @@
 # Automation script runtime
 
+Configured shared-server mode currently rejects script automations before any
+shared-service spawn. The following runtime contract applies to standalone BB;
+managed execution must first use the registered UID/HOME/project launcher.
+
 Read this file before you use a script file or depend on the script runtime.
 
 ## Stored script files

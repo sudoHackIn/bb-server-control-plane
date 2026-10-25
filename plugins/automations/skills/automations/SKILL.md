@@ -16,6 +16,17 @@ Pass `--project` explicitly for every automation command. Inside a thread, autom
 
 Personal supports automations with `--project proj_personal`. Use `bb project list --include-personal --json` to include it in discovery; an empty default project list does not mean Personal is unavailable.
 
+On the managed shared server, agent definitions require an owned origin thread
+and exactly its approved provider/model/reasoning/permission profile. Invoke
+creation from that BB thread, or use administrative native RPC with
+`createdByThreadId`. Only project-default or that origin's reused environment
+is supported. Script mode, arbitrary host/worktree targets, target-thread
+re-prompting and service-tier overrides are rejected until their isolated paths
+are implemented. Managed pause also blocks manual run and stops descendants.
+Completed idle runtimes are released; owned history and Qwen session resume
+remain available. Personal automation HTTP/UI access is a later stage; user
+credentials do not grant the native CLI/RPC administrative API.
+
 Choosing a mode:
 
 Use `script` when the output is fully determined by code: watchdogs, threshold alerts, health checks, heartbeats, and API pollers with a fixed output shape. Scripts run on the bb server. New standard-project scripts use the server-host project source when one exists; Personal and projects without one run in the plugin's shared script storage directory. Existing scripts without a saved policy also run there. Use `--working-directory automation-storage|project|<absolute-server-path>` to select the policy. Script automations do not have an environment field and do not accept environment flags.

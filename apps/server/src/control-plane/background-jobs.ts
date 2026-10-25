@@ -52,6 +52,7 @@ export function createControlPlaneBackgroundJobs(
     | "notifyOrigin"
     | "stopWorker"
     | "archiveWorker"
+    | "releaseWorker"
     | "listWorkers"
   > | null = null,
 ): InternalDoNotUseBackgroundJobs {
@@ -59,7 +60,7 @@ export function createControlPlaneBackgroundJobs(
     pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
       ? ["workflow-definition", "workflow-run", "workflow-worker"]
       : pluginId === BUILTIN_AUTOMATIONS_PLUGIN_ID
-        ? ["automation", "automation-run", "schedule"]
+        ? ["automation", "automation-run", "automation-worker", "schedule"]
         : [];
   if (!builtin || kinds.length === 0) return denied();
   function read(id: string) {
@@ -184,11 +185,17 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     listWorkers(input) {
-      if (pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID || !workers) return denied();
+      if (!workers) return denied();
       return workers.listWorkers(input);
     },
     resolveWorkerProfile(id, profileVersionId) {
-      if (required(id).kind !== "workflow-run") return denied();
+      if (
+        required(id).kind !==
+        (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+          ? "workflow-run"
+          : "automation-run")
+      )
+        return denied();
       const versionId = z.string().uuid().nullable().parse(profileVersionId);
       return withControlPlaneJobAuthority(db, id, (parent) => {
         const context = requireControlPlaneThreadOwner(db, {
@@ -210,32 +217,85 @@ export function createControlPlaneBackgroundJobs(
       });
     },
     startWorker(id, input, signal) {
-      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      if (
+        required(id).kind !==
+          (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? "workflow-run"
+            : "automation-run") ||
+        !workers
+      )
+        return denied();
       return workers.startWorker(id, input, signal);
     },
     getWorker(id, threadId) {
-      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      if (
+        required(id).kind !==
+          (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? "workflow-run"
+            : "automation-run") ||
+        !workers
+      )
+        return denied();
       return workers.getWorker(id, threadId);
     },
     notifyOrigin(id, message) {
       if (
         pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID ||
-        required(id).kind !== "workflow-run" ||
+        required(id).kind !==
+          (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? "workflow-run"
+            : "automation-run") ||
         !workers
       )
         return denied();
       return workers.notifyOrigin(id, message);
     },
     sendWorker(id, threadId, message) {
-      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      if (
+        required(id).kind !==
+          (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? "workflow-run"
+            : "automation-run") ||
+        !workers
+      )
+        return denied();
       return workers.sendWorker(id, threadId, message);
     },
     stopWorker(id, threadId) {
-      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      if (
+        required(id).kind !==
+          (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? "workflow-run"
+            : "automation-run") ||
+        !workers
+      )
+        return denied();
       return workers.stopWorker(id, threadId);
     },
+    releaseWorker(id, threadId, completedSequence) {
+      if (
+        required(id).kind !==
+          (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? "workflow-run"
+            : "automation-run") ||
+        !workers
+      )
+        return denied();
+      return workers.releaseWorker(
+        id,
+        threadId,
+        z.number().int().nonnegative().parse(completedSequence),
+      );
+    },
     archiveWorker(id, threadId) {
-      if (required(id).kind !== "workflow-run" || !workers) return denied();
+      if (
+        required(id).kind !==
+          (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? "workflow-run"
+            : "automation-run") ||
+        !workers
+      )
+        return denied();
       return workers.archiveWorker(id, threadId);
     },
     async evaluateWorkflow(id, input, signal, onEvent, onAgent) {

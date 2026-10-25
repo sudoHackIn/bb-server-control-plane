@@ -1,4 +1,7 @@
-import { CONTROL_PLANE_WORKFLOWS_PLUGIN_ID } from "@bb/domain";
+import {
+  CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID,
+  CONTROL_PLANE_WORKFLOWS_PLUGIN_ID,
+} from "@bb/domain";
 import {
   requireControlPlaneJobDispatch,
   ControlPlaneJobError,
@@ -118,13 +121,19 @@ export function requireControlPlaneThreadOwner(
     throw new ControlPlaneThreadError();
   if (
     input.jobBindingId !== undefined ||
-    input.originPluginId === CONTROL_PLANE_WORKFLOWS_PLUGIN_ID
+    input.originPluginId === CONTROL_PLANE_WORKFLOWS_PLUGIN_ID ||
+    input.originPluginId === CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID
   ) {
     if (!input.jobBindingId) throw new ControlPlaneThreadError();
     try {
       const job = requireControlPlaneJobDispatch(db, input.jobBindingId);
       if (
-        job.binding.kind !== "workflow-worker" ||
+        (job.binding.kind !== "workflow-worker" &&
+          job.binding.kind !== "automation-worker") ||
+        input.originPluginId !==
+          (job.binding.kind === "workflow-worker"
+            ? CONTROL_PLANE_WORKFLOWS_PLUGIN_ID
+            : CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID) ||
         job.user.id !== user.id ||
         job.project.projectId !== project.projectId ||
         job.profileVersion.id !== profile.version.id

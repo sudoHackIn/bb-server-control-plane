@@ -763,3 +763,37 @@ than overwrite a concurrent version. Enable/disable preserves that editing
 revision and draft. Refresh failures hide cached metadata and the editor;
 unmount disposes outstanding reads. The personal UI does not load this plugin
 frontend or gain native RPC access. Legacy assignment remains later work.
+
+## Managed shared-server automations
+
+In configured shared-server mode, the builtin controller uses saved owner
+and source authority for agent automations. Creation requires
+`createdByThreadId` in the selected managed project. The native CLI supplies it
+from the invoking BB thread; SDK callers use
+`plugins.callRpc({pluginId:"automations",method:"automations_create",input,...})`
+and administrators can use `bb plugin rpc call automations <method>
+--input-file <json-path> --json`. Existing list/show/update/pause/resume/run/runs/
+delete commands and native UI management use those same handlers.
+
+Provider/model/reasoning/permission values must match the origin's approved
+pinned profile. Environment must be `project-default` or reuse that exact
+origin environment. Arbitrary host/worktree targets, target-thread re-prompting,
+service-tier overrides and script execution are rejected in managed mode;
+standalone BB retains its existing modes. There is no caller-supplied owner,
+UID, HOME, cwd or server credential. The kernel selects them from saved authority.
+
+Definitions have a stable central binding and immutable native revisions;
+each claimed run captures its revision/execution before dispatch. Manual runs
+retain native idempotency and single-flight behavior. Cron/timezone and once
+triggers retain native due-time/retry policy, with owner/grant checks before
+claim and actual dispatch. Explicit pause fences descendants and blocks manual
+run; a consumed once trigger stops scheduling without revoking its history.
+Completed idle agent processes are released while preserving their threads,
+source authority and Qwen session history. A new active turn is retained.
+
+Native user-principal list/get/mutations/history require personal ownership and
+current project access, including shared projects. Full administrative native
+RPC can manage registered owners and inspect legacy history; unassigned legacy
+objects are disabled at startup and cannot execute until explicitly assigned.
+The limited personal automation API/UI and isolated script execution remain
+later stages. Browser tokens are not stored with jobs.

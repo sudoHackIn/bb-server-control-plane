@@ -217,6 +217,30 @@ export const migrations = [
    CREATE UNIQUE INDEX IF NOT EXISTS automation_runs_single_flight_idx
      ON automation_runs(automation_id)
      WHERE status = 'running';`,
+  `CREATE TABLE automation_authorities (
+     automation_id TEXT PRIMARY KEY REFERENCES automations(id) ON DELETE CASCADE,
+     owner_user_id TEXT NOT NULL,
+     binding_id TEXT NOT NULL UNIQUE,
+     revision INTEGER NOT NULL
+   );
+   CREATE TABLE automation_versions (
+     automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
+     revision INTEGER NOT NULL,
+     execution_json TEXT NOT NULL,
+     definition_json TEXT NOT NULL,
+     PRIMARY KEY(automation_id,revision)
+   );
+   CREATE TABLE automation_run_authorities (
+     run_id TEXT PRIMARY KEY REFERENCES automation_runs(id) ON DELETE CASCADE,
+     automation_id TEXT NOT NULL,
+     definition_binding_id TEXT NOT NULL,
+     definition_revision INTEGER NOT NULL,
+     execution_json TEXT NOT NULL,
+     binding_id TEXT UNIQUE,
+     completed_sequence INTEGER,
+     runtime_released_at INTEGER,
+     runtime_retained INTEGER NOT NULL DEFAULT 0
+   );`,
 ];
 
 function automationRetryDelayMs(consecutiveFailures: number): number {
@@ -449,15 +473,19 @@ export function createAutomation(
   return created;
 }
 
-export function getAutomation(db: Db, id: string): AutomationRow | null {
+export function getAutomation(
+  db: Db,
+  id: string,
+  ownerUserId?: string,
+): AutomationRow | null {
   return optionalAutomationRow(
     db
       .prepare(
         `SELECT
            ${AUTOMATION_COLUMNS}
-         FROM automations WHERE id = ?`,
+         FROM automations WHERE id = ?${ownerUserId === undefined ? "" : " AND EXISTS (SELECT 1 FROM automation_authorities WHERE automation_id=automations.id AND owner_user_id=?)"}`,
       )
-      .get(id),
+      .get(...(ownerUserId === undefined ? [id] : [id, ownerUserId])),
   );
 }
 
@@ -928,7 +956,7 @@ export function createManualRun(
   })();
 }
 
-function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
+export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
   return optionalRunRow(
     db
       .prepare(

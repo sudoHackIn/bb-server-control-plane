@@ -82,13 +82,19 @@ function lineage(db: DbQueryConnection, job: Job, allowDisabled = false) {
           .where(eq(controlPlaneThreads.threadId, current.originThreadId))
           .get()?.jobBindingId
       : null;
-    if (current.kind === "workflow-worker") {
+    if (
+      current.kind === "workflow-worker" ||
+      current.kind === "automation-worker"
+    ) {
       const parent = current.sourceBindingId
         ? row(db, current.sourceBindingId)
         : null;
       if (
         !parent ||
-        parent.kind !== "workflow-run" ||
+        parent.kind !==
+          (current.kind === "workflow-worker"
+            ? "workflow-run"
+            : "automation-run") ||
         current.originThreadId === null ||
         parent.originThreadId !== current.originThreadId
       )

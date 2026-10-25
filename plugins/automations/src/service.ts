@@ -1,3 +1,4 @@
+import { createManagedAutomationService } from "./managed-service.js";
 import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -69,7 +70,8 @@ import {
   projectPathForHost,
 } from "./working-directory.js";
 
-type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+export type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  server?: Pick<BbPluginApi["server"], "internal_DO_NOT_USE_backgroundJobs">;
   sdk: {
     system: { config(): Promise<{ primaryHostId: string | null }> };
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
@@ -79,6 +81,7 @@ type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
 };
 
 export interface AutomationService {
+  managedTick?(startup: boolean, signal: AbortSignal): Promise<void>;
   overview(): Promise<AutomationsOverviewResponse>;
   list(input: ListAutomationsInput): AutomationReadResult[];
   get(input: {
@@ -93,11 +96,14 @@ export interface AutomationService {
     projectId: string;
     automationId: string;
   }): Promise<{ ok: true }>;
-  pause(input: { projectId: string; automationId: string }): AutomationResponse;
+  pause(input: {
+    projectId: string;
+    automationId: string;
+  }): AutomationResponse | Promise<AutomationResponse>;
   resume(input: {
     projectId: string;
     automationId: string;
-  }): AutomationResponse;
+  }): AutomationResponse | Promise<AutomationResponse>;
   run(input: RunAutomationInput): Promise<AutomationRunRpcResponse>;
   runs(input: ResolvedAutomationRunsInput): AutomationRunListResponse;
 }
@@ -435,7 +441,7 @@ function encodeRunCursor(startedAt: number, id: string): string {
   return Buffer.from(`${startedAt}:${id}`, "utf8").toString("base64url");
 }
 
-function applyAgentExecutionUpdate(
+export function applyAgentExecutionUpdate(
   execution: AutomationExecution,
   update: AgentExecutionUpdate,
 ): Extract<AutomationExecution, { mode: "agent" }> {
@@ -565,6 +571,8 @@ export function createAutomationService(args: {
   serverUrl: string;
 }): AutomationService {
   const { bb, db, pluginDataDir, serverUrl } = args;
+  const jobs = bb.server?.internal_DO_NOT_USE_backgroundJobs;
+  if (jobs) return createManagedAutomationService({ ...args, jobs });
 
   return {
     async overview() {

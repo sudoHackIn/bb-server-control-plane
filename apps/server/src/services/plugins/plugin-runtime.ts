@@ -535,7 +535,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   const serviceContext = new AsyncLocalStorage<ServiceInstance>();
 
+  let backgroundServicesQuiesced = false;
   function runService(id: string, service: ServiceRuntime): void {
+    if (backgroundServicesQuiesced) {
+      service.disposed = true;
+      service.state = "stopped";
+      return;
+    }
     const controller = new AbortController();
     service.controller = controller;
     service.state = "running";
@@ -696,6 +702,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       service.state = "stopped";
     }
+  }
+
+  async function quiesceBackgroundServices(): Promise<void> {
+    backgroundServicesQuiesced = true;
+    await Promise.all(
+      [...loaded].map(([id, plugin]) => stopServices(id, plugin)),
+    );
   }
 
   function onHungServiceSettled(id: string, name: string): void {
@@ -2090,6 +2103,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     checkEngineRange,
     checkPluginSdkRange,
     disposeAll,
+    quiesceBackgroundServices,
     disposeOne,
     buildQueuedMessageEventEmitter,
     emitThreadEvent,

@@ -256,6 +256,7 @@ export interface PluginService {
   }): void;
   start(options?: PluginStartOptions): Promise<void>;
   stop(): Promise<void>;
+  quiesceBackgroundServices(): Promise<void>;
   handleUncaughtException(error: unknown): boolean;
   list(): InstalledPlugin[];
   getDisplayName(id: string): string;
@@ -625,6 +626,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     checkEngineRange,
     checkPluginSdkRange,
     disposeAll,
+    quiesceBackgroundServices,
     disposeOne,
     buildQueuedMessageEventEmitter,
     emitThreadEvent,
@@ -1583,6 +1585,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       notifyPluginsChanged();
     },
 
+    quiesceBackgroundServices,
     async stop() {
       for (const watcher of builtinSourceWatchers.splice(0)) watcher.close();
       await disposeAll();

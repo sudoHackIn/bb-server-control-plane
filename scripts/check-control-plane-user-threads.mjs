@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyNativeAutomations } from "./check-control-plane-automations.mjs";
 import { verifyNativeWorkflows } from "./check-control-plane-workflows.mjs";
 import { verifyExternalBrowser } from "./check-control-plane-browser-handshake.mjs";
 import { once } from "node:events";
@@ -504,6 +505,16 @@ export function createUserThreadFixture({ db, users }) {
         userCommand: command,
       });
 
+      const automations = await verifyNativeAutomations({
+        launch,
+        signal,
+        wait,
+        password,
+        origin,
+        subjects: created,
+        db,
+        userCommand: command,
+      });
       const productionBrowser = await verifyExternalBrowser({
         origin,
         signal,
@@ -907,12 +918,21 @@ export function createUserThreadFixture({ db, users }) {
         alice.thread.id,
         replayAfter,
       );
-      saved = { command, alice, wait, shutdownStream, bindingCheck, workflows };
+      saved = {
+        command,
+        alice,
+        wait,
+        shutdownStream,
+        bindingCheck,
+        workflows,
+        automations,
+      };
       return {
         ...productionBrowser,
         ...inputLimits,
         ...jobBindings,
         ...workflows.verification,
+        ...automations.verification,
         personalThreadCertificateCliAndFreshEnvironment: true,
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,
@@ -939,14 +959,17 @@ export function createUserThreadFixture({ db, users }) {
     },
     async beforeRestart() {
       await saved.workflows.beforeRestart();
+      await saved.automations.beforeRestart();
     },
     async afterShutdown() {
       await saved.workflows.afterShutdown();
+      await saved.automations.afterShutdown();
     },
     async afterRestart() {
       const { command, alice, wait, shutdownStream, bindingCheck } = saved;
       const jobBindingRestart = await bindingCheck("resume");
       const workflowRestart = await saved.workflows.afterRestart();
+      const automationRestart = await saved.automations.afterRestart();
       assert.notEqual((await shutdownStream.done)[0], 0);
       assert.equal(
         (await command("alice", ["threads", "get", alice.thread.id, "--json"]))
@@ -978,6 +1001,7 @@ export function createUserThreadFixture({ db, users }) {
       return {
         ...jobBindingRestart,
         ...workflowRestart,
+        ...automationRestart,
         personalTokenAndThreadSurviveRestart: true,
         personalStreamsClosedOnServerShutdown: true,
         personalNativeQwenSessionResumedWithHistory: true,

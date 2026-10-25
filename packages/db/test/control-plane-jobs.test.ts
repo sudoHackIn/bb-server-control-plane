@@ -94,14 +94,25 @@ it("filters every job kind by current owner/project before pagination, including
         ...subject.input,
         kind: "workflow-run",
       });
+      const automationParent = createControlPlaneJobBinding(db, {
+        ...subject.input,
+        kind: "automation-run",
+      });
       return controlPlaneJobKindValues.map((kind) =>
         kind === "workflow-run"
           ? parent
-          : createControlPlaneJobBinding(db, {
-              ...subject.input,
-              kind,
-              sourceBindingId: kind === "workflow-worker" ? parent.id : null,
-            }),
+          : kind === "automation-run"
+            ? automationParent
+            : createControlPlaneJobBinding(db, {
+                ...subject.input,
+                kind,
+                sourceBindingId:
+                  kind === "workflow-worker"
+                    ? parent.id
+                    : kind === "automation-worker"
+                      ? automationParent.id
+                      : null,
+              }),
       );
     }
     const aliceJobs = allJobs(alice);
@@ -157,6 +168,28 @@ it("filters every job kind by current owner/project before pagination, including
     db.$client.close();
   }
 });
+
+it.each(["workflow-worker", "automation-worker"] as const)(
+  "denies a %s under a different run kind",
+  (kind) => {
+    const { db, alice } = fixture();
+    try {
+      const parent = createControlPlaneJobBinding(db, {
+        ...alice.input,
+        kind: kind === "workflow-worker" ? "automation-run" : "workflow-run",
+      });
+      expect(() =>
+        createControlPlaneJobBinding(db, {
+          ...alice.input,
+          kind,
+          sourceBindingId: parent.id,
+        }),
+      ).toThrow(ControlPlaneJobError);
+    } finally {
+      db.$client.close();
+    }
+  },
+);
 
 it("registers immutable bindings idempotently and atomically rejects foreign, transplanted or extra authority", () => {
   const { db, alice, bob, host } = fixture();

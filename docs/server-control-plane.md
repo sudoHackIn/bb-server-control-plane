@@ -29,6 +29,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
 - [x] Persist personal workflow definitions and immutable source/default-argument revisions, with stable source authority and API/SDK/CLI/UI controls for create/read/update/run/enable/disable/delete.
 - [x] Add native administrative workflow-definition management with owner/project inventory, immutable revisions and owner-adopting dispatch through the existing SDK/RPC/CLI path.
+- [x] Bind native automation agent definitions/runs/sweeps to saved user authority, execute through registered Qwen workers, preserve revisions and recover owned once schedules; personal API/UI and script execution remain subsequent increments.
 - [x] Add our limited public API for projects, thread start/send/stop/status/result/events and model/agent selection through approved profile versions. A user token never grants access to the full BB API.
 - [x] Bind thread ownership before provisioning; enforce project, source-thread, parent-thread and environment grants. Select UID/HOME/cwd from the registry for managed Qwen threads.
 - [x] Stream personal persisted events with exclusive cursor replay and native BB timeline snapshots/updates; recheck token/project authority on every frame and idle intervals, limit buffers/connections, and release subscriptions on cancellation. Global lists/search/bootstrap/user UI still require separate scoping.
@@ -1843,3 +1844,52 @@ namespace/UID checks and recovery scenarios remain passing. This frontend
 increment uses that complete browser deployment; a second standalone normal
 network-none deployment was not repeated. The feature list remains open beyond
 this completed administrative-definition UI increment.
+
+## Forty-third increment: native automation agent authority
+
+The builtin automation controller now records owner/source authority and native
+immutable definition versions, captures execution with run claims, and uses
+kernel `automation-worker` creation for manual and cron/once agent dispatch.
+The native SDK/RPC/CLI/UI management path shares this controller. User-principal
+native metadata/mutations/history are owner-scoped even for shared projects;
+administrative native calls derive the owner from a managed project/origin.
+An unowned legacy record cannot fall back to shared-service execution.
+
+Explicit pause fences descendant workers. Provider/model/reasoning/permission
+must match the origin's approved pinned profile. Arbitrary host/worktree,
+target-thread reuse, service-tier and managed script modes reject before
+execution. The limited personal automation API/UI and isolated shell runtime
+remain later work. This is the agent execution/ownership increment, not the
+completion of the composite background stage.
+
+Native idle runtime release is shared with core and preserves owned history,
+Qwen session IDs and binding authority. A newer active turn is retained,
+including in another environment. Host protocol 253 records that semantic
+change. No central schema migration is needed for the added worker enum value;
+Drizzle generation confirms no SQL change. Plugin SQLite appends its own
+three-table migration using the existing storage API.
+
+Verification is recorded in `control-plane-phase-43-verification.json` after
+tests and real Docker checks complete. The overall feature list remains open.
+
+The Docker investigation exposed retained completed Qwen runtimes and an OOM
+kill in the constrained test VM. Completed-run cleanup now records the observed
+sequence and actual release acknowledgement; it retries a still-idle release
+and retains a new interactive turn. The acceptance check waits for that
+acknowledgement, continues the same owned Qwen session, and checks both its ID
+and previous model context. Source pause checks that actual command PIDs exit.
+A separate shutdown race claimed a once job after daemon shutdown had begun.
+Core now quiesces all background services before stopping that daemon, keeping
+SDK cleanup live and preventing late service activation/restart. Unit coverage
+checks simultaneous abort and still-live storage; the real offline due-time
+case verifies recovery without consuming the job during shutdown.
+
+All selected checks pass: 277 Workflows tests, 143 Automations tests, 27 server
+security/lifecycle tests, 19 database tests, 40 daemon dispatch tests and eight
+SDK public-type tests (514 total). Strict server/daemon/SDK/DB/Automations/Plugin
+Guide types pass. The full default Docker deployment passes all 63 tasks in
+7 minutes 14 seconds, including two real registered-UID Qwen actors, concurrent
+once schedules, idempotency, process termination, checkpoint/history continuity
+and an offline once schedule after restart. This increment did not add personal
+automation API/UI or script execution, and did not rerun browser acceptance;
+the composite stage and broader admission/recovery audit remain open.

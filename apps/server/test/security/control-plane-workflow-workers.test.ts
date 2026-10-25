@@ -136,6 +136,22 @@ it("scopes worker metadata and actions to the owning parent and denies unapprove
       );
       expect(idle.error).toBeNull();
       expect(idle.idleSequence).toBeGreaterThan(0);
+      expect(
+        await jobs.releaseWorker(a.id, child.id, (idle.idleSequence ?? 1) - 1),
+      ).toBe(false);
+      harness.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, child.id))
+        .run();
+      expect(
+        await jobs.releaseWorker(a.id, child.id, idle.idleSequence ?? 0),
+      ).toBe(false);
+      harness.db
+        .update(threads)
+        .set({ status: "idle" })
+        .where(eq(threads.id, child.id))
+        .run();
       await expect(
         withControlPlaneUser(bob.user.id, async () =>
           jobs.getWorker(a.id, child.id),

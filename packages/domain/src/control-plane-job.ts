@@ -9,6 +9,7 @@ export const controlPlaneJobKindValues = [
   "workflow-worker",
   "automation",
   "automation-run",
+  "automation-worker",
   "schedule",
 ] as const;
 export const controlPlaneJobKindSchema = z.enum(controlPlaneJobKindValues);

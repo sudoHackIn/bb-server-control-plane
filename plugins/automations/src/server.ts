@@ -34,12 +34,14 @@ export default async function plugin(bb: BbPluginApi) {
   registerAutomationCli({ bb, service });
 
   bb.events.on("thread.idle", ({ thread }) => {
+    if (service.managedTick) return;
     closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "idle",
     });
   });
   bb.events.on("thread.failed", ({ thread, error }) => {
+    if (service.managedTick) return;
     closeAutomationRunForSettledThread(bb, db, {
       threadId: thread.id,
       status: "failed",
@@ -48,11 +50,26 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.events.on("thread.deleted", ({ thread }) => {
+    if (service.managedTick) return;
     disableAutomationsForDeletedThreadEvent(bb, db, thread.id);
   });
 
   bb.background.service("automation-sweep", {
     async start(signal) {
+      if (service.managedTick) {
+        await service.managedTick(true, signal);
+        while (!signal.aborted) {
+          try {
+            await service.managedTick(false, signal);
+          } catch (error) {
+            bb.log.error(
+              `Managed automation sweep failed: ${errorMessage(error)}`,
+            );
+          }
+          await sleep(500, signal);
+        }
+        return;
+      }
       try {
         await reconcileRunningAutomationRuns(bb, db);
       } catch (error) {

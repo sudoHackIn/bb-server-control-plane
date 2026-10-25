@@ -519,6 +519,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       return shutdownPromise;
     }
     shutdownPromise = (async () => {
+      await pluginService
+        .quiesceBackgroundServices()
+        .catch((error: unknown) =>
+          logger.warn({ err: error }, "Background service shutdown failed"),
+        );
       await managedRuntime?.close();
       serverMove.dispose();
       appUpdate.dispose();

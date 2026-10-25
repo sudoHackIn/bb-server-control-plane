@@ -32,7 +32,10 @@ import {
   withControlPlaneUser,
 } from "./access.js";
 import { withControlPlaneJobAuthority } from "./job-authority.js";
-import { stopThreadForCurrentState } from "../services/threads/thread-lifecycle.js";
+import {
+  releaseIdleThreadRuntime,
+  stopThreadForCurrentState,
+} from "../services/threads/thread-lifecycle.js";
 import { resolveThreadHostCommandEnvironment } from "../services/threads/thread-command-environment.js";
 
 import { notifyControlPlaneWorkflowOrigin } from "./workflow-notifications.js";
@@ -53,7 +56,14 @@ function denied(): never {
   );
 }
 
-export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
+export function createControlPlaneWorkflowWorkers(
+  deps: AppDeps,
+  pluginId: "workflows" | "automations" = "workflows",
+) {
+  const workerKind =
+    pluginId === "workflows" ? "workflow-worker" : "automation-worker";
+  const parentKind =
+    pluginId === "workflows" ? "workflow-run" : "automation-run";
   const service = createControlPlaneThreadService({ deps });
   let closed = false;
   let sweep: Promise<void> | null = null;
@@ -81,7 +91,7 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
     const principal = currentControlPlanePrincipal();
     if (
       !record ||
-      record.binding.kind !== "workflow-worker" ||
+      record.binding.kind !== workerKind ||
       record.binding.ownerUserId !== record.owner.ownerUserId ||
       (principal?.kind === "user" &&
         principal.userId !== record.owner.ownerUserId)
@@ -134,6 +144,7 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
           .where(
             and(
               isNotNull(controlPlaneThreads.jobBindingId),
+              eq(threads.originPluginId, pluginId),
               inArray(threads.status, ["pending", "starting", "active"]),
             ),
           )
@@ -211,9 +222,9 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
         )
         .where(
           and(
-            eq(controlPlaneJobBindings.kind, "workflow-worker"),
-            eq(parent.kind, "workflow-run"),
-            eq(threads.originPluginId, "workflows"),
+            eq(controlPlaneJobBindings.kind, workerKind),
+            eq(parent.kind, parentKind),
+            eq(threads.originPluginId, pluginId),
             isNull(threads.deletedAt),
             parsed.includeArchived ? undefined : isNull(threads.archivedAt),
             eq(parent.ownerUserId, controlPlaneJobBindings.ownerUserId),
@@ -248,13 +259,14 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
         workers: found.map((row) => {
           const metadata = z
             .object({
-              workflowWorker: z.literal(1),
+              ...(pluginId === "workflows"
+                ? { workflowWorker: z.literal(1) }
+                : { automationWorker: z.literal(1) }),
               runId: z.literal(row.runId),
               callId: z.string().min(1).max(200),
             })
             .safeParse(
-              getThreadPluginMetadata(deps.db, row.threadId, "workflows")
-                .metadata,
+              getThreadPluginMetadata(deps.db, row.threadId, pluginId).metadata,
             );
           if (row.originThreadId === null) return denied();
           return {
@@ -280,12 +292,12 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
         throw new Error("Workflow worker cancelled before creation");
       return withControlPlaneJobAuthority(deps.db, parentId, async (parent) => {
         if (
-          parent.binding.kind !== "workflow-run" ||
+          parent.binding.kind !== parentKind ||
           parent.binding.originThreadId === null
         )
           return denied();
         const binding = createControlPlaneJobBinding(deps.db, {
-          kind: "workflow-worker",
+          kind: workerKind,
           objectId: randomUUID(),
           revision: 1,
           userId: parent.user.id,
@@ -385,6 +397,37 @@ export function createControlPlaneWorkflowWorkers(deps: AppDeps) {
       });
     },
     stopWorker,
+    async releaseWorker(
+      parentId: string,
+      threadId: string,
+      completedSequence: number,
+    ) {
+      if (!getThread(deps.db, threadId)) return true;
+      const record = read(parentId, threadId);
+      const completed = listThreadEventRows(deps.db, {
+        threadId,
+        types: ["turn/completed"],
+        limit: 1,
+        order: "desc",
+      })[0];
+      if (
+        record.thread.status !== "idle" ||
+        completed?.seq !== completedSequence
+      )
+        return false;
+      const environment = resolveThreadHostCommandEnvironment({
+        db: deps.db,
+        thread: record.thread,
+      });
+      if (!environment) return true;
+      const released = await releaseIdleThreadRuntime(
+        deps,
+        threadId,
+        environment,
+      );
+      if (released.failure) throw released.failure.error;
+      return released.result?.activeTurnRetained !== true;
+    },
     async archiveWorker(parentId: string, threadId: string) {
       if (!getThread(deps.db, threadId)) return;
       read(parentId, threadId);

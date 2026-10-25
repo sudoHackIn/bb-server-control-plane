@@ -846,6 +846,9 @@ export function createApp(
   const workflowWorkers = controlPlane
     ? createControlPlaneWorkflowWorkers(deps)
     : null;
+  const automationWorkers = controlPlane
+    ? createControlPlaneWorkflowWorkers(deps, "automations")
+    : null;
   const pluginService = createPluginService({
     machineEnrollments: getMachineEnrollmentService(deps),
     db: deps.db,
@@ -862,7 +865,7 @@ export function createApp(
             deps.db,
             pluginId,
             builtin,
-            workflowWorkers,
+            pluginId === "automations" ? automationWorkers : workflowWorkers,
           )
         : null,
     sharedPorts: deps.sharedPorts,
@@ -1152,6 +1155,7 @@ export function createApp(
     sdkWebsocket: privateRealtime?.websocket,
     closeWebSockets: async () => {
       await workflowWorkers?.close();
+      await automationWorkers?.close();
       controlPlane?.close();
       privateRealtime?.close();
       return closeWebSocketServer({
