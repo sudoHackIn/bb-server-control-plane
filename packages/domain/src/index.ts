@@ -90,3 +90,5 @@ export * from "./control-plane-thread.js";
 export * from "./control-plane-user.js";
 
 export * from "./control-plane-job.js";
+
+export * from "./control-plane-workflow.js";

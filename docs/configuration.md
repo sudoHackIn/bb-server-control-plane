@@ -1533,3 +1533,28 @@ append a second request; this is acceptance deduplication, not exactly-once mode
 or tool execution. Revoked/cancelled authority abandons the notice. Transient
 preparation failures keep the plugin's persisted notification backoff. This
 internal integration adds no public administration endpoint or configuration.
+
+The limited personal workflow API is `/control-plane/user/workflows`: GET lists
+owned runs, POST starts an inline script in an owned origin thread; GET
+`/:id`, `/:id/result` and `/:id/history` read native state, and POST `/:id/stop`
+cancels it. Enable the builtin Workflows plugin administratively first. The
+adapter requires builtin provenance and uses its normal RPC lifecycle under the
+verified user principal; it never forwards a user-selected plugin or method.
+Both personal Bearer credentials and matching-origin browser sessions use the
+existing access boundary. The unrestricted BB/plugin APIs remain administrative.
+
+`createControlPlaneClient(...).workflows` and `bb server access workflows`
+provide these operations. Scripts are limited to 512 KiB of UTF-8; arguments are
+JSON bounded to 128 KiB, 32 levels and 10,000 values. Start permits only
+`originThreadId`, `script`, `args` and `resumeRunId`. Project, model/profile,
+UID/HOME/cwd and execution grants come from the managed origin and approved DSL
+worker profiles. No caller-supplied owner, environment or launcher fields are
+accepted. CLI `--file` reads a client-local file. See `bb guide machines` for
+pagination, replay and history/result semantics. Saved definitions, schedules,
+workflow UI and a dedicated workflow progress stream remain pending.
+
+Workflow HTTP bodies have a separate 4 MiB envelope limit so JSON escaping does
+not reduce the advertised source/argument bounds. The wildcard covers the root
+and nested workflow routes. Oversized streams propagate the body-limit error;
+invalid JSON remains a 400 response. This bound does not increase native script,
+argument, result, process or execution budgets.

@@ -389,3 +389,28 @@ retries cleanup when the last reservation releases. Real-process regression
 checks cover both the handshake and the ready-but-not-attached interval. Explicit
 shutdown remains available; this does not serialize user threads or expand
 execution permissions.
+
+## Personal workflow run API
+
+Personal clients can start, list, get, inspect result/history and stop native
+workflow runs through `/control-plane/user/workflows`, the limited SDK and
+`bb server access workflows`. Core resolves the origin's current owner/project
+and execution grants. The builtin plugin reuses its existing SQLite persistence,
+start/replay/stop controller and evaluator. Policy and caller authentication
+remain in the control plane. A fixed-method RPC adapter verifies installed
+builtin provenance and preserves the user principal; generic plugin RPC remains
+closed to personal credentials.
+
+List pagination selects central owner/project bindings before LIMIT, then reads
+only those native IDs. Shared project access does not expose someone else's
+personal run. Missing/pruned native rows can produce an empty page with a
+continuation cursor. Reads recheck the current project grant; cancellation is
+still available after execution-profile loss and disables run authority. Start
+requires current execution grants, derives execution context from an owned
+origin and lets the existing native replay checks validate a terminal prior run.
+No browser token is persisted as job authority.
+
+Inline source and bounded JSON arguments are the initial authoring interface.
+CLI `--file` reads locally. Definitions, dedicated job progress subscriptions,
+workflow UI, automation/schedule operations and the remaining pending-execution/
+recovery audit are not completed by this increment.

@@ -1,3 +1,4 @@
+import { createControlPlaneWorkflowClient } from "./control-plane-workflows.js";
 import { z } from "zod";
 import { getControlPlaneThreadPath } from "@bb/server-contract";
 import { createControlPlaneThreadClient } from "./control-plane-threads.js";
@@ -208,6 +209,7 @@ export function createControlPlaneClient(args: {
         ).href;
       },
     },
+    workflows: createControlPlaneWorkflowClient(request),
     profiles: profileReader("/control-plane/user/profiles"),
     admin: {
       profiles: {

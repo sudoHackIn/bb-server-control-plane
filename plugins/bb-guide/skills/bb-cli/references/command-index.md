@@ -111,6 +111,12 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access projects list`
 - `bb server access projects get`
 - `bb server access projects create`
+- `bb server access workflows start`
+- `bb server access workflows list`
+- `bb server access workflows get`
+- `bb server access workflows result`
+- `bb server access workflows history`
+- `bb server access workflows stop`
 - `bb server access threads list`
 - `bb server access threads start`
 - `bb server access threads get`

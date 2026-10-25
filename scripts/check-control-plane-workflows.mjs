@@ -68,13 +68,39 @@ export async function verifyNativeWorkflows({
     password,
   );
   await cli(["plugin", "enable", "workflows", "--json"]);
+  async function personalStart(
+    subject,
+    script,
+    resumeRunId = null,
+    args = null,
+  ) {
+    const run = await userCommand(
+      subject.user.login,
+      [
+        "workflows",
+        "start",
+        subject.thread.id,
+        "--script-stdin",
+        ...(args === null ? [] : ["--args", JSON.stringify(args)]),
+        ...(resumeRunId ? ["--resume", resumeRunId] : []),
+        "--json",
+      ],
+      script,
+    );
+    assert.equal(run.originThreadId, subject.thread.id);
+    assert.equal(run.projectId, subject.project.projectId);
+    return { runId: run.id };
+  }
   const runs = [];
   for (const subject of subjects) {
     const source =
       'export const meta = {name: "managed-owner-check", description: "Native ownership check"}; phase("computed"); return {value: 42};';
-    const run = await cli(
-      ["workflows", "run", "--script", source, "--json"],
+    const escaped = subject.user.login === "alice";
+    const run = await personalStart(
       subject,
+      escaped ? `/*${'"'.repeat(512000)}*/${source}` : source,
+      null,
+      escaped ? { text: '"'.repeat(40000) } : null,
     );
     runs.push({ id: run.runId, subject });
   }
@@ -157,6 +183,106 @@ export async function verifyNativeWorkflows({
     }
   }, "native workflow ownership and isolated result");
   verify();
+  for (const { id, subject } of runs) {
+    assert.equal(
+      (
+        await userCommand(subject.user.login, [
+          "workflows",
+          "get",
+          id,
+          "--json",
+        ])
+      ).status,
+      "succeeded",
+    );
+    assert.deepEqual(
+      (
+        await userCommand(subject.user.login, [
+          "workflows",
+          "result",
+          id,
+          "--json",
+        ])
+      ).value,
+      { value: 42 },
+    );
+    assert.deepEqual(
+      (
+        await userCommand(subject.user.login, [
+          "workflows",
+          "history",
+          id,
+          "--json",
+        ])
+      ).calls,
+      [],
+    );
+    let cursor = null;
+    const found = new Set();
+    const cursors = new Set();
+    do {
+      const page = await userCommand(subject.user.login, [
+        "workflows",
+        "list",
+        "--project",
+        subject.project.projectId,
+        "--limit",
+        "2",
+        ...(cursor ? ["--cursor", cursor] : []),
+        "--json",
+      ]);
+      for (const run of page.runs) {
+        assert.equal(run.projectId, subject.project.projectId);
+        assert.equal(run.originThreadId, subject.thread.id);
+        found.add(run.id);
+      }
+      cursor = page.nextCursor;
+      if (cursor) {
+        assert.equal(cursors.has(cursor), false);
+        cursors.add(cursor);
+        assert.ok(cursors.size < 100);
+      }
+    } while (cursor);
+    assert.ok(found.has(id));
+    const other = subjects.find((item) => item.user.id !== subject.user.id);
+    for (const action of ["get", "result", "history", "stop"])
+      await assert.rejects(() =>
+        userCommand(other.user.login, ["workflows", action, id, "--json"]),
+      );
+    await assert.rejects(() =>
+      personalStart(
+        other,
+        'export const meta={name:"foreign-resume",description:"must fail"}; return 1;',
+        id,
+      ),
+    );
+  }
+  const personalCancelled = await personalStart(
+    subjects[0],
+    'export const meta={name:"personal-cancel",description:"User API cancellation"}; phase("waiting"); return await new Promise(()=>{});',
+  );
+  assert.equal(
+    (
+      await userCommand(subjects[0].user.login, [
+        "workflows",
+        "stop",
+        personalCancelled.runId,
+        "--json",
+      ])
+    ).stopped,
+    true,
+  );
+  assert.equal(
+    (
+      await userCommand(subjects[0].user.login, [
+        "workflows",
+        "get",
+        personalCancelled.runId,
+        "--json",
+      ])
+    ).status,
+    "cancelled",
+  );
   const agentStorage = new Database("/srv/bb/plugins/workflows/data.db", {
     readonly: true,
   });
@@ -190,10 +316,7 @@ export async function verifyNativeWorkflows({
   try {
     for (const subject of subjects) {
       const script = `export const meta = {name: "isolated-agent", description: "Real controlled Qwen worker"}; return await agent("BB_PERSONAL_workflow-agent-${subject.user.login}");`;
-      const run = await cli(
-        ["workflows", "run", "--script", script, "--json"],
-        subject,
-      );
+      const run = await personalStart(subject, script);
       const row = await waitAgent(run.runId);
       assert.equal(
         JSON.parse(row.result_json),
@@ -241,10 +364,7 @@ export async function verifyNativeWorkflows({
       .get(alice.profile.body.profile.id);
     assert.notEqual(newer.id, alice.profile.body.version.id);
     const selectedScript = `export const meta = {name: "approved-worker-profile", description: "Explicit immutable profile"}; return await agent("BB_PERSONAL_workflow-profile-alice", {profileVersionId: "${newer.id}"});`;
-    const selected = await cli(
-      ["workflows", "run", "--script", selectedScript, "--json"],
-      alice,
-    );
+    const selected = await personalStart(alice, selectedScript);
     await waitAgent(selected.runId);
     const selectedCall = agentStorage
       .prepare("SELECT * FROM workflow_calls WHERE run_id = ?")
@@ -287,17 +407,10 @@ export async function verifyNativeWorkflows({
     const beforeSelectedReplay = db
       .prepare("SELECT count(*) AS count FROM threads")
       .get().count;
-    const selectedReplay = await cli(
-      [
-        "workflows",
-        "run",
-        "--script",
-        selectedScript,
-        "--resume",
-        selected.runId,
-        "--json",
-      ],
+    const selectedReplay = await personalStart(
       alice,
+      selectedScript,
+      selected.runId,
     );
     await waitAgent(selectedReplay.runId);
     assert.equal(
@@ -883,9 +996,16 @@ export async function verifyNativeWorkflows({
       "--json",
     ]),
   );
-  await cli(
-    ["workflows", "stop", parentRuns[0].parentRunId, "--json"],
-    subjects[0],
+  assert.equal(
+    (
+      await userCommand(subjects[0].user.login, [
+        "workflows",
+        "stop",
+        parentRuns[0].parentRunId,
+        "--json",
+      ])
+    ).stopped,
+    true,
   );
   await wait(
     () =>
@@ -926,9 +1046,16 @@ export async function verifyNativeWorkflows({
       .get(boundWorkers[0].threadId).count,
     beforeRejectedSend,
   );
-  await cli(
-    ["workflows", "stop", parentRuns[1].parentRunId, "--json"],
-    subjects[1],
+  assert.equal(
+    (
+      await userCommand(subjects[1].user.login, [
+        "workflows",
+        "stop",
+        parentRuns[1].parentRunId,
+        "--json",
+      ])
+    ).stopped,
+    true,
   );
   await wait(
     () =>
@@ -1164,6 +1291,13 @@ export async function verifyNativeWorkflows({
       ...processProof,
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
+      personalWorkflowApiAndCliTwoUserOwnership: true,
+      personalWorkflowEscapedEnvelopeWithinSourceAndArgsLimits: true,
+      personalWorkflowListPaginationAndResultHistory: true,
+      personalForeignWorkflowReadStopAndResumeDenied: true,
+      personalWorkflowStopDisablesExecution: true,
+      personalWorkflowCancellationStopsActualQwenWorkers: true,
+      personalWorkflowAgentProfileSelectionAndReplay: true,
       nativeWorkflowNotificationAcceptedForEachOwner: true,
       nativeWorkflowNotificationAgentOnlyAndNoForeignThread: true,
       nativeRevokedAndCancelledNotificationAbandonedWithoutEvents: true,

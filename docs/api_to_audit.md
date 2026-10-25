@@ -3796,3 +3796,19 @@ that transaction, before the receipt or event. This records acceptance into BB's
 native timeline, not provider execution or exactly-once external effects. Missing
 or revoked authority and unavailable origins are permanently abandoned by the
 plugin; transient preparation failures retain its persisted retry/backoff state.
+
+### Personal workflow run adapter
+
+The control plane's fixed-method adapter calls builtin Workflows RPC handlers
+through `PluginService.getRpcHandler`/`invokeRpcHandler`, preserving the verified
+user principal and normal plugin disposal boundary. Installed ID alone is
+insufficient: builtin provenance, builtin source/name, enabled and unremoved
+registration are required. Personal clients cannot choose plugin IDs or RPC
+methods and cannot access the general RPC endpoint. Native CLI, existing tools
+and the personal API reuse the same workflow service and SQLite data.
+
+`createControlPlaneClient().workflows` is the limited core SDK surface; it adds
+no Plugin SDK member. Native RPC output and the public HTTP response are both
+validated, with the latter checking central owner/project/origin identity after
+awaiting plugin work. Personal workflow UI and live progress subscriptions remain
+pending; current status/history/result reads are bounded and owner-scoped.

@@ -622,3 +622,45 @@ send messages. Browser Back/Forward follows URL selection.
 `{ "url": "..." }` without opening a browser. The personal SDK equivalent is
 `threads.browserUrl(id, { messageSeq, signal })`. Both first read the current
 authorized thread to obtain its actual project, and never put credentials in URLs.
+
+### Personal workflow runs on a shared server
+
+After certificate sign-in, `bb server access workflows` uses the limited personal
+API. The administrator must enable the builtin Workflows plugin. A personal
+credential does not grant the unrestricted `bb workflows` command or plugin RPC.
+
+```bash
+bb server access workflows start <origin-thread-id> --file ./review.js --args '{"branch":"main"}' --json
+bb server access workflows list --project <project-id> --limit 20 --json
+bb server access workflows get <run-id> --json
+bb server access workflows result <run-id> --json
+bb server access workflows history <run-id> --after -1 --limit 20 --json
+bb server access workflows stop <run-id> --json
+```
+
+Choose one source input: `--script <source>`, `--script-stdin`, or `--file <path>`.
+The file is read on the client and uploaded as source; it is not a server path.
+Scripts are limited to 512 KiB. `--args` is bounded JSON, at most 128 KiB,
+32 levels and 10,000 values. `start --resume <run-id>` replays an owned terminal
+run's unchanged prefix using the supplied source. The server derives project,
+UID, HOME, cwd and approved profile from the owned origin thread. Source scripts
+can select other approved immutable worker profiles with the existing DSL.
+
+Lists contain personal runs, including within shared projects. Continue with
+`--cursor <nextCursor>` until it is null; a page can be empty when native run
+history has been pruned. History's numeric `nextCursor` is used as `--after`.
+Result responses distinguish `available: false` from a JSON null result.
+Current project access is required for reads and cancellation. Losing an
+execution-profile grant prevents new starts, while authorized history and
+cancellation remain available. Cancelling disables the saved run authority.
+
+With `createControlPlaneClient`, use `workflows.start({originThreadId, script,
+args?, resumeRunId?})`, `list({projectId?, cursor?, limit?, signal?})`, `get(id,
+signal?)`, `result(id, signal?)`, `history(id, {after?, limit?, signal?})` and
+`stop(id, signal?)`. Start accepts an optional second AbortSignal. These methods
+also work with a personal browser cookie on the matching origin. Definitions,
+schedules, workflow UI and dedicated progress subscriptions remain separate
+shared-server work; a started workflow continues independently of its browser
+session under current saved execution grants.
+The workflow HTTP envelope is separately limited to 4 MiB, allowing for JSON
+escaping; the tighter source and argument limits still apply.

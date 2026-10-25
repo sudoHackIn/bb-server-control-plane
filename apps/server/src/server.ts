@@ -1,3 +1,7 @@
+import {
+  createControlPlaneWorkflowService,
+  createControlPlaneWorkflowRpc,
+} from "./control-plane/workflows.js";
 import { createControlPlaneWorkflowWorkers } from "./control-plane/workflow-workers.js";
 import { createControlPlaneBackgroundJobs } from "./control-plane/background-jobs.js";
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
@@ -512,6 +516,10 @@ export function createApp(
                 createControlPlaneThreadService({
                   deps,
                 }),
+                createControlPlaneWorkflowService(
+                  deps.db,
+                  createControlPlaneWorkflowRpc(deps.db, () => pluginService),
+                ),
               )
             : undefined,
         )

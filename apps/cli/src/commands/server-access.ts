@@ -1,3 +1,4 @@
+import { registerServerWorkflowCommands } from "./server-workflows.js";
 import type { Command } from "commander";
 import { z } from "zod";
 import { action } from "../action.js";
@@ -51,6 +52,12 @@ export function registerServerAccessCommands(
     }),
   );
   registerServerThreadCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
+  registerServerWorkflowCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,
       fetch: cliFetch,

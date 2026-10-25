@@ -122,8 +122,10 @@ agent quotas, replay ordering, owner authority and cancellation. Named sources
 come from `.bb/workflows/<name>.js`; `scriptPath` stays within the project.
 Files are read inside the UID-isolated evaluator, with no symlink traversal.
 Managed child invocations have a separate ceiling equal to `maxAgentCalls`, and
-at most `maxConcurrentAgents` child VMs run at once. Use the administrator's existing workflow controls while personal job APIs
-are being integrated; a personal token does not grant the general BB CLI API.
+at most `maxConcurrentAgents` child VMs run at once. Personal clients use
+`bb server access workflows`; the unrestricted `bb workflows` CLI remains
+administrative. Personal definition/schedule APIs and workflow UI are still being
+integrated; a personal token does not grant the general BB CLI API.
 Standalone Workflows behavior is unchanged.
 
 Managed server restart requeues interrupted runs and replays the successful
@@ -145,3 +147,12 @@ persisted notification retry loop. A central receipt prevents another native
 request after a lost plugin acknowledgement or restart. A delivered notification
 means BB accepted the request, not that the provider completed its next turn.
 This does not give the personal token access to the unrestricted BB API.
+
+Use `bb server access workflows start <origin-thread-id>` with exactly one of
+`--script`, `--script-stdin`, or `--file`. Files are read locally by the client.
+Optional `--args <json>` and `--resume <owned-terminal-run-id>` use the existing
+native validation and replay controller. `list/get/result/history/stop` operate
+only on personal runs under current project access. List continuation uses the
+opaque `nextCursor`; history continuation uses its numeric `nextCursor` as
+`--after`. Raw plugin RPC remains closed to personal credentials. See
+`bb guide machines` for the limited SDK client and command options.

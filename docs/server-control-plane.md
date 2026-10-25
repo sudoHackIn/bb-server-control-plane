@@ -34,6 +34,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Carry verified user/run context through plugin calls and child creation. Plugin identity, parentThreadId and origin metadata are not authentication.
 - [x] Add the internal durable background authority-binding registry, immutable object revisions, current-grant/source checks and user-principal callback scope. Actual workflow/automation/scheduler integration remains pending.
 - [x] Expose lifecycle-scoped internal background authority only to builtin Workflows/Automations, derive owner/profile context server-side and verify registration/read/restart plus unapproved-plugin denial in Docker. Native plugin persistence/execution integration remains pending.
+- [x] Expose personal native workflow run start/list/status/result/history/stop and terminal replay through the limited API, SDK and CLI, reusing builtin persistence and owner authority. Definitions, workflow UI, automations and schedules remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -1562,3 +1563,60 @@ Final verification passes 30 server security/plugin-lifecycle, 272 Workflows,
 The final source builds and deploys in Docker with all 63 tasks successful in
 5 minutes 35 seconds, including both users' notices, cancellation/revocation
 rejection, crash recovery and the injected acknowledgement-loss replay.
+
+## Thirty-eighth increment: personal workflow run API, SDK and CLI
+
+Personal clients can start an inline workflow in an owned origin thread, list
+personal runs, read status/result/paginated history and cancel through
+`/control-plane/user/workflows`. The SDK's `workflows` client and
+`bb server access workflows` use this limited API. CLI source comes from
+`--script`, `--script-stdin` or a local `--file`; optional arguments and terminal
+run replay use native Workflows validation and controller behavior.
+
+Core authenticates requests and selects owner/project bindings before list
+pagination. Shared project access is insufficient to see another owner's runs.
+It derives project/execution context from the origin, checks central identity
+again after plugin calls and exposes only fixed builtin RPC operations. The
+adapter requires enabled, unremoved builtin provenance and the actual builtin
+source/name. General BB/plugin RPC stays administrative. Native Workflows
+continues to own its SQLite history and run lifecycle; no duplicate run store or
+browser credential is introduced.
+
+Source is bounded to 512 KiB of UTF-8. Arguments are plain JSON bounded to 128 KiB,
+32 levels and 10,000 values, checked iteratively before recursive native parsing.
+Owner/project/environment/launcher overrides are rejected. Cancellation is
+available after profile loss while current project access remains; execution
+still requires current grants. Central list cursors can traverse pruned native
+history without exposing foreign IDs. History has an exclusive numeric call
+cursor, and result responses distinguish unavailable from a JSON null value.
+
+Verification uses the actual native service/RPC handlers and real central/native
+SQLite through the limited SDK, including foreign IDs/resume/stop, shared project
+membership, grant loss, disabled users and forbidden raw RPC. Its plugin fixture
+is bundled at the package boundary and uses the built public SDK; server
+TypeScript does not import private plugin sources across root directories.
+CLI/SDK/domain and native Workflow suites cover transport and input contracts.
+Docker exercises two personal credentials, real selected-profile Qwen workers,
+replay, pagination, result/history and cancellation. Completed checks are in
+`control-plane-phase-38-verification.json`.
+
+Saved definitions, workflow UI, dedicated progress subscriptions, automations,
+schedules, legacy assignment and the remaining execution/recovery audit remain
+required before the overall background stage can be marked complete.
+
+The workflow input middleware uses the verified Hono `/workflows/*` pattern,
+which covers the root and nested routes. A 4 MiB HTTP envelope leaves space for
+JSON escaping while preserving the tighter source/argument limits. A streamed
+over-limit request is rejected before binding/native persistence. The actual
+client/deployment case also uploads an escaped source and arguments whose HTTP
+body exceeds 1 MiB while each value remains within its declared bound. Existing
+control-plane input boundaries still require the corresponding root/nested and
+streaming audit; this increment does not claim that broader audit complete.
+
+Final verification passes 12 server security/native-plugin-boundary tests,
+272 Workflows tests, nine limited-SDK tests, five CLI tests and one bounded-input
+contract (299 total). Strict server/CLI/SDK/domain/plugin types and changed-file
+lint/format/diff checks pass. The final Docker build/deployment passes all 63
+tasks in 6 minutes 12 seconds, including the escaped HTTP envelope and personal
+API cancellation of actual running Qwen workers. No full-repository or overall
+background-stage completion is claimed.

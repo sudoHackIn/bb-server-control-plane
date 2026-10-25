@@ -1,3 +1,4 @@
+import { registerManagedWorkflowApi } from "./managed-api.js";
 import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { registerWorkflowCli } from "./cli.js";
@@ -98,6 +99,7 @@ export default async function plugin(bb: BbPluginApi) {
       ),
   );
   registerWorkflowCli(bb, service);
+  registerManagedWorkflowApi(bb, service);
 
   function workflowForThread(threadId: string, runId: string | null) {
     const run =

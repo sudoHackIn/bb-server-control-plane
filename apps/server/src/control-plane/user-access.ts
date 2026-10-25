@@ -1,4 +1,9 @@
 import {
+  installControlPlaneWorkflowRoutes,
+  isControlPlaneWorkflowPath,
+} from "./workflow-routes.js";
+import type { ControlPlaneWorkflowService } from "./workflows.js";
+import {
   createControlPlaneBrowserAccess,
   controlPlaneBrowserToken,
 } from "./browser-access.js";
@@ -69,7 +74,11 @@ export function certificateLogin(context: Context): string | null {
 }
 
 export function isUserAuthPath(path: string, method: string): boolean {
-  if (isControlPlaneThreadPath(path, method)) return true;
+  if (
+    isControlPlaneThreadPath(path, method) ||
+    isControlPlaneWorkflowPath(path, method)
+  )
+    return true;
   if (
     /^\/control-plane\/user\/profiles(?:\/[^/]+(?:\/versions(?:\/[^/]+)?)?)?$/u.test(
       path,
@@ -106,6 +115,7 @@ export function createControlPlaneUserAccess(
   now = Date.now,
   projects?: ControlPlaneProjectService,
   threads?: ControlPlaneThreadService,
+  workflows?: ControlPlaneWorkflowService,
 ) {
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
@@ -138,6 +148,8 @@ export function createControlPlaneUserAccess(
       browser.install(app, signOutAdministrator);
       installControlPlaneProfileRoutes(app, registry.db, authenticate);
       if (threads) installControlPlaneThreadRoutes(app, threads, authenticate);
+      if (workflows)
+        installControlPlaneWorkflowRoutes(app, workflows, authenticate);
       const projectResponse = (
         row: NonNullable<ReturnType<typeof getControlPlaneProject>>,
         userId: string,
