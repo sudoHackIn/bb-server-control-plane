@@ -1,4 +1,5 @@
 import { expect, it, vi } from "vitest";
+import type { WorkflowAgentOptions } from "./types.js";
 import {
   runIsolatedWorkflow,
   readWorkflowFrames,
@@ -113,4 +114,131 @@ it("runs normalized agent calls through the injected capability and frames Unico
   const decoded: unknown[] = [];
   for await (const frame of readWorkflowFrames(bytes())) decoded.push(frame);
   expect(decoded).toEqual([{ text: "Привет🙂" }, { text: "界" }]);
+});
+
+it("runs child VMs with shared agent accounting, schemas and no Node globals", async () => {
+  const child =
+    'export const meta = {name:"child", description:"Child", inputSchema:{type:"number"}, outputSchema:{type:"object"}}; phase("child"); return {reply:await agent("child"), value:args};';
+  const calls = vi.fn(async (prompt: string) => prompt);
+  const body = `const parent = await agent("parent"); const child = await workflow({script:${JSON.stringify(child)}}, 42); let limited=false; try {await agent("excess");} catch {limited=true;} return {parent,child,limited};`;
+  expect(
+    await runIsolatedWorkflow(
+      { ...input, body, maxAgentCalls: 2 },
+      () => {},
+      new AbortController().signal,
+      calls,
+    ),
+  ).toEqual({
+    parent: "parent",
+    child: { reply: "child", value: 42 },
+    limited: true,
+  });
+  expect(calls.mock.calls).toEqual([
+    ["parent", expect.anything(), expect.anything()],
+    ["child", expect.anything(), expect.anything()],
+  ]);
+});
+
+it("validates nested schemas and enforces a single child level", async () => {
+  for (const [child, args, error] of [
+    [
+      'export const meta = {name:"child", description:"Child", inputSchema:{type:"number"}}; return args;',
+      '"wrong"',
+      "args are invalid",
+    ],
+    [
+      'export const meta = {name:"child", description:"Child", outputSchema:{type:"number"}}; return "wrong";',
+      "null",
+      "result is invalid",
+    ],
+    [
+      'export const meta = {name:"child", description:"Child"}; return await workflow("grandchild");',
+      "null",
+      "depth limit exceeded",
+    ],
+  ]) {
+    await expect(
+      runIsolatedWorkflow(
+        {
+          ...input,
+          body: `return await workflow({script:${JSON.stringify(child)}}, ${args});`,
+        },
+        () => {},
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(error);
+  }
+});
+
+it("bounds concurrent child VMs and total nested invocations independently of agent calls", async () => {
+  let active = 0,
+    peak = 0;
+  const loader = vi.fn(async () => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    active--;
+    return 'export const meta = {name:"child", description:"Child"}; return budget().agentCalls;';
+  });
+  const signal = new AbortController().signal;
+  expect(
+    await runIsolatedWorkflow(
+      {
+        ...input,
+        body: 'return await parallel([() => workflow("one"), () => workflow("two"), () => workflow("three"), () => workflow("four")]);',
+      },
+      () => {},
+      signal,
+      undefined,
+      loader,
+    ),
+  ).toEqual([0, 0, 0, 0]);
+  expect(peak).toBe(2);
+  await expect(
+    runIsolatedWorkflow(
+      {
+        ...input,
+        maxAgentCalls: 1,
+        body: 'await workflow("one"); return await workflow("two");',
+      },
+      () => {},
+      signal,
+      undefined,
+      loader,
+    ),
+  ).rejects.toThrow("invocation budget exceeded");
+});
+
+it("propagates parent cancellation through a nested VM to its agent", async () => {
+  const controller = new AbortController();
+  const agent = vi.fn(
+    (_prompt: string, _options: WorkflowAgentOptions, signal: AbortSignal) =>
+      new Promise<never>((_resolve, reject) =>
+        signal.addEventListener(
+          "abort",
+          () => reject(new Error("Cancelled agent")),
+          { once: true },
+        ),
+      ),
+  );
+  const child =
+    'export const meta = {name:"child",description:"Cancellation"}; return await agent("pending");';
+  const loader = vi.fn(async () => child);
+  const run = runIsolatedWorkflow(
+    {
+      ...input,
+      maxConcurrentAgents: 1,
+      body: 'return await parallel([() => workflow("one"), () => workflow("two"), () => workflow("three")]);',
+    },
+    () => {},
+    controller.signal,
+    agent,
+    loader,
+  );
+  const outcome = expect(run).rejects.toThrow(/cancelled/iu);
+  await vi.waitFor(() => expect(agent).toHaveBeenCalledTimes(1));
+  controller.abort();
+  await outcome;
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(loader).toHaveBeenCalledTimes(1);
 });

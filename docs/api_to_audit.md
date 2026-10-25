@@ -3729,7 +3729,9 @@ lifecycle/security tests and Docker fixtures. The allowlist uses the actual
 owner/binding references and scopes its native readers and resume/stop handlers.
 Its managed evaluator now runs in a separate registered-UID process. Controlled
 worker authority/creation/lifecycle and the isolated `agent()` bridge are
-implemented. Nested workflow dispatch remains unavailable in managed mode. Automations integration remains pending. Only
+implemented. Nested workflows now evaluate inside the same registered-UID
+process with a shared scheduler and descriptor-relative confined file reader.
+Automations integration remains pending. Only
 these two builtin plugins are intended production consumers. The Plugin Guide's
 SDK inventory includes this member.
 

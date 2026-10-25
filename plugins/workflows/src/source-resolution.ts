@@ -133,7 +133,7 @@ export function resolveConfinedWorkflowPath(
   return candidate;
 }
 
-function workflowNamePath(rootPath: string, name: string): string {
+export function workflowNamePath(rootPath: string, name: string): string {
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(name)) {
     throw new Error(
       "Workflow name must be lowercase kebab-case and at most 64 characters",

@@ -1316,3 +1316,43 @@ full build/deployment passes all 63 tasks. See
 Nested workflows, scoped orphan discovery/recovery, notifications, personal job
 APIs, automation/scheduler integration and the other unchecked stages remain
 required. This increment does not complete the overall background stage.
+
+## Thirty-second increment: nested workflows in the isolated evaluator
+
+Managed `workflow()` now evaluates one child level inside the existing
+registered-UID process. Inline, named `.bb/workflows/<name>.js` and confined
+`scriptPath` references use the native source conventions. Child agents call the
+same parent controller, immutable profiles and authority graph. The existing
+scheduler is shared across VMs, preserving global agent-call and concurrency
+limits, causal call order and cancellation. Child arguments/results use the
+same bounded JSON/schema validator as the native controller, extracted without
+changing standalone validation behavior.
+
+Managed runs separately bound child invocations by `maxAgentCalls` and concurrent
+child VMs by `maxConcurrentAgents`; queued launches check cancellation before
+source I/O. These are independent ceilings, not extra agent-call charges.
+Cancellation is rechecked after VM completion, so a caught abort or `parallel()`
+collecting cancelled steps cannot turn the whole run into success. Active nested
+cleanup settles before evaluator completion.
+
+The Linux source reader opens the actual cwd, traverses pinned directory file
+descriptors through private `/proc/self/fd`, and uses `O_NOFOLLOW` on every
+component. Directories require `O_DIRECTORY`; final files must be regular.
+`O_NONBLOCK` avoids a FIFO-open wait. Reads are bounded to 512 KiB plus a detection
+byte and require valid UTF-8. Lexical traversal, foreign workspace paths and
+symlinks are denied without a central SDK or service-UID file reader. This is
+source-file confinement, not a general filesystem jail.
+
+Verification: 264 Workflows tests pass, including shared parent/child agent
+accounting, nested invocation/VM concurrency limits, schema/depth checks and
+cancellation with queued child launches. Strict server/Workflows typechecks and
+changed-file lint/format/diff checks pass. Docker uses an owned named workflow
+file, dispatches its actual Qwen worker and replays its stored call without a
+new thread. It denies traversal into another user's project, symlink files and
+directories, oversized/nonregular/invalid-UTF-8 source, Node globals and deeper
+nesting. The complete build/deployment passes all 63 tasks. See
+`control-plane-phase-32-verification.json`.
+
+Personal job APIs/UI, scoped orphan recovery, retries/notifications, automation
+and scheduler integration and the remaining unchecked feature stages are still
+required. No completion of the overall background stage is claimed.

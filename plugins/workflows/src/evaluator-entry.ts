@@ -3,6 +3,7 @@ import {
   runIsolatedWorkflow,
   readWorkflowFrames,
 } from "./isolated-evaluator.js";
+import { loadIsolatedWorkflowSource } from "./isolated-source.js";
 import { toJsonValue } from "./json-value.js";
 import type { JsonValue } from "./types.js";
 
@@ -87,6 +88,7 @@ try {
         signal.removeEventListener("abort", cancel);
       }
     },
+    loadIsolatedWorkflowSource,
   );
   write({ type: "result", value });
 } catch (error) {

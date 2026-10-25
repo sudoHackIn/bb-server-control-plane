@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import {
+  readFile,
+  readdir,
+  mkdir,
+  writeFile,
+  chown,
+  symlink,
+} from "node:fs/promises";
 import { createInterface } from "node:readline";
 import Database from "better-sqlite3";
 
@@ -135,7 +142,21 @@ export async function verifyNativeWorkflows({
       const row = agentStorage
         .prepare("SELECT status, error FROM workflow_runs WHERE id = ?")
         .get(runId);
-      if (row?.status === "failed") throw new Error(row.error);
+      if (row?.status === "failed") {
+        const call = agentStorage
+          .prepare(
+            "SELECT child_thread_id FROM workflow_calls WHERE run_id = ? LIMIT 1",
+          )
+          .get(runId);
+        const events = call?.child_thread_id
+          ? db
+              .prepare(
+                "SELECT * FROM events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 5",
+              )
+              .all(call.child_thread_id)
+          : [];
+        throw new Error(JSON.stringify({ error: row.error, events }));
+      }
       return row?.status === "succeeded";
     }, "native isolated agent workflow");
     return agentStorage
@@ -289,6 +310,121 @@ export async function verifyNativeWorkflows({
     await deniedSelection(
       `export const meta = {name:"conflicting-profile-model", description:"Runtime profile admission"}; const options = {profileVersionId:"${newer.id}", provider:"qwen-server", model:"unapproved-model", reasoningLevel:"none"}; return await agent("must-not-run", options);`,
     );
+    const childSource =
+      'export const meta = {name:"nested-child",description:"UID workspace child",inputSchema:{type:"number"},outputSchema:{type:"object"}}; phase("nested-child"); return {value:args+1,reply:await agent("BB_PERSONAL_workflow-nested-alice")};';
+    const nestedDir = `${alice.project.cwd}/.bb/workflows`;
+    await mkdir(nestedDir, { recursive: true, mode: 0o770 });
+    for (const directory of [`${alice.project.cwd}/.bb`, nestedDir])
+      await chown(directory, alice.user.uid, alice.user.uid);
+    const nestedPath = `${nestedDir}/nested-child.js`;
+    await writeFile(nestedPath, childSource, { mode: 0o600 });
+    await chown(nestedPath, alice.user.uid, alice.user.uid);
+    const nestedScript =
+      'export const meta = {name:"native-nested-parent",description:"Same UID nested VM"}; return await workflow("nested-child",41);';
+    const nestedRun = await cli(
+      ["workflows", "run", "--script", nestedScript, "--json"],
+      alice,
+    );
+    assert.deepEqual(
+      JSON.parse((await waitAgent(nestedRun.runId)).result_json),
+      {
+        value: 42,
+        reply: "Personal workflow-nested-alice completed",
+      },
+    );
+    const nestedCall = agentStorage
+      .prepare("SELECT * FROM workflow_calls WHERE run_id = ?")
+      .get(nestedRun.runId);
+    assert.equal(
+      db
+        .prepare(
+          "SELECT owner_user_id FROM control_plane_threads WHERE thread_id = ?",
+        )
+        .get(nestedCall.child_thread_id).owner_user_id,
+      alice.user.id,
+    );
+    const nestedBefore = db
+      .prepare("SELECT count(*) AS count FROM threads")
+      .get().count;
+    const nestedReplay = await cli(
+      [
+        "workflows",
+        "run",
+        "--script",
+        nestedScript,
+        "--resume",
+        nestedRun.runId,
+        "--json",
+      ],
+      alice,
+    );
+    await waitAgent(nestedReplay.runId);
+    assert.equal(
+      db.prepare("SELECT count(*) AS count FROM threads").get().count,
+      nestedBefore,
+    );
+    async function rejectNested(reference, reason) {
+      const script = `export const meta = {name:"nested-denied",description:"Confined child resolution"}; return await workflow(${JSON.stringify(reference)});`;
+      const run = await cli(
+        ["workflows", "run", "--script", script, "--json"],
+        alice,
+      );
+      await wait(
+        () =>
+          agentStorage
+            .prepare("SELECT status FROM workflow_runs WHERE id = ?")
+            .get(run.runId)?.status === "failed",
+        "nested denial",
+      );
+      const row = agentStorage
+        .prepare("SELECT error FROM workflow_runs WHERE id = ?")
+        .get(run.runId);
+      assert.match(row.error, reason);
+    }
+    await rejectNested(
+      {
+        script:
+          'export const meta = {name:"child",description:"No Node"}; return process.cwd();',
+      },
+      /process is unavailable/u,
+    );
+    const outside = `${alice.user.home}/outside-workflow.js`;
+    await writeFile(outside, childSource, { mode: 0o600 });
+    await chown(outside, alice.user.uid, alice.user.uid);
+    await symlink(outside, `${nestedDir}/symlink-child.js`);
+    await symlink(nestedDir, `${alice.project.cwd}/linked-workflows`);
+    await rejectNested(
+      { scriptPath: "../outside-workflow.js" },
+      /inside the origin workspace/u,
+    );
+    await rejectNested(
+      {
+        scriptPath: `${subjects[1].project.cwd}/.bb/workflows/nested-child.js`,
+      },
+      /inside the origin workspace/u,
+    );
+    await rejectNested("symlink-child", /ELOOP/u);
+    await rejectNested(
+      { scriptPath: "linked-workflows/nested-child.js" },
+      /ENOTDIR|ELOOP/u,
+    );
+    await rejectNested(
+      {
+        script:
+          'export const meta = {name:"child",description:"Depth check"}; return await workflow("nested-child");',
+      },
+      /depth limit exceeded/u,
+    );
+    await writeFile(`${nestedDir}/oversized.js`, "x".repeat(524289), {
+      mode: 0o644,
+    });
+    await rejectNested("oversized", /exceeds byte limit/u);
+    await rejectNested({ scriptPath: ".bb/workflows" }, /regular file/u);
+    await writeFile(`${nestedDir}/invalid-utf8.js`, Buffer.from([255]), {
+      mode: 0o644,
+    });
+    await rejectNested("invalid-utf8", /not valid.*utf-8/u);
+
     const beforeReplay = db
       .prepare("SELECT count(*) AS count FROM threads")
       .get().count;
@@ -372,10 +508,7 @@ export async function verifyNativeWorkflows({
   const first = subjects[0];
   const negativeRuns = [];
   for (const [body, reason] of [
-    [
-      'return await workflow("must-not-run-in-service");',
-      /workflow\(\) is unavailable/u,
-    ],
+    ['return await workflow("must-not-run-in-service");', /ENOENT/u],
     ['return "x";', /Workflow result is invalid/u],
   ]) {
     const outputSchema = reason.source.includes("result")
@@ -625,6 +758,12 @@ export async function verifyNativeWorkflows({
       ...evaluatorProof,
       nativeWorkflowCliOwnerAndPinnedProfile: true,
       nativeEvaluatorAgentToQwenRoundTrip: true,
+      nestedWorkflowNamedSourceLoadedUnderOwnerUid: true,
+      nestedAgentUsesParentAuthorityAndDurableReplay: true,
+      nestedSchemasAndNoNodeGlobals: true,
+      nestedForeignTraversalAndSymlinkDenied: true,
+      nestedOversizedSourceAndDepthDenied: true,
+      nestedNonregularAndInvalidUtf8Denied: true,
       explicitWorkerProfileAppliedToNativeQwenTools: true,
       explicitWorkerProfilePrefixReplay: true,
       revokedSelectedProfileDeniedBeforeReplayOrWorker: true,
@@ -641,7 +780,7 @@ export async function verifyNativeWorkflows({
       cancelledWorkerResumeDeniedBeforeEvents: true,
       foreignOwnedWorkerReadDenied: true,
       nativeWorkflowCancellationAndAuthorityDisable: true,
-      nativeWorkflowNestedFallbackDenied: true,
+      nativeWorkflowMissingNestedSourceDenied: true,
       nativeWorkflowOutputSchemaEnforced: true,
       nativeWorkflowIsolatedEvaluatorCompleted: true,
       nativeWorkflowEvaluatorIdentityAndCredentialIsolation: true,

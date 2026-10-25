@@ -176,3 +176,13 @@ worker creation. Profile changes do not alter pinned versions. Tools, MCP and
 permissions come from the selected profile; individual tool or environment
 overrides are not accepted. An explicit provider/model/reasoning tuple must
 match that profile. Standalone servers reject `profileVersionId`.
+
+Managed nested workflows execute inside the same registered-UID process, with
+one child level and the parent's shared agent scheduler and cancellation.
+Inline, named and project-confined `scriptPath` references are supported. File
+resolution rejects symlinks in any path component, nonregular files, malformed
+UTF-8 and sources above 512 KiB. Managed runs separately limit total child
+invocations to `maxAgentCalls` and concurrent child VMs to
+`maxConcurrentAgents`; nested invocation does not consume an agent call itself.
+Input and output schemas are validated with the same bounded validator as the
+native controller. `budget()` continues to describe the shared agent budget.

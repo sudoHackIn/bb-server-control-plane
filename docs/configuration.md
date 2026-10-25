@@ -1461,8 +1461,13 @@ threads with the originating approved immutable profile, or an explicitly
 selected approved version via `agent(prompt, {profileVersionId: "<uuid>"})`.
 Explicit model/provider/reasoning overrides must match the selected profile.
 The server rechecks current parent/profile authority before replay and dispatch;
-standalone servers reject the profile option. Nested `workflow()` remains
-unavailable; standalone Workflows execution is unchanged. See
+standalone servers reject the profile option. Nested `workflow()` supports
+inline, named and project-confined file sources in the same isolated evaluator.
+Children share agent accounting and cancellation, with one child level. Their
+own invocation and VM concurrency ceilings equal `maxAgentCalls` and
+`maxConcurrentAgents` respectively. File resolution uses descriptor-relative
+Linux opens without symlink traversal and reads at most 512 KiB. Standalone
+Workflows execution is unchanged. See
 [background execution integration](control-plane-background-execution.md).
 
 The Docker image installs the workflow evaluator automatically. For a Linux host
@@ -1481,8 +1486,8 @@ shared database. Both the worker's approved profile and the source workflow's
 current grants must permit execution. Cancelling the source prevents subsequent
 sends/resumes and stops pending or running mapped workers through a service-scoped
 monitor. These references are assigned internally; the personal thread API does
-not accept binding/UID/HOME/environment overrides. Personal workflow controls and the isolated evaluator's nested-workflow bridge
-remain unfinished. The
+not accept binding/UID/HOME/environment overrides. Personal workflow controls,
+scoped orphan recovery and notifications remain unfinished. The
 managed `agent()` bridge now uses the scoped worker adapter, persists native calls
 and results, and fences cancellation during worker creation. Completed-call
 replay includes the immutable profile version.

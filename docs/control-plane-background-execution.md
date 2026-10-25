@@ -144,10 +144,11 @@ before tenant execution opens.
 The origin selection comes from the internal pinned-profile reader, rather than
 unrestricted thread defaults. Managed execution revalidates the saved binding
 and evaluates pure workflows in the fixed registered-UID process. Agent calls now use controlled workers through the framed process bridge.
-Nested workflow capability remains unavailable in managed mode. Unassigned queued legacy workflows fail with an
+Nested workflow capability now runs a child VM inside that isolated process,
+sharing the parent's agent scheduler and abort chain. Unassigned queued legacy workflows fail with an
 administrative-migration error. Managed notifications do not use unrestricted
 thread sends. Standalone execution remains covered by its existing full tests.
-Controlled child dispatch, nested workflows, scoped notifications, personal routes
+Scoped notifications, personal routes
 and recovery/cleanup authorization still require implementation and Docker proof.
 
 ## Registered-UID evaluator
@@ -240,6 +241,25 @@ and structured-result validator are reused. Docker verifies two-user native
 structured replies, no new thread for completed-prefix replay, and cancellation
 through the VM/RPC/worker chain. A second replay after server restart uses durable
 call results without creating a new worker. Worker archival and the reservation
-cancellation race also have direct evidence. These checks do not finish nested
-workflows, all retry/recovery cases, notifications,
+cancellation race also have direct evidence. These checks do not finish all retry/recovery cases, notifications,
 personal job APIs, automations or schedules.
+
+## Nested evaluation in the registered UID
+
+Managed `workflow()` supports inline source and the existing project-based
+name/path conventions. The child is parsed and evaluated inside the same
+registered-UID process; there is no central SDK/file reader or service-UID VM.
+The parent's scheduler tracks agents across both VMs, so child creation cannot
+reset the agent-call or concurrency budget. Depth remains one level. Separate
+nested invocation and active-VM ceilings equal the run's agent-call and
+concurrency limits, with queued child launches checking cancellation before I/O.
+The existing bounded JSON/schema validator is shared by native and isolated
+controllers, including input/output validation.
+
+The Linux reader opens the actual cwd directory, then each path component
+relative to its open descriptor through private `/proc/self/fd`. Every opened
+component uses `O_NOFOLLOW`; directories require `O_DIRECTORY`. Lexical traversal
+outside the project is rejected before opening. The final file must be regular;
+`O_NONBLOCK` prevents a FIFO open from hanging. A bounded 512 KiB read rejects
+oversized or invalid UTF-8 source without following symlinks. This confines child
+source resolution, not all filesystem operations of the agent.

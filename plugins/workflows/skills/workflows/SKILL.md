@@ -117,7 +117,11 @@ control-plane server; standalone runs reject it. Catalog availability alone does
 replay is also tied to the immutable profile version.
 
 The managed evaluator supports `agent()`, JSON results, phase/log and normal
-pipeline/parallel helpers. Nested `workflow()` remains unavailable in managed
-mode. Use the administrator's existing workflow controls while personal job APIs
+pipeline/parallel helpers and one level of nested `workflow()`. Children share
+agent quotas, replay ordering, owner authority and cancellation. Named sources
+come from `.bb/workflows/<name>.js`; `scriptPath` stays within the project.
+Files are read inside the UID-isolated evaluator, with no symlink traversal.
+Managed child invocations have a separate ceiling equal to `maxAgentCalls`, and
+at most `maxConcurrentAgents` child VMs run at once. Use the administrator's existing workflow controls while personal job APIs
 are being integrated; a personal token does not grant the general BB CLI API.
 Standalone Workflows behavior is unchanged.
