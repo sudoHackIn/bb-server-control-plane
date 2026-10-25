@@ -432,7 +432,9 @@ describe("environment path claim release", () => {
         }).id,
       });
 
-      await runStartupRecoverySweep(harness.deps);
+      await runStartupRecoverySweep(harness.deps, {
+        allowUnownedLegacyReplay: true,
+      });
       expect(getEnvironment(harness.db, stuck.id)?.teardownStatus).toBeNull();
       expect(
         pathAvailableTo(harness, { hostId: host.id, threadId: "other-thread" }),

@@ -1,3 +1,5 @@
+import { parseStoredEventPayload } from "../services/threads/thread-data.js";
+import { assertControlPlaneSystemMessage } from "./system-message-authority.js";
 import { and, eq } from "drizzle-orm";
 import {
   ControlPlaneThreadError,
@@ -72,6 +74,16 @@ export function assertControlPlaneMessageSources(
         throw new ControlPlaneThreadError();
     }
     const request = parseStoredTurnRequestEvent(row);
+    if (
+      parseStoredEventPayload(row).systemMessageKind !== undefined &&
+      request.systemMessageKind !== undefined
+    )
+      assertControlPlaneSystemMessage(
+        db,
+        threadId,
+        request.systemMessageKind,
+        request.systemMessageSubject ?? null,
+      );
     sourceIds.add(request.senderThreadId);
     visit(request.retryOfRequestId);
     visit(saved?.sourceRequestId);

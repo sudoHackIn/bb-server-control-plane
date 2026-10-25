@@ -1,0 +1,127 @@
+{
+  "scope": "Managed parent mutation, typed core system-notice subject authority, and fail-closed shared-server legacy deferred recovery",
+  "previousStageCommit": "5212d5617",
+  "centralDatabaseMigration": null,
+  "hostDaemonProtocol": {
+    "version": 253,
+    "changed": false,
+    "newWireFields": [],
+    "compatibilityDeliberatelyPreserved": true
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "parentOwnerAndProjectChecksBeforeAsyncPreparation": true,
+    "parentUpdateRechecksInsideTransaction": true,
+    "managedUnmanagedParentLinksDenied": true,
+    "foreignParentsDeniedEvenForAdminMutation": true,
+    "sameOwnerParentAndCleanupDetachAllowed": true,
+    "systemSubjectCheckedBeforeQueueAndCanonicalCommit": true,
+    "savedSystemSubjectRecheckedThroughRetryAndInheritedRequestGraph": true,
+    "sourceProjectRevocationAfterReconnectDeniesBeforeTransport": true,
+    "everyOutcomeThreadInBatchChecked": true,
+    "archivedOwnedSourceStatusAllowed": true,
+    "retiredSourceProfileDoesNotRevokeMetadataStatusReport": true,
+    "deletedSourceDenied": true,
+    "targetRequiresCurrentExecutionAuthority": true,
+    "directoryNoticeMatchesCurrentEnvironmentAndRegistryCwd": true,
+    "detachedToolCompletionKeepsCoreCapturedTarget": true,
+    "explicitUnlabeledManagedNoticeDenied": true,
+    "storedDisplayDefaultDistinguishedFromExplicitNotice": true,
+    "sharedStartupDoesNotParseOrExecuteUnknownLegacyPayload": true,
+    "sharedUnmanagedLegacyTargetNotAssumedAdministrative": true,
+    "managedLegacyTargetStillDeniedWithUnownedReplayOption": true,
+    "legacyRawRowsRetained": true,
+    "onePassiveErrorPerRetainedRowAcrossRepeatedRecovery": true,
+    "legacyBodyNotCopiedToPassiveError": true,
+    "noNewPublicSystemNoticeWriteCapability": true,
+    "browserTokensNotSavedAsAuthority": true,
+    "ordinaryUnmanagedSingleUserBehaviorPreserved": true
+  },
+  "verification": {
+    "serverTests": 938,
+    "serverTestFiles": 103,
+    "newRelationAndNoticeTests": 14,
+    "additionalLegacySharedModeTest": true,
+    "fullDatabaseTests": 658,
+    "databaseTestFiles": 59,
+    "realMigratedSqliteUsed": true,
+    "typecheckTasks": 7,
+    "strictLintChangedCodePassed": true,
+    "formatChangedCodePassed": true,
+    "lintRuleExceptionsAdded": false,
+    "preexistingForbiddenCommentsRemovedInTouchedFiles": true,
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/internal test/security test/hosts test/threads test/environments test/services/plugins/plugin-background.test.ts test/services/plugins/plugin-tool-calls.test.ts",
+      "pnpm exec turbo run test --filter=@bb/db",
+      "pnpm exec turbo run typecheck --filter=@bb/server --filter=@bb/db",
+      "pnpm exec turbo run test:control-plane-deployment --filter=@bb/server"
+    ],
+    "docker": {
+      "status": "passed",
+      "initialFixtureFailure": {
+        "reason": "Scheduled notice fixture omitted required waitingOn, rejected by SQLite schedule constraint",
+        "productionPolicyRelaxed": false,
+        "fixedBy": "Set the existing thread-busy typed wait in the fixture"
+      },
+      "deadlinesChanged": false,
+      "tasks": 63,
+      "cachedTasks": 59,
+      "duration": "8m8.752s",
+      "stageTimings": [
+        {
+          "controlPlaneStage": "message-sources-complete",
+          "elapsedMs": 8958
+        },
+        {
+          "controlPlaneStage": "native-dispatch-complete",
+          "elapsedMs": 8959
+        },
+        {
+          "controlPlaneStage": "personal-and-browser-complete",
+          "elapsedMs": 365330
+        },
+        {
+          "controlPlaneStage": "message-sources-restart-complete",
+          "elapsedMs": 400540
+        },
+        {
+          "controlPlaneStage": "restart-complete",
+          "elapsedMs": 401200
+        },
+        {
+          "controlPlaneStage": "crash-recovery-complete",
+          "elapsedMs": 426433
+        }
+      ],
+      "assertions": {
+        "managedParentOwnershipEnforced": true,
+        "managedForeignNoticeDenied": true,
+        "managedLegacyBackfillRetainedWithoutExecution": true,
+        "managedForeignNoticeDeniedAfterRestart": true,
+        "managedInheritedRequestReferenceSurvivesRestart": true,
+        "managedQueueSourceSurvivesRestart": true,
+        "managedQueueRegrantDeliversSavedInputOnce": true,
+        "managedDaemonCurrentTurnAndNativeSessionAdmission": true,
+        "machineCredentialNotFullPublicApi": true,
+        "crashRecoveryRetainsIdentityAndThreads": true
+      },
+      "stockNativeQwenWithDeterministicLocalModelBackend": true,
+      "reconnectShutdownAndCrashRecoveryPassed": true
+    },
+    "imageHashes": {
+      "serverStartHostAndImage": "a185739927ad0e36880ecf7ea286f8f6849b5dd03d28c46925c8ea8cde403e55",
+      "messageSourcesHostAndImage": "53ce70673ef1ca34a86a7db82f4cee5bf3de2a3369f97d425ba5fa0e559c578a",
+      "sourceFixtureTs": "d06d28c4ce4854fdb4435d56b1567884a7590b2dba899c5f5c231a8983899768",
+      "imageCompiledFixture": "664ce3bffce8a356971b8b486799786c1f82a0547d399ccfd9b1d60a8391a0c5"
+    }
+  },
+  "limitations": [
+    "Core body/subject renderers and centrally installed server plugins remain trusted; metadata is not authentication for arbitrary text.",
+    "Normal single-user unowned legacy backfill retains its existing at-least-once crash semantics.",
+    "Host daemons are trusted for their assigned runtimes; this increment does not isolate compromised daemon/root code.",
+    "Full machine/action inventory, composite background acceptance, provider/profile translation, project MCP and reusable agent product features remain open.",
+    "Docker uses the stock native Qwen SDK/CLI with a deterministic local model backend, not a verified corporate certificate SDK contract.",
+    "No UI changes; real-browser baseline remains increment 51."
+  ]
+}

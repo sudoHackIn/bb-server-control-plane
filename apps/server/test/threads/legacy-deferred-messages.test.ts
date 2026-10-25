@@ -1,5 +1,9 @@
 import { sql } from "drizzle-orm";
-import { listEvents, listQueuedThreadMessages, markThreadDeleted } from "@bb/db";
+import {
+  listEvents,
+  listQueuedThreadMessages,
+  markThreadDeleted,
+} from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { deliverLegacyDeferredThreadMessages } from "../../src/services/threads/legacy-deferred-messages.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
@@ -14,9 +18,6 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const WORKSPACE_PATH = "/tmp/legacy-deferred-project";
 
-// Migration 0111 renames the old table into place, so a freshly migrated
-// database already carries it (empty); IF NOT EXISTS covers a harness that
-// ran the backfill once and dropped it.
 function createLegacyTable(harness: TestAppHarness): void {
   harness.db.run(
     sql`CREATE TABLE IF NOT EXISTS deferred_thread_messages_legacy (
@@ -75,12 +76,14 @@ function seedIdleThread(harness: TestAppHarness, hostId: string) {
 describe("deliverLegacyDeferredThreadMessages", () => {
   it("drops the empty renamed table and is a no-op ever after", async () => {
     await withTestHarness(async (harness) => {
-      // A fresh database's migrations rename the (empty) old table into
-      // place; the first startup clears it away and later ones find nothing.
       expect(legacyTableExists(harness)).toBe(true);
-      await deliverLegacyDeferredThreadMessages(harness.deps);
+      await deliverLegacyDeferredThreadMessages(harness.deps, {
+        allowUnownedLegacyReplay: true,
+      });
       expect(legacyTableExists(harness)).toBe(false);
-      await deliverLegacyDeferredThreadMessages(harness.deps);
+      await deliverLegacyDeferredThreadMessages(harness.deps, {
+        allowUnownedLegacyReplay: true,
+      });
     });
   });
 
@@ -95,22 +98,16 @@ describe("deliverLegacyDeferredThreadMessages", () => {
         payload: {
           kind: "send",
           request: {
-            input: [
-              { type: "text", text: "The held follow-up", mentions: [] },
-            ],
-            // A mode value today's schema does not know: the message must
-            // survive it, since the words are what the migration protects.
+            input: [{ type: "text", text: "The held follow-up", mentions: [] }],
             mode: "defer-legacy",
           },
         },
       });
 
-      await deliverLegacyDeferredThreadMessages(harness.deps);
+      await deliverLegacyDeferredThreadMessages(harness.deps, {
+        allowUnownedLegacyReplay: true,
+      });
 
-      // The thread is active, so the checkpoint queued the message behind the
-      // running turn — the same landing an ordinary send gets. `auto` mode
-      // steers a running turn, so assert on whichever the harness produced:
-      // either a queued row carrying the text, or a dispatched request.
       const queuedTexts = listQueuedThreadMessages(harness.db, thread.id)
         .map(toThreadQueuedMessage)
         .flatMap((row) => row.content)
@@ -137,7 +134,9 @@ describe("deliverLegacyDeferredThreadMessages", () => {
         payload: { kind: "mystery" },
       });
 
-      await deliverLegacyDeferredThreadMessages(harness.deps);
+      await deliverLegacyDeferredThreadMessages(harness.deps, {
+        allowUnownedLegacyReplay: true,
+      });
 
       expect(legacyTableExists(harness)).toBe(true);
       expect(
@@ -166,10 +165,46 @@ describe("deliverLegacyDeferredThreadMessages", () => {
       });
       markThreadDeleted(harness.db, harness.deps.hub, { threadId: thread.id });
 
-      await deliverLegacyDeferredThreadMessages(harness.deps);
+      await deliverLegacyDeferredThreadMessages(harness.deps, {
+        allowUnownedLegacyReplay: true,
+      });
 
       expect(legacyTableExists(harness)).toBe(false);
       expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
     });
+  });
+});
+
+it("does not infer operator authority from an unowned legacy target in shared-server mode", async () => {
+  await withTestHarness(async (harness) => {
+    const thread = seedIdleThread(harness, "host-legacy-shared");
+    createLegacyTable(harness);
+    harness.db.run(
+      sql`INSERT INTO deferred_thread_messages_legacy (id, thread_id, kind, payload, created_at) VALUES ('shared-unknown', ${thread.id}, 'send', 'not even JSON', 1)`,
+    );
+    const before = listEvents(harness.db, { threadId: thread.id }).filter(
+      (event) => event.type === "client/turn/requested",
+    ).length;
+    for (let index = 0; index < 2; index += 1)
+      await deliverLegacyDeferredThreadMessages(harness.deps, {
+        allowUnownedLegacyReplay: false,
+      });
+    expect(
+      harness.db.get<{ payload: string }>(
+        sql`SELECT payload FROM deferred_thread_messages_legacy WHERE id='shared-unknown'`,
+      )?.payload,
+    ).toBe("not even JSON");
+    const events = listEvents(harness.db, { threadId: thread.id });
+    expect(
+      events.filter((event) => event.type === "client/turn/requested"),
+    ).toHaveLength(before);
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "system/error" &&
+          event.data.includes("legacy_deferred_not_authorized"),
+      ),
+    ).toHaveLength(1);
+    expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
   });
 });

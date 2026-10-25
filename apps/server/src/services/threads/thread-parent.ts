@@ -1,4 +1,8 @@
-import { getThread, listNonDeletedChildThreads } from "@bb/db";
+import {
+  getThread,
+  listNonDeletedChildThreads,
+  requireControlPlaneThreadRelation,
+} from "@bb/db";
 import type { Thread, ThreadEventTurnStatus } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
@@ -154,6 +158,13 @@ export function assertValidParentThread(
   if (liveParentThread.deletedAt !== null) {
     throwParentThreadInvalid("deleted");
   }
+  if (args.childThreadId)
+    requireControlPlaneThreadRelation(
+      deps.db,
+      args.childThreadId,
+      args.parentThreadId,
+      false,
+    );
   const parentDepth = resolveParentDepth(deps, {
     childThreadId: args.childThreadId,
     parentThread: liveParentThread,

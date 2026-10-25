@@ -308,7 +308,88 @@ export function createMessageSourceFixture({ db, users }) {
         (await send(`/api/v1/threads/${legacyId}/stop`, {}, token)).status,
         200,
       );
+      const foreignParent = await send(
+        `/api/v1/threads/${sources[0].threadId}`,
+        { parentThreadId: sources[1].threadId },
+        token,
+        "PATCH",
+      );
+      assert.equal(
+        foreignParent.status,
+        403,
+        JSON.stringify(foreignParent.body),
+      );
+      assert.equal(
+        db
+          .prepare("SELECT parent_thread_id FROM threads WHERE id=?")
+          .get(sources[0].threadId).parent_thread_id,
+        null,
+      );
+      assert.equal(
+        (
+          await send(
+            `/api/v1/threads/${legacyId}`,
+            { parentThreadId: sources[0].threadId },
+            token,
+            "PATCH",
+          )
+        ).status,
+        200,
+      );
+      assert.equal(
+        (
+          await send(
+            `/api/v1/threads/${legacyId}`,
+            { parentThreadId: null },
+            token,
+            "PATCH",
+          )
+        ).status,
+        200,
+      );
+      async function setup(mode) {
+        const result = await promisify(execFile)(process.execPath, [
+          "inherited-source-check.mjs",
+          JSON.stringify({
+            sourceThreadId: sources[0].threadId,
+            relatedThreadId: sources[1].threadId,
+            profileVersionId: created[0].profileVersionId,
+            mode,
+          }),
+        ]);
+        return JSON.parse(result.stdout).threadId;
+      }
+      const backfillThreadId = await setup("legacy-backfill");
+      const legacyRows = db
+        .prepare(
+          "SELECT * FROM deferred_thread_messages_legacy WHERE thread_id=? ORDER BY id",
+        )
+        .all(backfillThreadId);
+      assert.equal(legacyRows.length, 2);
+      const foreignNoticeThreadId = await setup("foreign-notice");
+      const foreignNotice = db
+        .prepare("SELECT * FROM queued_thread_messages WHERE thread_id=?")
+        .get(foreignNoticeThreadId);
+      const foreignNoticeDenied = await send(
+        `/api/v1/threads/${foreignNoticeThreadId}/queued-messages/${foreignNotice.id}/send`,
+        { mode: "auto" },
+        token,
+      );
+      assert.equal(
+        foreignNoticeDenied.status,
+        403,
+        JSON.stringify(foreignNoticeDenied.body),
+      );
+      assert.equal(
+        foreignNoticeDenied.body.code,
+        "message_source_not_authorized",
+      );
+      assert.equal(calls.has("BB_MESSAGE_SOURCE_FOREIGN_NOTICE"), false);
       saved = {
+        backfillThreadId,
+        legacyRows,
+        foreignNoticeThreadId,
+        foreignNotice,
         send,
         wait,
         path,
@@ -320,6 +401,8 @@ export function createMessageSourceFixture({ db, users }) {
         inherited: { threadId: deferredThreadId, ...inherited[0] },
       };
       return {
+        managedParentOwnershipEnforced: true,
+        managedForeignNoticeDenied: true,
         managedUnmarkedLegacyRetryDenied: true,
         managedFreshInputAfterLegacyDenialRunsNativeQwen: true,
         managedDeferredSourceRevocationDenied: true,
@@ -330,6 +413,46 @@ export function createMessageSourceFixture({ db, users }) {
     },
     async afterRestart(token) {
       assert.ok(saved);
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT * FROM deferred_thread_messages_legacy WHERE thread_id=? ORDER BY id",
+          )
+          .all(saved.backfillThreadId),
+        saved.legacyRows,
+      );
+      const blocked = db
+        .prepare(
+          "SELECT data FROM events WHERE thread_id=? AND type='system/error' AND json_extract(data, '$.code')='legacy_deferred_not_authorized'",
+        )
+        .all(saved.backfillThreadId);
+      assert.equal(blocked.length, 2);
+      assert.equal(
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM events WHERE thread_id=? AND type='client/turn/requested'",
+          )
+          .get(saved.backfillThreadId).n,
+        0,
+      );
+      assert.equal(calls.has("BB_MESSAGE_SOURCE_BACKFILL_UNKNOWN"), false);
+      const deniedNotice = await saved.send(
+        `/api/v1/threads/${saved.foreignNoticeThreadId}/queued-messages/${saved.foreignNotice.id}/send`,
+        { mode: "auto" },
+        token,
+      );
+      assert.equal(deniedNotice.status, 403, JSON.stringify(deniedNotice.body));
+      const retainedNotice = db
+        .prepare("SELECT * FROM queued_thread_messages WHERE id=?")
+        .get(saved.foreignNotice.id);
+      assert.equal(retainedNotice.content, saved.foreignNotice.content);
+      assert.equal(
+        retainedNotice.system_notice,
+        saved.foreignNotice.system_notice,
+      );
+      assert.equal(retainedNotice.claim_token, null);
+      assert.equal(calls.has("BB_MESSAGE_SOURCE_FOREIGN_NOTICE"), false);
+
       assert.equal(
         db
           .prepare(
@@ -388,6 +511,8 @@ export function createMessageSourceFixture({ db, users }) {
       assert.equal(count(), before + 1);
       assert.equal((await send(`${path}/stop`, {}, token)).status, 200);
       return {
+        managedLegacyBackfillRetainedWithoutExecution: true,
+        managedForeignNoticeDeniedAfterRestart: true,
         managedInheritedRequestReferenceSurvivesRestart: true,
         managedQueueSourceSurvivesRestart: true,
         managedQueueRegrantDeliversSavedInputOnce: true,

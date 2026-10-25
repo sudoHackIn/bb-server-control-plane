@@ -435,7 +435,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       ? installProviderModelCatalogPrewarm(sweepDeps)
       : null;
   if (pendingServerMove === null) {
-    await runStartupRecoverySweep(sweepDeps).catch((error) => {
+    await runStartupRecoverySweep(sweepDeps, {
+      allowUnownedLegacyReplay: controlPlaneConfig === null,
+    }).catch((error) => {
       logger.error({ err: error }, "Startup recovery sweep failed");
     });
   }

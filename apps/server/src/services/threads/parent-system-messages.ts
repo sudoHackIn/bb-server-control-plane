@@ -1,3 +1,4 @@
+import { assertControlPlaneSystemMessage } from "../../control-plane/system-message-authority.js";
 import { assertExecutionAdmission } from "../system/execution-admission.js";
 import {
   getLatestThreadSequence,
@@ -448,6 +449,12 @@ export async function queueParentSystemMessage(
   ) {
     return false;
   }
+  assertControlPlaneSystemMessage(
+    deps.db,
+    parentThread.id,
+    args.systemMessageKind,
+    args.systemMessageSubject,
+  );
   const hasPendingInteraction =
     deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(
       parentThread.id,
@@ -490,25 +497,33 @@ export async function queueParentSystemMessage(
   }
   assertExecutionAdmission(deps.db);
   requireControlPlaneThreadDispatch(deps.db, parentThread.id);
-  createQueuedThreadMessage(deps.db, deps.hub, {
-    threadId: parentThread.id,
-    content: args.input,
-    senderThreadId: null,
-    origin: null,
-    originPluginId: null,
-    model: execution.model,
-    reasoningLevel: execution.reasoningLevel,
-    permissionMode: execution.permissionMode,
-    serviceTier: execution.serviceTier,
-    waitingOn: host
-      ? { kind: "host-offline", hostName: host.name }
-      : { kind: hasPendingInteraction ? "interaction" : "thread-busy" },
-    sendAt: null,
-    payload: { kind: "inline" },
-    systemNotice: {
-      kind: args.systemMessageKind,
-      subject: args.systemMessageSubject,
-    },
+  deps.db.transaction(() => {
+    assertControlPlaneSystemMessage(
+      deps.db,
+      parentThread.id,
+      args.systemMessageKind,
+      args.systemMessageSubject,
+    );
+    createQueuedThreadMessage(deps.db, deps.hub, {
+      threadId: parentThread.id,
+      content: args.input,
+      senderThreadId: null,
+      origin: null,
+      originPluginId: null,
+      model: execution.model,
+      reasoningLevel: execution.reasoningLevel,
+      permissionMode: execution.permissionMode,
+      serviceTier: execution.serviceTier,
+      waitingOn: host
+        ? { kind: "host-offline", hostName: host.name }
+        : { kind: hasPendingInteraction ? "interaction" : "thread-busy" },
+      sendAt: null,
+      payload: { kind: "inline" },
+      systemNotice: {
+        kind: args.systemMessageKind,
+        subject: args.systemMessageSubject,
+      },
+    });
   });
   if (!hasPendingInteraction && !hostUnavailable) {
     requestQueuedMessageDispatch(deps, {
@@ -539,6 +554,12 @@ async function deliverParentSystemMessageWithContextGuard(
 ): Promise<boolean> {
   assertExecutionAdmission(deps.db);
   const { parentThread } = args;
+  assertControlPlaneSystemMessage(
+    deps.db,
+    parentThread.id,
+    args.systemMessageKind,
+    args.systemMessageSubject,
+  );
   requireControlPlaneThreadDispatch(deps.db, parentThread.id);
   const { environment } = requireThreadEnvironment(deps.db, parentThread.id);
   const execution = await buildExecutionOptions(

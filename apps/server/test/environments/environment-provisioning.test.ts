@@ -92,7 +92,9 @@ describe("environment reprovisioning", () => {
         environmentId: environment.id,
         status: "starting",
       });
-      await runStartupRecoverySweep(harness.deps);
+      await runStartupRecoverySweep(harness.deps, {
+        allowUnownedLegacyReplay: true,
+      });
 
       expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
       expect(getThread(harness.db, thread.id)).toMatchObject({

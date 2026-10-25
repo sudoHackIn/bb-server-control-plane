@@ -81,7 +81,6 @@ interface PluginScheduleSweeper {
 
 type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
-  /** Liveness directory for `plugin:<id>` wait holders. */
   plugins: QueueWaitPluginDirectory;
 };
 
@@ -655,6 +654,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
 
 export async function runStartupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
+  options: { allowUnownedLegacyReplay: boolean },
 ): Promise<void> {
   const releasedClaims = releaseOrphanedQueuedMessageDispatchClaims(
     deps,
@@ -666,7 +666,7 @@ export async function runStartupRecoverySweep(
       "Released queued message claims left by the previous server process",
     );
   }
-  await deliverLegacyDeferredThreadMessages(deps);
+  await deliverLegacyDeferredThreadMessages(deps, options);
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
 }

@@ -1,3 +1,4 @@
+import { requireControlPlaneThreadRelation } from "./control-plane-thread-relations.js";
 import { prepareCachedQuery } from "../connection.js";
 import { markThreadPruningPolicyWork } from "./thread-pruning-work.js";
 import { copyProjectAttachmentOwnership } from "./project-attachments.js";
@@ -1837,6 +1838,18 @@ export function updateThread(
   id: string,
   input: UpdateThreadInput,
 ) {
+  if (input.parentThreadId !== undefined && input.parentThreadId !== null) {
+    return db.transaction((tx) => updateThreadRecord(tx, notifier, id, input));
+  }
+  return updateThreadRecord(db, notifier, id, input);
+}
+
+function updateThreadRecord(
+  db: ThreadWriteConnection,
+  notifier: DbNotifier,
+  id: string,
+  input: UpdateThreadInput,
+) {
   const now = Date.now();
   const existing = db.select().from(threads).where(eq(threads.id, id)).get();
   if (!existing) {
@@ -1858,6 +1871,8 @@ export function updateThread(
     "parentThreadId" in input &&
     input.parentThreadId !== existing.parentThreadId
   ) {
+    if (input.parentThreadId)
+      requireControlPlaneThreadRelation(db, id, input.parentThreadId, false);
     changes.push("parent-changed");
   }
   if (

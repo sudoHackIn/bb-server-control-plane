@@ -53,6 +53,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Bind managed daemon tool/approval requests to the current turn and saved native Qwen session, recheck approval authority and exact receipt/environment/host before dispatch, and stop further plugin cron claims after quiescence. The complete machine/source audit remains pending.
 - [x] Recheck saved cross-thread sender/requester authority for managed messages and queues, preserve retry/requester provenance through idle session continuation, and recheck the exact stored request before daemon transport. Verify retained source references and revoked delivery after restart. The complete queue/notification context audit remains pending.
 - [x] Persist server-only references for copied deferred input and exact workflow notification requests; check complete request/job ancestry at commit and transport, retain references across restart and refuse unmarked legacy managed requests. Parent/system-message and complete machine/action acceptance remain pending.
+- [x] Enforce same-owner parent mutations and typed system-notice subjects at queue, canonical commit and transport; retain unknown legacy deferred input without execution in shared-server startup. See [system notices](control-plane-system-notices.md). Complete machine/action and composite background acceptance remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -83,8 +84,9 @@ than treating a target increment number as acceptance.
    managed inbound tool/interaction current-turn/session checks are implemented
    in 54; saved message-source and exact-request transport checks are implemented
    in 55. Deferred-prefix and exact notification-binding request references are
-   implemented in 56. Parent/system-message variants and the remaining machine/
-   action and recovery/source audit stay open.
+   implemented in 56. Parent/system-message subjects and unknown legacy backfill
+   refusal are implemented in 57. The remaining machine/action and composite
+   recovery/source acceptance stay open.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -2524,3 +2526,58 @@ assertions remain enabled. The final server/scripts match the image by SHA-256;
 the UI is unchanged and retains increment 51's browser baseline. See
 `control-plane-phase-56-verification.json` for final proof and earlier fixture
 corrections. The full goal remains open.
+
+
+## Fifty-seventh increment: parent/system notices and unowned legacy backfill
+
+Managed parent changes now check both saved owners and current project access
+before asynchronous API preparation and again in the atomic database update.
+Managed/unmanaged links and foreign parents are refused, while same-owner links
+and cleanup detach remain available. This covers the native administrative
+SDK/API path as well as direct core data mutations; user messages cannot request
+a new system-notice capability.
+
+Typed ownership/child notices check every referenced source thread, including
+all outcomes in a batch. Sources may be archived and their execution profile may
+be retired, because a trusted core status report needs current metadata access,
+not permission to execute that source agent. Deleted sources and revoked source
+project grants are refused. The destination still requires current execution
+authority. The same guard applies before queue creation, at canonical commit,
+when following copied/retried requests and immediately before daemon transport
+after reconnect. Detached tool and directory continuations have explicit typed
+validation. Stored-reader display defaults do not turn ordinary input into an
+explicit unlabeled notice.
+
+Shared-server startup no longer blesses old raw deferred payloads by generating a
+fresh authorized request. It retains those rows, including unmanaged operator
+targets, and records one passive `legacy_deferred_not_authorized` timeline error
+per non-deleted target/row. Repeated recovery does not duplicate the notice or
+copy the old body into it. Ordinary single-user backfill requires an explicit
+startup option; managed targets remain protected even with that option enabled.
+See [the policy and compatibility details](control-plane-system-notices.md).
+
+The host daemon protocol remains 253 and Plugin SDK remains 0.6.80. No public
+wire fields, SDK methods, CLI flags or database schema were added. Existing
+history/timeline surfaces expose the passive error. The complete machine/action
+inventory and composite background acceptance remain open; this increment does
+not claim that arbitrary daemon/root code is isolated from its assigned runtimes.
+
+Verification passed: 938 selected server tests in 103 files, all 658 database
+tests in 59 files, seven typecheck tasks, strict lint and formatting for all
+changed code. The 14 new relation/notice tests include profile retirement,
+complete batches, current project revocation, canonical saved-request rechecks,
+reconnect before actual transport and repeated legacy recovery. The existing
+single-user backfill tests still pass; a new test also blocks an unmanaged legacy
+target in shared-server mode without parsing its malformed payload.
+
+The full Docker deployment completed all 63 tasks in 8m8.752s. Actual native API
+PATCH rejects a foreign parent and allows a same-owner link and detach. A typed
+foreign queued notice is refused before and after restart without changing its
+body/subject. Both raw legacy send and parent-system rows survive startup with
+passive errors and no model request. Native Qwen delivery, queue regrant,
+workflow/automation execution, shutdown and crash recovery remain covered. The
+initial new fixture omitted the required queue wait and failed SQLite's schedule
+constraint; it was corrected without relaxing production policy or test budgets.
+Server bundle and QA script SHA-256 match the final image. No browser UI changed;
+this increment uses the browser baseline from 51. See
+[the verification record](control-plane-phase-57-verification.json).

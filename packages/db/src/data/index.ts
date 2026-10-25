@@ -547,3 +547,8 @@ export * from "./control-plane-threads.js";
 export * from "./control-plane-profiles.js";
 
 export * from "./control-plane-jobs.js";
+
+export {
+  isControlPlaneThreadManaged,
+  requireControlPlaneThreadRelation,
+} from "./control-plane-thread-relations.js";
