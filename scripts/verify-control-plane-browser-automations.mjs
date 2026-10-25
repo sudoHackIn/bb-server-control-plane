@@ -258,6 +258,103 @@ export async function verifyBrowserAutomations({
     .getByRole("region", { name: "Selected automation" })
     .waitFor({ state: "detached" });
   assert.equal((await page.context().request.get(origin + path)).status(), 404);
+  await page
+    .getByRole("button", { name: "New automation", exact: true })
+    .click();
+  await page
+    .getByLabel("Automation type", { exact: true })
+    .selectOption("script");
+  const scriptMarker = `automation-browser-script-${user.login}`;
+  const source = `import fs from 'node:fs';const proof={uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()};fs.writeFileSync(process.env.HOME+'/bb-personal-${scriptMarker}.json',JSON.stringify(proof));console.log(JSON.stringify(proof));console.error('<script>window.scriptOutputExecuted=true</script>');`;
+  await page.getByLabel("Automation name", { exact: true }).fill(scriptMarker);
+  await page.getByLabel("Script source", { exact: true }).fill(source);
+  await page.getByLabel("Script timeout (ms)", { exact: true }).fill("7000");
+  const script = await operation(
+    base,
+    "POST",
+    () =>
+      page
+        .getByRole("button", { name: "Create automation", exact: true })
+        .click(),
+    201,
+  );
+  assert.equal(script.executionMode, "script");
+  const scriptPath = `${base}/${script.id}`;
+  await visible(page.getByText("Edit automation · v1", { exact: true }));
+  await page.reload();
+  await visible(page.getByRole("heading", { name: scriptMarker, exact: true }));
+  assert.equal(
+    await page.getByLabel("Script source", { exact: true }).inputValue(),
+    source,
+  );
+  assert.equal(
+    await page.getByLabel("Script timeout (ms)", { exact: true }).inputValue(),
+    "7000",
+  );
+  const scriptRun = await operation(
+    scriptPath + "/run",
+    "POST",
+    () =>
+      page.getByRole("button", { name: "Run automation", exact: true }).click(),
+    201,
+  );
+  await visible(
+    page.getByText(`${scriptRun.id} · succeeded · manual`, { exact: true }),
+  );
+  const output = await operation(
+    `${scriptPath}/runs/${scriptRun.id}/output`,
+    "GET",
+    () =>
+      page
+        .getByRole("button", {
+          name: `Show script output ${scriptRun.id}`,
+          exact: true,
+        })
+        .click(),
+  );
+  assert.equal(output.status, "succeeded");
+  assert.equal(output.result.exitCode, 0);
+  assert.equal(
+    output.result.stderr.trim(),
+    "<script>window.scriptOutputExecuted=true</script>",
+  );
+  assert.equal(
+    await page.evaluate(() => window.scriptOutputExecuted),
+    undefined,
+  );
+  await proof(scriptMarker);
+  for (const suffix of ["/definition", `/runs/${scriptRun.id}/output`])
+    assert.equal(
+      (
+        await foreign.context.request.get(origin + scriptPath + suffix)
+      ).status(),
+      404,
+    );
+  await page
+    .getByLabel("Script source", { exact: true })
+    .fill(source + "\nconsole.log('revision-two');");
+  const scriptUpdated = await operation(scriptPath, "PUT", () =>
+    page.getByRole("button", { name: "Save automation", exact: true }).click(),
+  );
+  assert.equal(scriptUpdated.revision, 2);
+  await visible(page.getByText("Edit automation · v2", { exact: true }));
+  if (process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS)
+    await page
+      .getByRole("region", { name: "Personal automations", exact: true })
+      .screenshot({
+        path: join(
+          process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS,
+          `personal-script-automations-${user.login}.png`,
+        ),
+      });
+  await page
+    .getByRole("button", { name: "Delete automation", exact: true })
+    .click();
+  await operation(scriptPath, "DELETE", () =>
+    page
+      .getByRole("button", { name: "Confirm delete automation", exact: true })
+      .click(),
+  );
   await page.getByRole("button", { name: "Conversation", exact: true }).click();
   await visible(page.getByRole("textbox", { name: "Message your agent…" }));
 }

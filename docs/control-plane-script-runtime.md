@@ -3,8 +3,8 @@
 Phase 48 adds the private launcher, phase 49 its bounded TypeScript runner and
 phase 50 the native managed Automations controller. Centrally managed scripts
 use inline Node ESM, project cwd and a full-permission approved origin profile.
-The limited personal script definition/output API/SDK/CLI/UI contract remains
-pending; existing personal agent automation controls are unchanged.
+Phase 51 adds the limited personal definition/output API, SDK, CLI and editor.
+Agent prompt requests retain their existing format.
 
 ## Installation and invocation
 
@@ -135,8 +135,7 @@ sudo/helper chain: success, nonzero exit, separate streams, a combined output
 limit, invalid UTF-8, cancellation, timeout and live source revocation. Detached
 commands are checked from the container's outer process namespace after return.
 Real-SQLite tests cover pre-spawn authorization and input rejection. The native controller now supplies durable process identity, crash handling and
-pending cleanup retries as described below. Personal script definition/output
-contracts remain subsequent work.
+pending cleanup retries as described below. Personal script definition/output contracts are described below.
 
 ## Native managed Automations controller
 
@@ -172,7 +171,31 @@ already have had side effects. It first stops/fences the saved job UUID, then
 settles cancellation or an interrupted failure. This is not resumable JavaScript
 memory or exactly-once side effects. A new explicit manual run gets a new UUID.
 Current once/cron scheduling, single-flight claims and idempotency use the same
-native persistence as agent Automations. Personal metadata/history can include
-native scripts, but the prompt-only personal definition editor rejects script
-bodies explicitly; use the native administration surface until its dedicated
-personal contract ships.
+native persistence as agent Automations. Personal metadata/history report executionMode/runMode without source/output.
+The personal definition endpoint/editor supports a bounded script descriptor,
+and per-run output is fetched separately under current owner/project access.
+
+## Personal script contract
+
+Create uses `{originThreadId,name,script:{source,timeoutMs},trigger,enabled}`.
+Existing agent creation uses `prompt` instead. Update uses `expectedRevision`
+and changed name/trigger or a complete script descriptor; prompt/script are
+mutually exclusive. Mode changes require a new automation. Input is strict;
+no identity, path, interpreter, provider/model/tools/MCP or environment overrides
+are accepted. The saved origin must grant full-permission execution.
+
+Definition returns a discriminated `executionMode` with `prompt` or `script`.
+GET `/control-plane/user/automations/:id/runs/:runId/output` and SDK
+`automations.output(id,runId,signal)` return a script result capsule: native status,
+nullable completed result, cleanupPending and bounded error. Stdout/stderr share
+the 1 MiB raw-byte limit. The server verifies native run/automation identity,
+exact central job/source binding and current project access again after RPC.
+Malformed/substituted native results fail as upstream contract errors. Result
+reads never perform a filesystem read using a caller path.
+
+The personal editor selects agent or Node script, retains drafts across CAS
+conflicts, reloads saved source/timeout and shares existing schedule/run/stop/
+delete controls. Output is loaded only on demand and rendered as escaped text;
+access errors hide cached output. Terminal output is a bounded snapshot, not a
+live stdout stream. `bb server access automations` provides script/stdio input,
+timeout and output commands; see the machines guide for exact flags.

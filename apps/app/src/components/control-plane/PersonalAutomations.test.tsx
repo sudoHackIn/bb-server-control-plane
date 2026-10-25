@@ -381,3 +381,124 @@ it("aborts an in-flight create and ignores its acknowledgement after the project
   ).toBeNull();
   expect(screen.queryByDisplayValue(saved.prompt)).toBeNull();
 });
+
+it("creates a Node script with explicit timeout and reloads its source without a prompt", async () => {
+  const scriptDefinition = {
+    ...metadata(),
+    executionMode: "script",
+    revision: 1,
+    script: { source: "console.log('saved script')", timeoutMs: 7000 },
+  };
+  const requests: unknown[] = [];
+  mount(async (input, init) => {
+    const request = new Request(input, init);
+    if (request.method === "POST") {
+      requests.push(await request.json());
+      return Response.json(
+        { ...metadata(), executionMode: "script", revision: 1 },
+        { status: 201 },
+      );
+    }
+    if (request.url.endsWith("/definition"))
+      return Response.json(scriptDefinition);
+    if (request.url.includes("/history"))
+      return Response.json({
+        automationId: saved.id,
+        runs: [],
+        nextCursor: null,
+      });
+    return Response.json({ automations: [], nextCursor: null });
+  });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "New automation" }),
+  );
+  fireEvent.change(screen.getByLabelText("Automation type"), {
+    target: { value: "script" },
+  });
+  expect(screen.queryByLabelText("Automation prompt")).toBeNull();
+  fireEvent.change(screen.getByLabelText("Automation name"), {
+    target: { value: "Script" },
+  });
+  fireEvent.change(screen.getByLabelText("Script source"), {
+    target: { value: "console.log('saved script')" },
+  });
+  fireEvent.change(screen.getByLabelText("Script timeout (ms)"), {
+    target: { value: "7000" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create automation" }));
+  await screen.findByText("Edit automation · v1");
+  expect(requests[0]).toMatchObject({
+    script: { source: "console.log('saved script')", timeoutMs: 7000 },
+  });
+  expect(requests[0]).not.toHaveProperty("prompt");
+  expect(screen.getByLabelText("Script source")).toHaveProperty(
+    "value",
+    "console.log('saved script')",
+  );
+});
+
+it("loads script output only on demand and hides cached output when access is lost", async () => {
+  let denied = false;
+  let reads = 0;
+  mount(
+    async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/definition"))
+        return Response.json({
+          ...metadata(),
+          executionMode: "script",
+          revision: 1,
+          script: { source: "console.log('x')", timeoutMs: 1000 },
+        });
+      if (request.url.includes("/history"))
+        return Response.json({
+          automationId: saved.id,
+          runs: [
+            { ...run, runMode: "script", threadId: null, status: "succeeded" },
+          ],
+          nextCursor: null,
+        });
+      if (request.url.endsWith("/output")) {
+        reads++;
+        return denied
+          ? new Response("", { status: 403 })
+          : Response.json({
+              automationId: saved.id,
+              runId: run.id,
+              status: "succeeded",
+              cleanupPending: false,
+              error: null,
+              result: {
+                jobId: "c9424735-3ed4-4606-9906-85de93e48281",
+                status: "succeeded",
+                exitCode: 0,
+                signal: null,
+                stdout: "owned stdout",
+                stderr: "owned stderr",
+                outputBytes: 24,
+                truncated: false,
+              },
+            });
+      }
+      return Response.json({ automations: [metadata()], nextCursor: null });
+    },
+    { selected: true },
+  );
+  const show = await screen.findByRole("button", {
+    name: `Show script output ${run.id}`,
+  });
+  expect(reads).toBe(0);
+  fireEvent.click(show);
+  await screen.findByText("owned stdout");
+  await screen.findByText("owned stderr");
+  denied = true;
+  fireEvent.click(
+    screen.getByRole("button", { name: `Hide script output ${run.id}` }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: `Show script output ${run.id}` }),
+  );
+  await screen.findByText("Script output unavailable. Check access and retry.");
+  expect(screen.queryByText("owned stdout")).toBeNull();
+  expect(screen.queryByText("owned stderr")).toBeNull();
+});

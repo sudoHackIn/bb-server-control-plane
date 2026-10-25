@@ -45,6 +45,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add and verify a private fixed Node ESM script launcher under registered UID/HOME/cwd, including process namespaces, stop fences and descendant cleanup. Managed automation/API integration remains pending.
 - [x] Add a private bounded TypeScript script runner with saved automation authority, live grant rechecks, shared output budget and acknowledged cancellation/deadline cleanup. Durable controller and public script surfaces remain pending.
 - [x] Integrate supported inline Node scripts with native Automations persistence, saved UUID execution, pending cancellation/cleanup retry, pause/delete and interrupted-run recovery. Personal script definition/output contracts remain pending.
+- [x] Expose personal script create/edit/definition and exact-run output through limited API/SDK/CLI and the personal editor, with strict descriptors, source CAS, output budgets and owner/access checks.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -2159,3 +2160,39 @@ and formatting. The final full Docker deployment passes 63/63 tasks in 7 minutes
 execution. SDK package and canonical compatibility version are both 0.6.80; an
 intermediate mismatch was caught by deployment and corrected before commit.
 `control-plane-phase-50-verification.json` records the full proof and limitations.
+
+## Fifty-first increment: personal script API and editor
+
+Personal Automations accepts a strict script descriptor with inline source and
+bounded timeout alongside the existing prompt form. The server derives native
+Node/project execution from the owned approved origin. Mode changes require a
+new definition. Metadata/history identify execution mode without source/output;
+definition returns the saved prompt or script and revision. A separate exact-run
+output endpoint/SDK method validates native identity and central source/job
+binding, rechecks project access after RPC and rejects malformed/substituted
+results. The returned capsule includes bounded separate streams and pending
+cleanup state, without caller-supplied filesystem paths.
+
+CLI script/stdin/timeout and output commands use that same SDK. The editor
+supports script source, deadline and existing CAS/schedule/run/stop/delete flows;
+output loads only on demand, renders as escaped text and hides cached data after
+access failure. Legacy prompt requests remain valid. The browser acceptance
+extends both certificate contexts with script creation/edit/reload, actual UID/
+HOME/cwd proof, output and foreign-definition/result denial. Independent owner
+browser automation scenarios run concurrently without skipping assertions.
+The expanded browser/deployment matrix uses an 11-minute inner / 11.5-minute
+outer watchdog instead of 9 / 9.5 minutes; the normal deployment and individual
+operation deadlines are unchanged. Stage timings distinguish slow acceptance
+from failed assertions. The composite lifecycle, queue/RPC and complete role/cache
+acceptance remain open.
+
+Verification passes 161 tests (5 real-SQLite server, 8 personal UI, 3 CLI and
+145 native Automations), four-package typecheck, lint, formatting and all 63
+full Docker/browser tasks in 9 minutes 17 seconds. Chrome 155 uses two separate
+certificate contexts. Source/timeout editor screenshots were visually inspected;
+stdout/stderr rendering and HTML-text safety were asserted in the browser.
+The packaged CLI guide includes the new commands. The initial expanded run hit
+the old overall browser watchdog after browser scenarios completed; the final
+run preserves all restart/crash and UI assertions with the documented larger
+aggregate browser budget. `control-plane-phase-51-verification.json` records
+complete proof, timings and remaining acceptance.

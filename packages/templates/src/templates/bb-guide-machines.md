@@ -808,6 +808,7 @@ list, `/:id` and `/:id/history` requests. SDK clients use
 bb server access automations list --project <project-id> --limit 20 --json
 bb server access automations get <automation-id> --json
 bb server access automations history <automation-id> --limit 20 --json
+bb server access automations output <automation-id> <run-id> --json
 ```
 
 Lists accept `--cursor` from `nextCursor`, with at most 50 definitions per page.
@@ -824,7 +825,7 @@ is subsequent work. Native RPC and unsupported mutation URLs remain closed.
 
 ## Personal automation management
 
-Personal certificate/bearer sessions can create and manage agent automations
+Personal certificate/bearer sessions can create and manage agent or Node ESM script automations
 through the limited API and `createControlPlaneClient(...).automations` SDK.
 The server derives project, provider/model/reasoning/permission settings and
 execution identity from the owned origin thread's approved pinned profile.
@@ -851,9 +852,9 @@ are committed with the configuration change; stale revisions return 409.
 Pause/resume leave the definition revision unchanged. A consumed once trigger
 must receive a future trigger before it can be resumed.
 
-Metadata list/get retain their field shape and omit the prompt. The owner-only
-`definition` method/GET `/:id/definition` returns the editable prompt and current
-revision. Create/update return metadata with the resulting revision. New run
+Metadata list/get report `executionMode`; history reports `runMode`. They omit
+source and output. The owner-only `definition` method/GET `/:id/definition`
+returns the editable prompt or script descriptor and current revision. Create/update return metadata with the resulting revision. New run
 readers must understand the terminal `cancelled` status.
 
 HTTP writes are POST `/control-plane/user/automations`, PUT/DELETE `/:id`, POST
@@ -863,6 +864,29 @@ accepts `originThreadId,name,prompt,trigger,enabled`; editing accepts
 an optional `idempotencyKey`. Delete, pause, resume and stop require an empty
 body; queries cannot override identity or execution context. JSON bodies have
 a 1 MiB transport budget and prompts a 128 KiB UTF-8 budget.
+
+Script creation replaces `prompt` with `script: {source, timeoutMs}`; supplying
+both rejects. `source` is inline Node ESM, at most 256 KiB UTF-8. `timeoutMs`
+defaults to 120000 and accepts 1–900000 ms. Script execution requires the origin's
+approved `full` permission profile; cwd and UID/HOME are always server-derived.
+Scripts cannot supply interpreter, environment, file-path, model, tools or MCP
+overrides. To change execution mode, create another automation.
+
+```sh
+bb server access automations create <origin-thread-id> --name Check --script-stdin --timeout-ms 10000 --at <future-ISO-time> --json
+bb server access automations update <automation-id> --revision 1 --script-stdin --timeout-ms 10000 --json
+bb server access automations output <automation-id> <run-id> --json
+```
+
+Use exactly one of `--prompt`, `--prompt-stdin`, `--script` or `--script-stdin`.
+`--timeout-ms` requires script input. Script updates replace the complete source
+and timeout descriptor. The SDK has `automations.output(id, runId, signal)`;
+HTTP uses GET `/:id/runs/:runId/output`, with no query overrides. Results contain
+separate bounded stdout/stderr, exit code/signal, runner outcome, truncation and
+cleanup-pending state. A null result means no completed process result, including
+interrupted execution. Agent output remains available through its owned thread.
+The personal editor supports both modes and loads script output on demand.
+
 
 Individual stop fences only the selected run. Its cancellation intent is saved
 before process cleanup; until cleanup succeeds the run stays running and the

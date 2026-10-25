@@ -7,6 +7,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
+import { PersonalAutomationOutput } from "./PersonalAutomationOutput";
 import { PersonalAutomationEditor } from "./PersonalAutomationEditor";
 import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
 
@@ -160,8 +161,8 @@ export function PersonalAutomations({
     >
       <h1 className="text-lg font-medium">Automations</h1>
       <p className="text-sm text-muted-foreground">
-        Your agent schedules in this project. Progress refreshes every five
-        seconds.
+        Your agent and script schedules in this project. Progress refreshes
+        every five seconds.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={refresh}>
@@ -356,6 +357,14 @@ export function PersonalAutomations({
                         <pre className="whitespace-pre-wrap break-words">
                           {run.error ?? run.skipReason}
                         </pre>
+                      )}
+                      {run.runMode === "script" && (
+                        <PersonalAutomationOutput
+                          client={client}
+                          projectId={projectId}
+                          automationId={saved.id}
+                          runId={run.id}
+                        />
                       )}
                       {run.threadId && (
                         <Button

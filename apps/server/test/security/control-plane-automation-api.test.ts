@@ -146,3 +146,108 @@ it("omits orphaned native definitions and returns an opaque not-found result", a
     });
   });
 });
+
+it("verifies script result binding, native identity and access after awaiting output", async () => {
+  await withTestHarness(async ({ db }) => {
+    const { alice, bob } = seedControlPlaneJobSubjects(db);
+    const root = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      kind: "automation",
+      objectId: "auto-output",
+      userId: alice.user.id,
+      profileVersionId: alice.profile.versionId,
+    });
+    const own = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      kind: "automation-run",
+      objectId: "run-output",
+      sourceBindingId: root.id,
+      userId: alice.user.id,
+      profileVersionId: alice.profile.versionId,
+    });
+    const foreignRoot = createControlPlaneJobBinding(db, {
+      ...bob.input,
+      kind: "automation",
+      objectId: "foreign-auto",
+      userId: bob.user.id,
+      profileVersionId: bob.profile.versionId,
+    });
+    const foreign = createControlPlaneJobBinding(db, {
+      ...bob.input,
+      kind: "automation-run",
+      objectId: "foreign-run",
+      sourceBindingId: foreignRoot.id,
+      userId: bob.user.id,
+      profileVersionId: bob.profile.versionId,
+    });
+    const result = {
+      jobId: own.id,
+      status: "succeeded",
+      exitCode: 0,
+      signal: null,
+      stdout: "owned",
+      stderr: "",
+      outputBytes: 5,
+      truncated: false,
+    };
+    const nativeRun = {
+      id: "run-output",
+      automationId: "auto-output",
+      runMode: "script",
+      threadId: null,
+      status: "succeeded",
+      trigger: "manual",
+      skipReason: null,
+      error: null,
+      scheduledFor: 1,
+      startedAt: 1,
+      finishedAt: 2,
+      output: JSON.stringify(result),
+    };
+    let calls = 0;
+    const service = createControlPlaneAutomationService(db, async () => {
+      calls++;
+      return { run: nativeRun, cleanupError: null };
+    });
+    expect(
+      (await service.output(alice.user.id, root.objectId, nativeRun.id)).result
+        ?.stdout,
+    ).toBe("owned");
+    await expect(
+      service.output(bob.user.id, root.objectId, nativeRun.id),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(calls).toBe(1);
+    for (const invalid of [
+      { ...nativeRun, id: "foreign-run" },
+      { ...nativeRun, automationId: "foreign-auto" },
+      {
+        ...nativeRun,
+        output: JSON.stringify({
+          ...result,
+          jobId: foreign.id,
+          stdout: "secret",
+          outputBytes: 6,
+        }),
+      },
+      { ...nativeRun, output: JSON.stringify({ ...result, outputBytes: 1 }) },
+      { ...nativeRun, output: "not-json" },
+    ]) {
+      const substituted = createControlPlaneAutomationService(db, async () => ({
+        run: invalid,
+        cleanupError: null,
+      }));
+      await expect(
+        substituted.output(alice.user.id, root.objectId, nativeRun.id),
+      ).rejects.toMatchObject({ status: 502 });
+    }
+    const revoked = createControlPlaneAutomationService(db, async () => {
+      db.delete(controlPlaneProjectAccess)
+        .where(eq(controlPlaneProjectAccess.projectId, alice.project.id))
+        .run();
+      return { run: nativeRun, cleanupError: null };
+    });
+    await expect(
+      revoked.output(alice.user.id, root.objectId, nativeRun.id),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+});

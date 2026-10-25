@@ -19,7 +19,7 @@ export function isControlPlaneAutomationPath(path: string, method: string) {
   if (/^\/control-plane\/user\/automations\/[^/]+$/u.test(path))
     return ["GET", "PUT", "DELETE"].includes(method);
   return method === "GET"
-    ? /^\/control-plane\/user\/automations\/[^/]+\/(?:history|definition)$/u.test(
+    ? /^\/control-plane\/user\/automations\/[^/]+\/(?:history|definition|runs\/[^/]+\/output)$/u.test(
         path,
       )
     : method === "POST" &&
@@ -112,6 +112,20 @@ export function installControlPlaneAutomationRoutes(
         return context.json({ error: "invalid_request" }, 400);
       return context.json(
         await service.definition(userId, context.req.param("id") ?? ""),
+      );
+    }),
+  );
+  app.get(
+    `${base}/:id/runs/:runId/output`,
+    route(async (context, userId) => {
+      if (Object.keys(context.req.query()).length)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(
+        await service.output(
+          userId,
+          context.req.param("id") ?? "",
+          context.req.param("runId") ?? "",
+        ),
       );
     }),
   );

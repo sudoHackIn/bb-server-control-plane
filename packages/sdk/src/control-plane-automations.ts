@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   controlPlaneAutomationSchema,
+  controlPlaneAutomationOutputSchema,
   controlPlaneAutomationPageSchema,
   controlPlaneAutomationHistorySchema,
   controlPlaneAutomationDetailSchema,
@@ -80,6 +81,16 @@ export function createControlPlaneAutomationClient(
           `${path(id)}/run`,
           "POST",
           controlPlaneAutomationRunInputSchema.parse(input),
+          signal,
+        ),
+      );
+    },
+    async output(id: string, runId: string, signal?: AbortSignal) {
+      return controlPlaneAutomationOutputSchema.parse(
+        await request(
+          `${path(id)}/runs/${encodeURIComponent(runId)}/output`,
+          "GET",
+          undefined,
           signal,
         ),
       );

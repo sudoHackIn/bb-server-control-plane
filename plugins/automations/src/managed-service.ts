@@ -641,6 +641,28 @@ export function createManagedAutomationService({
     list(input) {
       return rows(input).map((row) => decodeAutomationRow(row).automation);
     },
+    managedResult(input) {
+      const row = required(input);
+      head(row);
+      const run = getAutomationRun(db, input.runId, row.id);
+      if (!run || run.runMode !== "script")
+        throw new experimental_PluginRpcRefusal({
+          code: "not_found",
+          message: "Script run not found",
+        });
+      const attempt = db
+        .prepare(
+          "SELECT cleanup_error AS cleanupError FROM automation_script_attempts WHERE run_id=?",
+        )
+        .get(run.id);
+      return {
+        run: toAutomationRunResponse(run),
+        cleanupError: attempt
+          ? z.object({ cleanupError: z.string().nullable() }).parse(attempt)
+              .cleanupError
+          : null,
+      };
+    },
     managedRead(ids) {
       return ids.flatMap((id) => {
         const row = getAutomation(db, id, jobs.userId ?? undefined);

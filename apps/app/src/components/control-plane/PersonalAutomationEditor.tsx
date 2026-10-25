@@ -4,6 +4,7 @@ import { Button } from "@bb/shared-ui/button";
 import {
   controlPlaneAutomationCreateSchema,
   controlPlaneAutomationUpdateSchema,
+  controlPlaneAutomationDetailSchema,
 } from "@bb/domain";
 import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
 
@@ -41,7 +42,19 @@ export function PersonalAutomationEditor({
   const promptId = useId();
   const [baseline, setBaseline] = useState(saved);
   const [name, setName] = useState(saved?.name ?? "");
-  const [prompt, setPrompt] = useState(saved?.prompt ?? "");
+  const [kind, setKind] = useState<"agent" | "script">(
+    saved?.executionMode ?? "agent",
+  );
+  const [prompt, setPrompt] = useState(
+    saved?.executionMode === "agent" ? saved.prompt : "",
+  );
+  const [script, setScript] = useState(
+    saved?.executionMode === "script" ? saved.script.source : "",
+  );
+  const [timeoutMs, setTimeoutMs] = useState(
+    String(saved?.executionMode === "script" ? saved.script.timeoutMs : 120000),
+  );
+  const kindId = useId();
   const [mode, setMode] = useState<"once" | "schedule">(
     saved?.trigger.triggerType ?? "once",
   );
@@ -78,6 +91,10 @@ export function PersonalAutomationEditor({
         mode === "once"
           ? { triggerType: "once", runAt: new Date(at).getTime() }
           : { triggerType: "schedule", cron, timezone };
+      const content =
+        kind === "agent"
+          ? { prompt }
+          : { script: { source: script, timeoutMs: Number(timeoutMs) } };
       const signal = lifetime.current.controller.signal;
       const value = baseline
         ? await client.automations.update(
@@ -85,7 +102,7 @@ export function PersonalAutomationEditor({
             controlPlaneAutomationUpdateSchema.parse({
               expectedRevision: baseline.revision,
               name,
-              prompt,
+              ...content,
               trigger,
             }),
             signal,
@@ -94,13 +111,17 @@ export function PersonalAutomationEditor({
             controlPlaneAutomationCreateSchema.parse({
               originThreadId,
               name,
-              prompt,
+              ...content,
               trigger,
               enabled,
             }),
             signal,
           );
-      return { ...value, prompt };
+      return controlPlaneAutomationDetailSchema.parse({
+        ...value,
+        ...content,
+        executionMode: kind,
+      });
     },
     onSuccess: (value) => {
       if (!lifetime.current.live) return;
@@ -117,7 +138,14 @@ export function PersonalAutomationEditor({
       if (!lifetime.current.live) return;
       setBaseline(value);
       setName(value.name);
-      setPrompt(value.prompt);
+      setKind(value.executionMode);
+      setPrompt(value.executionMode === "agent" ? value.prompt : "");
+      setScript(value.executionMode === "script" ? value.script.source : "");
+      setTimeoutMs(
+        String(
+          value.executionMode === "script" ? value.script.timeoutMs : 120000,
+        ),
+      );
       setMode(value.trigger.triggerType);
       if (value.trigger.triggerType === "once")
         setAt(localDate(value.trigger.runAt));
@@ -163,18 +191,59 @@ export function PersonalAutomationEditor({
           />
         </label>
         <div>
+          <label className="block text-sm" htmlFor={kindId}>
+            Automation type
+          </label>
+          <select
+            id={kindId}
+            className={fieldClass}
+            value={kind}
+            disabled={baseline !== null}
+            onChange={(event) =>
+              setKind(event.target.value === "script" ? "script" : "agent")
+            }
+          >
+            <option value="agent">Agent prompt</option>
+            <option value="script">Node.js script</option>
+          </select>
+        </div>
+        <div>
           <label className="block text-sm" htmlFor={promptId}>
-            Automation prompt
+            {kind === "agent" ? "Automation prompt" : "Script source"}
           </label>
           <textarea
             id={promptId}
             className={`${fieldClass} min-h-32`}
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            maxLength={131072}
+            value={kind === "agent" ? prompt : script}
+            onChange={(event) =>
+              kind === "agent"
+                ? setPrompt(event.target.value)
+                : setScript(event.target.value)
+            }
+            maxLength={kind === "agent" ? 131072 : 262144}
             required
           />
         </div>
+        {kind === "script" && (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Node ESM in your project workspace. Requires an approved
+              full-permission profile.
+            </p>
+            <label className="block text-sm">
+              Script timeout (ms)
+              <input
+                type="number"
+                min={1}
+                max={900000}
+                required
+                className={fieldClass}
+                value={timeoutMs}
+                onChange={(event) => setTimeoutMs(event.target.value)}
+              />
+            </label>
+          </>
+        )}
         <div>
           <label className="block text-sm" htmlFor={scheduleTypeId}>
             Schedule type
@@ -237,7 +306,12 @@ export function PersonalAutomationEditor({
           </label>
         )}
         {canExecute && (
-          <Button type="submit" disabled={!name.trim() || !prompt.trim()}>
+          <Button
+            type="submit"
+            disabled={
+              !name.trim() || !(kind === "agent" ? prompt : script).trim()
+            }
+          >
             {baseline ? "Save automation" : "Create automation"}
           </Button>
         )}

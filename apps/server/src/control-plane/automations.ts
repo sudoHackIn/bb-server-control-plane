@@ -13,6 +13,9 @@ import {
   controlPlaneAutomationSchema,
   controlPlaneAutomationRunSchema,
   controlPlaneAutomationDetailSchema,
+  controlPlaneAutomationPromptSchema,
+  controlPlaneAutomationOutputSchema,
+  controlPlaneAutomationScriptResultSchema,
   controlPlaneAutomationMutationSchema,
   type ControlPlaneAutomationCreate,
   type ControlPlaneAutomationUpdate,
@@ -24,6 +27,7 @@ import { BUILTIN_AUTOMATIONS_PLUGIN_ID } from "../services/plugins/builtin-regis
 import { withControlPlaneUser } from "./access.js";
 
 type Operation =
+  | "controlPlaneAutomationResult"
   | "controlPlaneAutomationReads"
   | "automations_runs"
   | "automations_create"
@@ -134,9 +138,15 @@ export function createControlPlaneAutomationService(
             execution: z.discriminatedUnion("mode", [
               z.object({
                 mode: z.literal("agent"),
-                prompt: controlPlaneAutomationDetailSchema.shape.prompt,
+                prompt: controlPlaneAutomationPromptSchema,
               }),
-              z.object({ mode: z.literal("script") }),
+              z.object({
+                mode: z.literal("script"),
+                script: z.string().min(1).max(262144),
+                interpreter: z.literal("node"),
+                workingDirectory: z.object({ type: z.literal("project") }),
+                timeoutMs: z.number().int().min(1).max(900000),
+              }),
             ]),
           })
           .strip(),
@@ -165,25 +175,32 @@ export function createControlPlaneAutomationService(
   async function get(userId: string, id: string) {
     const rows = await read(userId, [id]);
     const row = rows[0] ?? missing();
-    return controlPlaneAutomationSchema.strip().parse(row);
+    return controlPlaneAutomationSchema
+      .strip()
+      .parse({ ...row, executionMode: row.execution.mode });
   }
   async function mutation(userId: string, id: string) {
     const row = (await read(userId, [id]))[0] ?? missing();
-    return controlPlaneAutomationMutationSchema.strip().parse(row);
+    return controlPlaneAutomationMutationSchema
+      .strip()
+      .parse({ ...row, executionMode: row.execution.mode });
   }
   async function definition(userId: string, id: string) {
     const row = (await read(userId, [id]))[0] ?? missing();
-    if (row.execution.mode !== "agent")
-      throw new ApiError(
-        400,
-        "automation_script_contract_pending",
-        "Use native Automations for script definitions and output",
-      );
-    return {
+    return controlPlaneAutomationDetailSchema.parse({
       ...controlPlaneAutomationMutationSchema.strip().parse(row),
-      prompt: row.execution.prompt,
-    };
+      executionMode: row.execution.mode,
+      ...(row.execution.mode === "agent"
+        ? { prompt: row.execution.prompt }
+        : {
+            script: {
+              source: row.execution.script,
+              timeoutMs: row.execution.timeoutMs,
+            },
+          }),
+    });
   }
+
   return {
     get,
     definition,
@@ -209,15 +226,24 @@ export function createControlPlaneAutomationService(
               enabled: input.enabled,
               trigger: input.trigger,
               origin: "human",
-              execution: {
-                mode: "agent",
-                prompt: input.prompt,
-                providerId: profile.providerId,
-                model: profile.model,
-                reasoningLevel: profile.reasoningLevel,
-                permissionMode: profile.permissionMode,
-                environment: { type: "project-default" },
-              },
+              execution:
+                "script" in input
+                  ? {
+                      mode: "script",
+                      script: input.script.source,
+                      timeoutMs: input.script.timeoutMs,
+                      interpreter: "node",
+                      workingDirectory: { type: "project" },
+                    }
+                  : {
+                      mode: "agent",
+                      prompt: input.prompt,
+                      providerId: profile.providerId,
+                      model: profile.model,
+                      reasoningLevel: profile.reasoningLevel,
+                      permissionMode: profile.permissionMode,
+                      environment: { type: "project-default" },
+                    },
             }),
           ),
         );
@@ -240,12 +266,32 @@ export function createControlPlaneAutomationService(
           "automation_revision_conflict",
           "Automation revision conflict",
         );
+      if (
+        (input.script && row.executionMode !== "script") ||
+        (input.prompt !== undefined && row.executionMode !== "agent")
+      )
+        throw new ApiError(
+          400,
+          "automation_mode_immutable",
+          "Create a new automation to change execution mode",
+        );
       await withControlPlaneUser(userId, () =>
         rpc("controlPlaneAutomationUpdate", {
           projectId: row.projectId,
           automationId: id,
           expectedRevision: input.expectedRevision,
           ...(input.name === undefined ? {} : { name: input.name }),
+          ...(input.script === undefined
+            ? {}
+            : {
+                execution: {
+                  mode: "script",
+                  script: input.script.source,
+                  timeoutMs: input.script.timeoutMs,
+                  interpreter: "node",
+                  workingDirectory: { type: "project" },
+                },
+              }),
           ...(input.prompt === undefined
             ? {}
             : { agent: { prompt: input.prompt } }),
@@ -344,10 +390,73 @@ export function createControlPlaneAutomationService(
       );
       return {
         automations: automations.map((row) =>
-          controlPlaneAutomationSchema.strip().parse(row),
+          controlPlaneAutomationSchema
+            .strip()
+            .parse({ ...row, executionMode: row.execution.mode }),
         ),
         nextCursor: page.nextCursor,
       };
+    },
+    async output(userId: string, id: string, runId: string) {
+      const root = binding(userId, id);
+      const response = z
+        .object({
+          run: controlPlaneAutomationRunSchema
+            .extend({
+              runMode: z.literal("script"),
+              output: z.string().max(7340032).nullable(),
+            })
+            .strip(),
+          cleanupError: z.string().max(8192).nullable(),
+        })
+        .strict()
+        .safeParse(
+          await withControlPlaneUser(userId, () =>
+            rpc("controlPlaneAutomationResult", {
+              projectId: root.projectId,
+              automationId: id,
+              runId,
+            }),
+          ),
+        );
+      binding(userId, id);
+      if (!response.success) return invalid();
+      const value = response.data;
+      if (value.run.id !== runId || value.run.automationId !== id)
+        return invalid();
+      let result = null;
+      if (value.run.output !== null) {
+        let decoded: unknown;
+        try {
+          decoded = JSON.parse(value.run.output);
+        } catch {
+          return invalid();
+        }
+        const parsed =
+          controlPlaneAutomationScriptResultSchema.safeParse(decoded);
+        if (!parsed.success) return invalid();
+        result = parsed.data;
+      }
+      if (result) {
+        const saved = getControlPlaneJobBinding(db, userId, result.jobId);
+        if (
+          !saved ||
+          saved.kind !== "automation-run" ||
+          saved.objectId !== runId ||
+          saved.sourceBindingId !== root.id ||
+          saved.projectId !== root.projectId
+        )
+          return invalid();
+      }
+      return controlPlaneAutomationOutputSchema.parse({
+        automationId: id,
+        runId,
+        status: value.run.status,
+        result,
+        cleanupPending:
+          value.run.status === "running" && value.cleanupError !== null,
+        error: value.cleanupError ?? value.run.error,
+      });
     },
     async history(
       userId: string,

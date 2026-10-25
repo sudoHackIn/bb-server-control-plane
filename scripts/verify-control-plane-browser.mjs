@@ -333,20 +333,22 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         .click();
       await visible(page.getByRole("textbox", { name: "Message your agent…" }));
     }
-    for (const [actor, user, foreign] of [
-      [alice, aliceUser, bob],
-      [bob, bobUser, alice],
-    ]) {
-      await verifyBrowserAutomations({
-        page: actor.page,
-        foreign,
-        user,
-        origin: ready.origin,
-        visible,
-        command,
-        container: name,
-      });
-    }
+    await Promise.all(
+      [
+        [alice, aliceUser, bob],
+        [bob, bobUser, alice],
+      ].map(async ([actor, user, foreign]) => {
+        await verifyBrowserAutomations({
+          page: actor.page,
+          foreign,
+          user,
+          origin: ready.origin,
+          visible,
+          command,
+          container: name,
+        });
+      }),
+    );
     for (const [actor, foreignId] of [
       [alice, browserWorkflowIds[1]],
       [bob, browserWorkflowIds[0]],
@@ -438,6 +440,11 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     assert.deepEqual(pageErrors, []);
     return {
       ...administration,
+      personalScriptEditorSourceTimeoutReloadAndRevision: true,
+      personalScriptOutputStdoutStderrAndExitRendered: true,
+      personalScriptHtmlOutputRemainsText: true,
+      personalScriptActualUidHomeCwdVerified: true,
+      personalScriptForeignDefinitionAndOutputDenied: true,
       personalAutomationsCrudSchedulesAndRevisionEditor: true,
       personalAutomationResponsiveToolbarVerified: true,
       personalAutomationHistoryAndConversationLinks: true,

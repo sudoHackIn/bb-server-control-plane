@@ -6,6 +6,7 @@ import {
   automationResponseSchema,
   automationRunListResponseSchema,
   automationRunRpcResponseSchema,
+  automationRunResponseSchema,
   automationRunsInputSchema,
   automationsOverviewResponseSchema,
   createAutomationInputSchema,
@@ -19,6 +20,17 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import type { AutomationService } from "./service.js";
 
 export const automationRpcContract = defineRpcContract({
+  controlPlaneAutomationResult: {
+    input: projectAutomationInputSchema.extend({
+      runId: z.string().min(1).max(200),
+    }),
+    output: z
+      .object({
+        run: automationRunResponseSchema,
+        cleanupError: z.string().max(8192).nullable(),
+      })
+      .strict(),
+  },
   controlPlaneAutomationReads: {
     input: z
       .object({ ids: z.array(z.string().min(1).max(200)).max(50) })
@@ -81,6 +93,15 @@ export const automationRpcContract = defineRpcContract({
 
 export function createRpcHandlers(service: AutomationService) {
   return {
+    controlPlaneAutomationResult(input: {
+      projectId: string;
+      automationId: string;
+      runId: string;
+    }) {
+      if (!service.managedResult)
+        throw new Error("Managed script result unavailable");
+      return service.managedResult(input);
+    },
     controlPlaneAutomationReads(input: { ids: string[] }) {
       if (!service.managedRead)
         throw new Error("Managed automation reads are unavailable");

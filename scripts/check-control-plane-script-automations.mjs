@@ -10,6 +10,7 @@ export async function verifyScriptAutomations({
   wait,
   commandProcesses,
   userRequest,
+  userCommand,
 }) {
   const definitions = [];
   let crashCases = [];
@@ -53,11 +54,41 @@ export async function verifyScriptAutomations({
     return row(id);
   }
   for (const subject of subjects) {
-    const value = await create(
-      subject,
-      'console.log(JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd(),job:process.env.BB_AGENT_JOB_ID,backend:!!process.env.BB_SERVER_TOKEN}));console.error("native-script-stderr");',
+    const source =
+      'console.log(JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd(),job:process.env.BB_AGENT_JOB_ID,backend:!!process.env.BB_SERVER_TOKEN}));console.error("native-script-stderr");';
+    const value = await userCommand(
+      subject.user.login,
+      [
+        "automations",
+        "create",
+        subject.thread.id,
+        "--name",
+        `personal-script-${randomUUID()}`,
+        "--script-stdin",
+        "--timeout-ms",
+        "30000",
+        "--at",
+        String(Date.now() + 3600000),
+        "--json",
+      ],
+      source,
     );
-    const first = await run(value, "stable-script-manual");
+    assert.equal(value.executionMode, "script");
+    const detail = await userCommand(subject.user.login, [
+      "automations",
+      "definition",
+      value.id,
+      "--json",
+    ]);
+    assert.equal(detail.script.source, source);
+    const first = await userCommand(subject.user.login, [
+      "automations",
+      "run",
+      value.id,
+      "--idempotency-key",
+      "stable-script-manual",
+      "--json",
+    ]);
     assert.equal(first.runMode, "script");
     assert.equal(first.threadId, null);
     const result = await terminal(first.id, "succeeded");
@@ -72,6 +103,26 @@ export async function verifyScriptAutomations({
       backend: false,
     });
     assert.match(output.stderr, /native-script-stderr/u);
+    const personalOutput = await userCommand(subject.user.login, [
+      "automations",
+      "output",
+      value.id,
+      first.id,
+      "--json",
+    ]);
+    assert.deepEqual(personalOutput.result, output);
+    assert.equal(personalOutput.cleanupPending, false);
+    const denied = subjects.find((item) => item.user.id !== subject.user.id);
+    assert.equal(
+      (
+        await userRequest(
+          denied.user.login,
+          `/control-plane/user/automations/${value.id}/runs/${first.id}/output`,
+        )
+      ).status,
+      404,
+    );
+
     const saved = storage
       .prepare(
         "SELECT a.job_id,r.binding_id,a.result_json,a.cleanup_error FROM automation_script_attempts a JOIN automation_run_authorities r ON r.run_id=a.run_id WHERE a.run_id=?",
@@ -187,6 +238,8 @@ export async function verifyScriptAutomations({
       nativeScriptAutomationDurableJobAndResult: true,
       nativeScriptManualIdempotency: true,
       nativeScriptForeignMetadataDenied: true,
+      personalScriptCliCreateDefinitionRunAndOutput: true,
+      personalScriptForeignOutputDenied: true,
       nativeScriptPauseAndIndividualCancelReapDescendants: true,
       nativeScriptCancellationPreservesOtherOwnerAndFailureBudget: true,
       nativeScriptDeleteReapsBeforeRemoval: true,

@@ -43,6 +43,7 @@ import {
   type AutomationReadResult,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
+  type AutomationRunResponse,
   type AutomationResponse,
   type AutomationScriptWorkingDirectory,
   type AutomationsOverviewResponse,
@@ -82,6 +83,11 @@ export type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
 };
 
 export interface AutomationService {
+  managedResult?(input: {
+    projectId: string;
+    automationId: string;
+    runId: string;
+  }): { run: AutomationRunResponse; cleanupError: string | null };
   managedRead?(ids: string[]): ManagedAutomationReadResult[];
   managedStop?(input: {
     projectId: string;

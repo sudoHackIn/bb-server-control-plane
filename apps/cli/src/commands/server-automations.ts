@@ -72,6 +72,9 @@ export function registerServerAutomationCommands(
       .option("--name <name>", "Definition name")
       .option("--prompt <text>", "Agent prompt")
       .option("--prompt-stdin", "Read the agent prompt from stdin")
+      .option("--script <source>", "Inline Node ESM script")
+      .option("--script-stdin", "Read Node ESM source from stdin")
+      .option("--timeout-ms <number>", "Script deadline, 1 to 900000 ms")
       .option("--at <time>", "Once trigger: ISO time or Unix milliseconds")
       .option("--cron <expression>", "Five-field cron trigger")
       .option("--timezone <zone>", "Cron timezone, defaults to UTC")
@@ -86,13 +89,21 @@ export function registerServerAutomationCommands(
           options: AutomationInputOptions & { disabled?: boolean },
         ) => {
           const input = await automationInput(options);
-          if (!input.name || input.prompt === undefined || !input.trigger)
-            throw new Error("Provide --name, a prompt and one trigger");
+          if (
+            !input.name ||
+            (input.prompt === undefined && input.script === undefined) ||
+            !input.trigger
+          )
+            throw new Error(
+              "Provide --name, prompt or script input and one trigger",
+            );
           output(
             await client().automations.create({
               originThreadId,
               name: input.name,
-              prompt: input.prompt,
+              ...(input.script
+                ? { script: input.script }
+                : { prompt: input.prompt ?? "" }),
               trigger: input.trigger,
               enabled: !options.disabled,
             }),
@@ -145,6 +156,14 @@ export function registerServerAutomationCommands(
             idempotencyKey: options.idempotencyKey,
           }),
         ),
+      ),
+    );
+  automations
+    .command("output <automation-id> <run-id>")
+    .option("--json", "Print JSON")
+    .action(
+      action(async (id: string, runId: string) =>
+        output(await client().automations.output(id, runId)),
       ),
     );
   automations

@@ -9,6 +9,14 @@ import Database from "better-sqlite3";
 import WebSocket from "ws";
 
 export async function verifyManagedRuntime({ launch, signal, password }) {
+  const startedAt = Date.now();
+  const stage = (name) =>
+    console.log(
+      JSON.stringify({
+        controlPlaneStage: name,
+        elapsedMs: Date.now() - startedAt,
+      }),
+    );
   const config = JSON.parse(
     await readFile("/srv/bb/control-plane.json", "utf8"),
   );
@@ -462,6 +470,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         profileVersionId: approved.body.version.id,
       });
     }
+    stage("native-dispatch-complete");
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
       launch,
@@ -556,6 +565,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       const current = connected();
       return current && current.instance_id !== firstSession.instance_id;
     }, "supervised daemon restart");
+    stage("personal-and-browser-complete");
     await personal.beforeRestart();
     child.kill("SIGTERM");
     await once(child, "exit", { signal });
@@ -609,6 +619,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         .get(created[0].threadId).qwen_session_id,
       created[0].sessionId,
     );
+    stage("restart-complete");
     await personal.beforeCrash(child.pid);
     let daemonPid;
     for (const name of await readdir("/proc")) {
@@ -730,6 +741,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     await personal.afterCrashShutdown();
     token = await start();
     const workflowCrash = await personal.afterCrash();
+    stage("crash-recovery-complete");
     const recovered = await wait(() => {
       const row = connected();
       return row && row.instance_id !== secondSession.instance_id ? row : null;
@@ -792,8 +804,9 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     );
   } finally {
     if (child?.exitCode === null && child.signalCode === null) {
-      child.kill("SIGTERM");
-      await once(child, "exit", { signal });
+      const exited = once(child, "exit");
+      child.kill(signal.aborted ? "SIGKILL" : "SIGTERM");
+      await exited;
     }
     observer?.terminate();
     const remainingContexts = (await readdir("/srv/bb")).filter((name) =>

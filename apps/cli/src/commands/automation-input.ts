@@ -2,27 +2,52 @@ export interface AutomationInputOptions {
   name?: string;
   prompt?: string;
   promptStdin?: boolean;
+  script?: string;
+  scriptStdin?: boolean;
+  timeoutMs?: string;
   at?: string;
   cron?: string;
   timezone?: string;
 }
 export async function automationInput(options: AutomationInputOptions) {
-  if (options.prompt !== undefined && options.promptStdin)
-    throw new Error("Choose --prompt or --prompt-stdin");
-  let prompt = options.prompt;
-  if (options.promptStdin) {
-    if (process.stdin.isTTY) throw new Error("Pipe the prompt into stdin");
-    prompt = "";
+  const choices = [
+    options.prompt !== undefined,
+    !!options.promptStdin,
+    options.script !== undefined,
+    !!options.scriptStdin,
+  ].filter(Boolean).length;
+  if (choices > 1) throw new Error("Choose one prompt or script input");
+  if (
+    options.timeoutMs !== undefined &&
+    options.script === undefined &&
+    !options.scriptStdin
+  )
+    throw new Error("--timeout-ms requires script input");
+  let source = options.script ?? options.prompt;
+  if (options.promptStdin || options.scriptStdin) {
+    if (process.stdin.isTTY) throw new Error("Pipe the source into stdin");
+    source = "";
     process.stdin.setEncoding("utf8");
     const chunks: AsyncIterable<unknown> = process.stdin;
     for await (const part of chunks) {
       if (typeof part !== "string")
-        throw new Error("Expected UTF-8 prompt input");
-      prompt += part;
-      if (Buffer.byteLength(prompt) > 131072)
-        throw new Error("Automation prompt is too large");
+        throw new Error("Expected UTF-8 source input");
+      source += part;
+      if (Buffer.byteLength(source) > (options.scriptStdin ? 262144 : 131072))
+        throw new Error("Automation source is too large");
     }
   }
+  const script =
+    options.script !== undefined || options.scriptStdin
+      ? {
+          source: source ?? "",
+          timeoutMs:
+            options.timeoutMs === undefined
+              ? 120000
+              : Number(options.timeoutMs),
+        }
+      : undefined;
+  const prompt = script ? undefined : source;
   if (
     (options.at !== undefined && options.cron !== undefined) ||
     (options.timezone !== undefined && options.cron === undefined)
@@ -43,5 +68,5 @@ export async function automationInput(options: AutomationInputOptions) {
             timezone: options.timezone ?? "UTC",
           }
         : undefined;
-  return { name: options.name, prompt, trigger };
+  return { name: options.name, prompt, script, trigger };
 }

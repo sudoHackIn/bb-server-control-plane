@@ -500,7 +500,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
     const page = await mine.history(saved.id, { limit: 1 });
     expect(page.runs[0]?.id).toBe(first.run.id);
     expect(page.runs[0]).not.toHaveProperty("output");
-    expect(page.runs[0]).not.toHaveProperty("runMode");
+    expect(page.runs[0]?.runMode).toBe("agent");
     expect(
       (
         await server.app.request(`${base}/${saved.id}`, {
@@ -674,7 +674,10 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
     expect(created.revision).toBe(1);
     expect(created.enabled).toBe(false);
     expect(created).not.toHaveProperty("prompt");
-    expect((await mine.definition(created.id)).prompt).toBe("owned prompt API");
+    expect(await mine.definition(created.id)).toMatchObject({
+      executionMode: "agent",
+      prompt: "owned prompt API",
+    });
     const beforeForeignMutation = rpcCalls;
     await expect(foreign.definition(created.id)).rejects.toThrow("404");
     await expect(
@@ -711,9 +714,10 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         name: "stale native",
       }),
     ).rejects.toThrow(/revision conflict/);
-    expect((await mine.definition(created.id)).prompt).toBe(
-      "owned prompt API revised",
-    );
+    expect(await mine.definition(created.id)).toMatchObject({
+      executionMode: "agent",
+      prompt: "owned prompt API revised",
+    });
     native.fault(true);
     await expect(
       mine.update(created.id, {
@@ -722,9 +726,10 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       }),
     ).rejects.toThrow();
     native.fault(false);
-    expect((await mine.definition(created.id)).prompt).toBe(
-      "owned prompt API revised",
-    );
+    expect(await mine.definition(created.id)).toMatchObject({
+      executionMode: "agent",
+      prompt: "owned prompt API revised",
+    });
     expect((await mine.definition(created.id)).revision).toBe(2);
     expect(
       z
@@ -874,18 +879,21 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       pendingScripts.delete(id);
     };
     try {
-      const scriptDefinition = z.object({ id: z.string() }).parse(
-        await invoke(alice.user.id, "automations_create", {
-          ...payload(alice),
-          execution: {
-            mode: "script",
-            interpreter: "node",
-            script: "console.log('original')",
-            workingDirectory: { type: "project" },
-            timeoutMs: 1000,
-          },
-        }),
-      );
+      const scriptDefinition = await mine.create({
+        originThreadId: alice.thread.id,
+        name: "Personal script",
+        trigger: {
+          triggerType: "schedule",
+          cron: "* * * * *",
+          timezone: "UTC",
+        },
+        script: { source: "console.log('original')", timeoutMs: 1000 },
+      });
+      expect(scriptDefinition.executionMode).toBe("script");
+      expect(await mine.definition(scriptDefinition.id)).toMatchObject({
+        executionMode: "script",
+        script: { source: "console.log('original')", timeoutMs: 1000 },
+      });
       expect((await mine.get(scriptDefinition.id)).id).toBe(
         scriptDefinition.id,
       );
@@ -935,6 +943,14 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
           .object({ cleanupError: z.string() })
           .parse(native.scriptAttempt(firstScript.id)).cleanupError,
       ).toContain("unavailable");
+      expect(
+        await mine.output(scriptDefinition.id, firstScript.id),
+      ).toMatchObject({
+        status: "running",
+        cleanupPending: true,
+        error: "Script cleanup unavailable",
+        result: null,
+      });
       native.restart();
       await native.tick(true);
       const states = async () =>
@@ -960,6 +976,16 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
               ?.status,
         )
         .toBe("cancelled");
+      const scriptOutput = await mine.output(
+        scriptDefinition.id,
+        firstScript.id,
+      );
+      expect(scriptOutput.status).toBe("cancelled");
+      expect(scriptOutput.result?.jobId).toBe(attempt.jobId);
+      expect(scriptOutput.cleanupPending).toBe(false);
+      await expect(
+        foreign.output(scriptDefinition.id, firstScript.id),
+      ).rejects.toThrow("404");
       expect(scriptCalls).toHaveLength(1);
       const deduped = run.parse(
         await invoke(alice.user.id, "automations_run", {

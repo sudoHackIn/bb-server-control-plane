@@ -716,6 +716,7 @@ export async function verifyNativeAutomations({
       wait,
       commandProcesses,
       userRequest,
+      userCommand,
     });
     const boundedRunner = launch([
       "script-runner-check.mjs",
