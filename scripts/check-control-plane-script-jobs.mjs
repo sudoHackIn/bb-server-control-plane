@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { readFile, readdir, writeFile, chown } from "node:fs/promises";
+import { readFile, readdir, writeFile, chown, rm } from "node:fs/promises";
 import Database from "better-sqlite3";
 
 export async function verifyScriptJobs({ command, launch, signal }) {
@@ -31,6 +31,29 @@ export async function verifyScriptJobs({ command, launch, signal }) {
       mode: 0o600,
     });
     await chown(module, user.uid, user.uid);
+  }
+  const staleJob = randomUUID();
+  const stalePath = `/var/lib/bb-agent-launcher/jobs/${staleJob}.json`;
+  const staleLease = {
+    userId: users[0].id,
+    uid: users[0].uid,
+    pid: 2147483647,
+    start: "0",
+  };
+  await writeFile(stalePath, JSON.stringify(staleLease), {
+    mode: 0o600,
+    flag: "wx",
+  });
+  try {
+    await assert.rejects(stop(users[0], staleJob));
+    assert.deepEqual(JSON.parse(await readFile(stalePath, "utf8")), staleLease);
+    await assert.rejects(stop(users[0], staleJob));
+    await assert.rejects(
+      command(args(users[0], staleJob), "console.log('forbidden')"),
+    );
+    assert.deepEqual(JSON.parse(await readFile(stalePath, "utf8")), staleLease);
+  } finally {
+    await rm(stalePath, { force: true });
   }
   for (const user of users) {
     const other = users.find((row) => row.id !== user.id);
@@ -191,6 +214,7 @@ export async function verifyScriptJobs({ command, launch, signal }) {
   }
   return {
     fixedNodeEsmStdinRuntime: true,
+    deadSupervisorLeaseDoesNotAcknowledgeCleanup: true,
     twoUserUidHomeCwdVerified: true,
     noServiceOrModelCredentials: true,
     scriptPrivateProcessMetadata: true,

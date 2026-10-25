@@ -698,9 +698,49 @@ export async function verifyNativeAutomations({
       storage.prepare("SELECT count(*) AS count FROM automations").get().count,
       beforeOversized,
     );
+    const boundedRunner = launch([
+      "script-runner-check.mjs",
+      JSON.stringify(
+        subjects.map((subject) => ({
+          userId: subject.user.id,
+          projectId: subject.project.projectId,
+          originThreadId: subject.thread.id,
+        })),
+      ),
+    ]);
+    let boundedOutput = "",
+      boundedError = "";
+    boundedRunner.stdout.on("data", (chunk) => {
+      boundedOutput += chunk;
+    });
+    boundedRunner.stderr.on("data", (chunk) => {
+      boundedError += chunk;
+    });
+    boundedRunner.stdin.end();
+    assert.equal(
+      (await once(boundedRunner, "exit", { signal }))[0],
+      0,
+      boundedError || boundedOutput,
+    );
+    const { markers, ...boundedProof } = JSON.parse(boundedOutput);
+    for (const pid of await readdir("/proc")) {
+      if (!/^[0-9]+$/.test(pid)) continue;
+      let commandLine;
+      try {
+        commandLine = await readFile(`/proc/${pid}/cmdline`, "utf8");
+      } catch {
+        continue;
+      }
+      assert.ok(
+        !markers.some((marker) => commandLine.includes(marker)),
+        `Script descendant survived cleanup: ${pid}`,
+      );
+    }
     let offline;
     return {
       verification: {
+        ...boundedProof,
+        boundedScriptRunnerDetachedDescendantsReaped: true,
         personalAutomationCrudAndRevisionCas: true,
         personalAutomationOriginProfileDerivedByServer: true,
         personalAutomationImmutablePromptVersions: true,

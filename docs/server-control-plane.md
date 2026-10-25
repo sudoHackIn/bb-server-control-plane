@@ -42,7 +42,8 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Expose personal native workflow run start/list/status/result/history/stop and terminal replay through the limited API, SDK and CLI, reusing builtin persistence and owner authority. Automations and schedules remain pending.
 - [x] Manage personal agent automations through limited API/SDK/CLI: create/edit with revision CAS, pause/resume, idempotent run, durable individual stop and deletion. Personal UI and the composite background audit remain pending.
 - [x] Add the personal Automations workspace using the limited API: revision-protected editor, once/cron schedules, pause/resume, manual run, paginated history, individual cancellation, conversation links and confirmed deletion; verify both users in a real browser.
-- [x] Add and verify a private fixed Node ESM script launcher under registered UID/HOME/cwd, including process namespaces, stop fences and descendant cleanup. Bounded runner and managed automation/API integration remain pending.
+- [x] Add and verify a private fixed Node ESM script launcher under registered UID/HOME/cwd, including process namespaces, stop fences and descendant cleanup. Managed automation/API integration remains pending.
+- [x] Add a private bounded TypeScript script runner with saved automation authority, live grant rechecks, shared output budget and acknowledged cancellation/deadline cleanup. Durable controller and public script surfaces remain pending.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -2076,3 +2077,39 @@ module imports. Runtime/helper and QA artifact hashes match the image, and the
 installed policy explicitly enables node-esm. No watchdog was increased.
 `control-plane-phase-48-verification.json` records the complete deployment proof
 and remaining scope.
+
+## Forty-ninth increment: bounded automation script runner
+
+The private TypeScript runner requires an existing automation-run/source binding
+and derives registered UID/HOME/project cwd through current saved authority.
+Foreign principals, wrong-purpose bindings and disabled lineage reject before
+spawn. Authority and execution identity are rechecked before launch, every
+250 ms and around completion. Source is capped at 256 KiB, the combined raw
+stdout/stderr budget is 1 MiB and the deadline is capped at 15 minutes. Invalid
+UTF-8, including an incomplete final character, stops/rejects execution. Separate
+output streams, process exit code/signal and runner outcome remain distinct.
+
+Cancellation, timeout, output failure and revoked authority use the original
+identity/job tuple for stop. Even natural exit verifies cleanup through stop and
+fences the completed job UUID. Failed stop or missing transport close raises an
+unconfirmed-cleanup error. A remaining lease after supervisor death now refuses
+both stop acknowledgement and relaunch, preserving evidence instead of deleting
+it and claiming successful cleanup. This helper correction applies to every
+runtime using the shared supervisor.
+
+Docker integration invokes the actual core runner for two owners, exercising
+success, exit 17, mixed-stream overflow, invalid/incomplete UTF-8, cancellation,
+deadline and live source revocation. Detached commands are checked from the
+outer process namespace after return. A synthetic root-owned dead-supervisor
+lease verifies repeated stop/relaunch refusal and unchanged evidence. Real-SQLite
+security tests cover pre-spawn denial and strict input budgets.
+
+Only the bounded private runner checklist item closes. Native managed script
+Automations remain denied: durable script process identity, controller restart
+and pending-cleanup retry, and explicit personal definition/output contracts
+through SDK/CLI/UI remain subsequent work. There is no schema, daemon protocol,
+Plugin SDK or UI change. Verification passes five real-SQLite tests, server typecheck, changed-file lint,
+formatting and all 63 normal Docker tasks in 7 minutes 35 seconds. The final
+image/helper and changed QA file hashes match the project. No watchdog was
+increased. `control-plane-phase-49-verification.json` records the full deployment
+proof and remaining work.

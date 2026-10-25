@@ -114,16 +114,19 @@ def stop_job(user_id, uid, session_id, lock):
         return
     current = process_info(lease['pid'])
     if not current or current['start'] != lease['start'] or current['state'] == 'Z':
-        os.unlink(path)
         os.close(lock)
-        return
+        if not os.path.exists(path):
+            return
+        raise RuntimeError('Job supervisor cleanup is unconfirmed')
     os.kill(lease['pid'], signal.SIGTERM)
     os.close(lock)
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         current = process_info(lease['pid'])
         if not current or current['start'] != lease['start'] or current['state'] == 'Z':
-            return
+            if not os.path.exists(path):
+                return
+            raise RuntimeError('Job supervisor cleanup is unconfirmed')
         time.sleep(0.02)
     raise RuntimeError('Job supervisor did not stop')
 
@@ -163,6 +166,7 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
         current = process_info(old['pid'])
         if current and current['start'] == old['start'] and current['state'] != 'Z':
             raise ValueError('Qwen session is already running')
+        raise ValueError('Previous job cleanup is unconfirmed')
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise RuntimeError('Could not supervise agent descendants')
     pid = os.getpid()

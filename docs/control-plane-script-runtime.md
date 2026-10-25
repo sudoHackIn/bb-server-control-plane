@@ -1,9 +1,9 @@
 # Isolated Node script launcher primitive
 
-Phase 48 adds a private launcher operation, not personal script automation
-support. Native managed Automations still rejects script definitions. The next
-stage must add the server-side bounded runner and durable controller lifecycle
-before any tenant API, SDK, CLI or UI can submit script jobs.
+Phase 48 adds the private launcher and phase 49 adds its bounded TypeScript
+runner. Native managed Automations still rejects script definitions. Durable
+controller lifecycle and explicit personal API/SDK/CLI/UI contracts remain
+required before tenants can submit script jobs.
 
 ## Installation and invocation
 
@@ -64,15 +64,18 @@ provided by this increment.
 The existing root-owned job lease records supervisor PID/start identity and
 user UUID/UID. Stop-before-launch creates a fence, a second concurrent launch
 of the same live job is refused, and a foreign identity cannot stop it. The
-same helper `stop` operation waits for supervisor cleanup. The supervisor kills
+same helper `stop` operation waits for supervisor cleanup. A missing/dead
+supervisor with a remaining lease is unconfirmed cleanup: stop refuses success
+and retains that lease, including on repeated attempts. Relaunching over such a
+lease is also refused. The supervisor kills
 and reaps detached descendants and removes its matching lease. If its service
 caller dies, ancestry monitoring also performs cleanup.
 
 Use fresh job IDs. The controller must not infer durable job success from
 process start or accept script-written stdout as owner identity. Script stdout,
-stderr and exit status are raw transport at this layer. Input/output budgets,
-deadlines, current-grant rechecks, persisted terminal status and restart policy
-belong in the outer server/controller adapter and remain unimplemented here.
+stderr and exit status are raw transport at this layer. Input/output budgets, deadlines and current-grant rechecks belong in the outer
+TypeScript runner described below. Persisted terminal status and restart policy
+remain controller responsibilities, not implemented in this primitive.
 A controller must not fabricate a Qwen/BB thread ID for a script process.
 
 ## Verification
@@ -97,3 +100,41 @@ The normal Qwen/workflow/automation/restart/crash scenarios remain enabled. The
 new primitive does not change their provider policy, daemon protocol, database
 schema or public SDK. Native script definitions remain denied until their
 managed runner/controller integration is complete.
+
+## Bounded TypeScript runner
+
+`apps/server/src/control-plane/automation-script-runner.ts` is a private core
+function, not a plugin RPC or tenant submission endpoint. Its caller supplies an
+existing automation-run binding and a fresh job UUID to persist before execution.
+The runner requires a current automation source binding and derives owner UID,
+HOME and project cwd from the verified central registry. It rejects foreign
+request principals, disabled/deleted lineage and wrong-purpose bindings before
+spawn; no identity, interpreter, cwd, environment or launch-policy overrides are
+accepted. Binding creation remains restricted to approved builtin hosts.
+
+Source is nonempty UTF-8 text capped at 256 KiB. The deadline is 1–900000 ms.
+Stdout and stderr are separate UTF-8 strings sharing a 1 MiB raw-byte budget;
+excess output stops the job and retains only a bounded valid prefix. Invalid or
+incomplete UTF-8 fails the job. Output is untrusted data, not a control protocol.
+Exit code/signal are reported separately from cancellation, timeout, output-limit
+and authority-revocation outcomes. Input travels through stdin; only fixed PATH
+and LANG enter the service launcher process.
+
+Authority is checked immediately before launch, every 250 ms while active and
+again around completion/cleanup. Changes to saved execution identity are also
+rejected. Cancellation and failures call the privileged stop with the original
+saved identity/job tuple, even after access revocation. The runner awaits both
+the stop acknowledgement and transport close. Even natural exit performs stop
+to verify lease cleanup and fence that completed job UUID. A failed/timed-out stop or missing
+transport close raises an unconfirmed-cleanup error rather than a terminal
+success/cancel result; the caller must retain durable pending cleanup. Cleanup
+has a 12-second command deadline and a further 5-second transport-close bound.
+
+Docker integration exercises both owners through this actual core function and
+sudo/helper chain: success, nonzero exit, separate streams, a combined output
+limit, invalid UTF-8, cancellation, timeout and live source revocation. Detached
+commands are checked from the container's outer process namespace after return.
+Real-SQLite tests cover pre-spawn authorization and input rejection. Persisting
+script process identity, controller crash recovery, pending cleanup retries and
+the public script definition/history contract are subsequent work. This runner
+alone does not make managed script Automations available.
