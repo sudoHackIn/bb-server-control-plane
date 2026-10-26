@@ -48,9 +48,9 @@ existing root access. Removed members lose fresh root-path access during the
 update. The same revision and member set can repair an interrupted application.
 The ready record is atomically replaced and fsynced only after tree validation.
 
-## Remaining execution boundary
+## Execution boundary before increment 67
 
-The helper lock serializes helper calls; it does not freeze agent filesystem
+The original helper lock serialized helper calls; it did not freeze agent filesystem
 operations. Descriptor checks and the final root inode check do not make a
 recursive ACL update atomic against hostile concurrent rename/hardlink activity.
 The static substitution checks in this increment are not proof of safety under
@@ -76,8 +76,9 @@ pnpm exec turbo run test:control-plane-project-access --filter=@bb/server
 It builds the same production image and uses real migrated SQLite, the compiled
 TypeScript wrapper, the installed helper and three numeric UID/HOME identities.
 Anonymous Docker volumes are necessary: the host's Docker tmpfs does not support
-these POSIX ACLs. The container is read-only, has no network or namespace
-capability, and is removed with its anonymous volumes. A 120-second outer deadline
+these POSIX ACLs. The container is read-only, has no network or added Linux capabilities, and uses
+the deployment's narrow seccomp allowances for user/PID namespaces. It is removed
+with its anonymous volumes. A 120-second outer deadline
 also removes a failed test container.
 
 The complete `test:control-plane-deployment` includes the same check and repeats
@@ -124,7 +125,7 @@ above are still required before exposing grants or shared Qwen execution. This
 increment persists the necessary authority/recovery state without treating an
 uncoordinated ACL update as safe production revocation.
 
-### Next execution prerequisite
+### Execution prerequisite recorded before increment 67
 
 The next implementation must give every managed UID a launcher-owned lifetime
 lease across Qwen, script, workflow and workspace jobs. Launch must acquire its
@@ -149,3 +150,65 @@ must recheck current grants. Until those lifecycle and race cases are tested,
 public grant changes and shared launch must remain closed. This design assumes
 host-local managed storage and trusted service/root writers; arbitrary external
 filesystem writers would require a different isolation boundary.
+
+
+## Managed UID lifetime barrier (increment 67)
+
+Every Qwen, workflow, script and workspace job acquires a root-owned shared UID
+lease before the helper releases its global launch lock or creates an agent
+process. The supervisor retains that descriptor through descendant cleanup and
+job-record removal. It is not inherited by the agent. Several jobs under one UID
+share the lease normally; an unrelated UID can continue to launch.
+
+Project ACL application acquires nonblocking exclusive leases for the storage
+owner and every previous/new writer UID before opening or changing the project.
+It checks root-owned job records even when a supervisor is already dead. A live
+job, unconfirmed cleanup or a conflicting lease refuses application without
+changing ACLs or applied-policy state. Stopped-before-launch tombstones are not
+live jobs. A `/proc` check also refuses observed unmanaged processes under the
+selected real/effective/saved/filesystem UIDs. Zombie processes do not retain
+file descriptors and do not block this check.
+
+The root policy's `writers` set retains previous and newly requested identities
+through pending failures. It shrinks only after a successful quiescent tree
+application. A removed grant cannot disappear from the cleanup barrier merely
+because it is absent from the new desired/active member list. Legacy ready
+records without this set require an all-registered-UID idle check under the
+global helper lock before adoption. Legacy pending records without prior-writer
+provenance are refused for operator review; their policy and ACLs are unchanged.
+
+The safety contract is that managed UID processes originate through the fixed
+launcher. Shared leases plus persistent job records cover its pre-spawn and
+supervisor-crash gaps. Process enumeration is an additional refusal check, not a
+kernel-wide freeze or proof against hostile unmanaged UID process creation.
+Storage remains host-local, with trusted service/root writers. This does not add
+cgroups, a filesystem jail or control over arbitrary external filesystem writers.
+
+Real Docker tests start two namespaced script jobs under the same UID, each with
+a child holding a project file descriptor. Mutation remains blocked after stopping
+only one, succeeds after both acknowledged cleanups, and then denies fresh reads.
+Other cases cover stale supervisor records, a stable unmanaged process, failed
+new admission before job registration, another UID continuing to launch, stopped
+tombstones, pending former writers, legacy ready adoption and legacy pending
+quarantine. Busy attempts compare both the saved policy and exact project ACLs.
+The fixture removes only its own verified tombstone after testing, preserving
+other jobs and the existing missing-directory cancellation-fence scenario.
+
+Public role mutation, automatic reconciliation and shared native launch remain
+closed. The next service layer must persist and enforce admission fences for all
+affected UIDs through stop, helper application and exact database acknowledgement,
+including stale acknowledgements, retries and restart. Releasing the filesystem
+lease alone is not such a service fence: a changed database policy must not leave
+a gap where another owned project launches a process with obsolete shared access.
+Histories/HOME must survive the coordinated stop and subsequent authorized cold
+resume. These remaining steps are required before opening shared execution.
+
+For that next layer, a persisted root UID maintenance fence must also block
+already queued launcher requests, not only fresh server admission. Enter it
+before draining jobs; retain it through helper application and exact-current
+acknowledgement, and after failures/restart. Serialize administrative grant
+mutation and the final acknowledgement/unfence per affected UID, and require
+matching fence generations so an old completion cannot release a newer fence.
+Administrative grant management is the planned mutation surface; tenant project
+metadata access must not become permission to cancel another user's private jobs.
+These are remaining requirements, not claims about increment 67.

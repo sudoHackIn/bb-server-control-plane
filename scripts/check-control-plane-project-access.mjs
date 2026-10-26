@@ -1,3 +1,4 @@
+import { verifyProjectUidLeases } from "./check-control-plane-uid-leases.mjs";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -353,11 +354,21 @@ export async function verifyProjectDirectoryAccess() {
     bob,
     `require("node:fs").readFileSync(${JSON.stringify(policyProject.cwd + "/policy.txt")})`,
   );
-  const removed = await changePolicy(null);
+  await changePolicy(null);
   await applyPolicy();
   await denied(bob, policyProject.cwd + "/policy.txt");
+  const uidLeases = await verifyProjectUidLeases({
+    alice,
+    bob,
+    charlie,
+    project: policyProject,
+    service,
+    as,
+    denied,
+  });
   return {
     verification: {
+      ...uidLeases.verification,
       projectAclDatabaseRunnerGrantAndViewerDowngrade: true,
       projectAclDatabaseRemovedGrantRevokesAndStaleReceiptDenied: true,
       projectAclRealMigratedRegistryAndNumericUsers: true,
@@ -375,7 +386,7 @@ export async function verifyProjectDirectoryAccess() {
       projectAclLargeTreeEntries: 2048,
     },
     async verifyPersistence() {
-      assert.equal((await applyPolicy()).revision, removed.revision);
+      assert.equal((await applyPolicy()).revision, uidLeases.revision);
       await denied(bob, policyProject.cwd + "/policy.txt");
       assert.deepEqual(
         await service({

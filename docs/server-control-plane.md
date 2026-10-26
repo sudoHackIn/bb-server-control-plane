@@ -27,6 +27,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [x] Add an internal revision-fenced project ACL primitive and three-UID Docker checks, preserving separate HOME and legacy owner-only launch. Central role integration, concurrent-filesystem safety and shared execution remain pending. See [directory access](control-plane-project-access.md).
 - [x] Persist database-derived desired/applied project ACL revisions, invalidate them transactionally on grants and source/identity changes, and fence stale helper acknowledgements. Verify runner/viewer/removal and restart through the real helper in Docker. Public reconciliation and shared execution remain pending.
+- [x] Hold per-UID lifetime leases for every managed launcher job and require exclusive, quiescent writer leases before ACL mutation; retain former writers through pending recovery. Verify real namespaced jobs, cleanup/stale records, busy immutability and legacy adoption in Docker. Service admission fences and public shared execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3059,3 +3060,44 @@ revision and rejects old receipts and grants. Three source/image hashes match,
 including the actual migration; the compiled fixture is also fingerprinted.
 No production frontend changes require a new browser baseline. See
 [the verification record](control-plane-phase-66-verification.json).
+
+
+## Sixty-seventh increment: UID lifetime leases and quiescent ACL mutation
+
+The common privileged launcher now holds a shared UID lease from before launch
+lock release through acknowledged descendant cleanup and job-record removal.
+Qwen, workflow, script and workspace execution use that same unconditional path.
+ACL synchronization takes exclusive leases for the storage owner and old/new
+writers, refuses live/unconfirmed jobs and observed unmanaged UID processes, and
+changes no policy/ACL state when busy. Leases are private to the root supervisor;
+agents cannot close or replace them. Concurrent jobs of one UID share the lease,
+and unrelated UID execution remains available.
+
+Pending root policies retain former writer identities until successful repair.
+Old ready records lacking that provenance require all registered users idle;
+old pending records are quarantined without guessing. See [the managed UID
+barrier and its remaining service boundary](control-plane-project-access.md#managed-uid-lifetime-barrier-increment-67).
+
+Public grant mutation and shared native execution remain closed. Service-level
+admission fences must still span database changes, runtime stop, filesystem
+application and current-revision acknowledgement, including restart and retries.
+The `/proc` check is a refusal check, not a sandbox for unmanaged process origins.
+
+Verification: the focused Docker task passes 63 tasks in 20.6s, including two
+actual namespaced jobs with descriptor-holding children, nonblocking busy
+immutability, same-UID sharing, other-UID launch, stale job records, unmanaged
+process refusal, pending writer repair and legacy ready/pending behavior.
+The rebuilt complete deployment passes 63 tasks in 8m30.98s with unchanged
+budgets, retaining native Qwen/MCP, workflow/script/workspace execution, shutdown,
+restart and crash recovery. Persisted policy/revocation checks pass afterward.
+Four Python modules compile; six typecheck tasks and strict lint/formatting of
+four MJS files pass. Five source/image hashes match. Server/database unit baselines
+remain increment 66 (3825/675 passed); their production TypeScript and schema are
+unchanged. Browser production code is unchanged. See [the verification
+record](control-plane-phase-67-verification.json).
+
+The first full run caught fixture interference: the earlier Qwen cancellation
+check intentionally removes an empty jobs directory. The new scenario now
+verifies and removes only its own stopped-before-launch tombstone after testing;
+it preserves every other job and the original missing-directory assertion. No
+production stop fence, check or deadline was weakened.

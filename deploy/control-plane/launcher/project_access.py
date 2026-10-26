@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import runpy
 import stat
 import pwd
 import grp
@@ -170,82 +171,101 @@ def synchronize(policy, root_fd, owner_id, owner_uid, args):
             records.append(record)
     if old and (old['revision'] > revision or (old['revision'] == revision and old['members'] != members)):
         raise ValueError('Stale or conflicting project revision')
-    base_fd = os.open(owner_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
-    if os.fstat(base_fd).st_uid != 0 or stat.S_IMODE(os.fstat(base_fd).st_mode) != 0o711:
-        raise ValueError('Untrusted user root')
-    projects_fd = os.open('projects', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=base_fd)
-    os.close(base_fd)
-    projects_info = os.fstat(projects_fd)
-    if projects_info.st_uid != owner_uid or projects_info.st_gid != owner_uid or stat.S_IMODE(projects_info.st_mode) != 0o710:
-        raise ValueError('Untrusted projects root')
-    project_fd = os.open(slug, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=projects_fd)
-    info = os.fstat(project_fd)
-    if info.st_uid != owner_uid or info.st_gid != owner_uid or stat.S_IMODE(info.st_mode) != 0o770:
-        raise ValueError('Untrusted project directory')
-    previous = old.get('activeMembers', old['members'] if old.get('phase') == 'ready' else []) if old else []
-    retained = [item for item in previous if item in members]
-    record = {**binding, 'revision': revision, 'members': members, 'activeMembers': retained, 'phase': 'pending'}
-    write_json(state_fd, filename, record)
-    deadline = time.monotonic() + 20
-
-    def parent_acl(active):
-        allowed = set()
-        for item in records:
-            if item.get('projectId') != project_id:
-                allowed.update(member['uid'] for member in item.get('activeMembers', item['members'] if item.get('phase') == 'ready' else []))
-        allowed.update(member['uid'] for member in active)
-        acl = ['u::rwx', 'g::---', 'o::---', 'm::--x', 'u:' + str(policy['serviceUid']) + ':--x']
-        acl.extend('u:' + str(uid) + ':--x' for uid in sorted(allowed))
-        set_acl(projects_fd, acl)
-
-    count = 0
-    visited = set()
-
-    def walk(fd, depth):
-        nonlocal count
-        current = os.fstat(fd)
-        if depth > 128 or current.st_dev != info.st_dev or (current.st_dev, current.st_ino) in visited:
-            raise ValueError('Invalid project tree')
-        visited.add((current.st_dev, current.st_ino))
-        apply_acl(fd, current, owner_uid, policy['serviceUid'], members, deadline, directory=True, root_members=retained if depth == 0 else None)
-        for name in os.listdir(fd):
-            count += 1
-            if count > MAX_ENTRIES or time.monotonic() >= deadline:
-                raise ValueError('Project tree exceeds limits')
-            if stat.S_ISLNK(os.stat(name, dir_fd=fd, follow_symlinks=False).st_mode):
-                continue
-            child = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=fd)
-            try:
-                entry = os.fstat(child)
-                if entry.st_uid != policy['serviceUid'] and not 200000 <= entry.st_uid <= 299999:
-                    raise ValueError('Untrusted project entry owner')
-                if entry.st_dev != info.st_dev or entry.st_mode & 0o7000:
-                    raise ValueError('Untrusted project entry')
-                if stat.S_ISDIR(entry.st_mode):
-                    walk(child, depth + 1)
-                elif stat.S_ISREG(entry.st_mode) and entry.st_nlink == 1:
-                    apply_acl(child, entry, owner_uid, policy['serviceUid'], members, deadline)
-                else:
-                    raise ValueError('Unsupported project entry')
-            finally:
-                os.close(child)
-
+    if old and old.get('phase') == 'pending' and 'writers' not in old:
+        raise ValueError('Legacy pending project writers require operator review')
+    writers = old.get('writers', old['members']) if old else []
+    registry = os.open('/var/lib/bb-agent-launcher', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    legacy_uids = []
     try:
-        apply_acl(project_fd, info, owner_uid, policy['serviceUid'], members, deadline, directory=True, root_members=retained)
-        parent_acl(retained)
-        walk(project_fd, 0)
-        current = os.stat(slug, dir_fd=projects_fd, follow_symlinks=False)
-        if current.st_dev != info.st_dev or current.st_ino != info.st_ino:
-            raise ValueError('Project directory moved during synchronization')
-        apply_acl(project_fd, info, owner_uid, policy['serviceUid'], members, deadline, directory=True)
-        parent_acl(members)
-        write_json(state_fd, filename, {**record, 'activeMembers': members, 'phase': 'ready'})
-        print(json.dumps({'projectId': project_id, 'revision': revision, 'cwd': os.path.join(policy['root'], owner_id, 'projects', slug), 'memberCount': len(members), 'state': 'ready'}))
-    except BaseException:
-        apply_acl(project_fd, info, owner_uid, policy['serviceUid'], retained, time.monotonic() + 2, directory=True, root_members=retained)
-        parent_acl(retained)
-        raise
+        writers = [checked_identity(value, registry) for value in writers]
+        if old and 'writers' not in old:
+            for name in os.listdir(registry):
+                if name.endswith('.json'):
+                    identity = read_json(registry, name)
+                    legacy_uids.append(checked_identity({'userId': identity['userId'], 'uid': identity['uid']}, registry)['uid'])
     finally:
-        os.close(project_fd)
-        os.close(projects_fd)
-        os.close(state_fd)
+        os.close(registry)
+    writers = sorted({item['userId']: item for item in [*writers, *members]}.values(), key=lambda item: item['userId'])
+    leases = runpy.run_path('/opt/bb-control-plane/launcher/uid_leases.py')
+    if legacy_uids:
+        leases['require_idle'](legacy_uids)
+    with leases['exclusive']([owner_uid, *[item['uid'] for item in writers]]):
+        base_fd = os.open(owner_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+        if os.fstat(base_fd).st_uid != 0 or stat.S_IMODE(os.fstat(base_fd).st_mode) != 0o711:
+            raise ValueError('Untrusted user root')
+        projects_fd = os.open('projects', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=base_fd)
+        os.close(base_fd)
+        projects_info = os.fstat(projects_fd)
+        if projects_info.st_uid != owner_uid or projects_info.st_gid != owner_uid or stat.S_IMODE(projects_info.st_mode) != 0o710:
+            raise ValueError('Untrusted projects root')
+        project_fd = os.open(slug, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=projects_fd)
+        info = os.fstat(project_fd)
+        if info.st_uid != owner_uid or info.st_gid != owner_uid or stat.S_IMODE(info.st_mode) != 0o770:
+            raise ValueError('Untrusted project directory')
+        previous = old.get('activeMembers', old['members'] if old.get('phase') == 'ready' else []) if old else []
+        retained = [item for item in previous if item in members]
+        record = {**binding, 'revision': revision, 'members': members, 'activeMembers': retained, 'writers': writers, 'phase': 'pending'}
+        write_json(state_fd, filename, record)
+        deadline = time.monotonic() + 20
+
+        def parent_acl(active):
+            allowed = set()
+            for item in records:
+                if item.get('projectId') != project_id:
+                    allowed.update(member['uid'] for member in item.get('activeMembers', item['members'] if item.get('phase') == 'ready' else []))
+            allowed.update(member['uid'] for member in active)
+            acl = ['u::rwx', 'g::---', 'o::---', 'm::--x', 'u:' + str(policy['serviceUid']) + ':--x']
+            acl.extend('u:' + str(uid) + ':--x' for uid in sorted(allowed))
+            set_acl(projects_fd, acl)
+
+        count = 0
+        visited = set()
+
+        def walk(fd, depth):
+            nonlocal count
+            current = os.fstat(fd)
+            if depth > 128 or current.st_dev != info.st_dev or (current.st_dev, current.st_ino) in visited:
+                raise ValueError('Invalid project tree')
+            visited.add((current.st_dev, current.st_ino))
+            apply_acl(fd, current, owner_uid, policy['serviceUid'], members, deadline, directory=True, root_members=retained if depth == 0 else None)
+            for name in os.listdir(fd):
+                count += 1
+                if count > MAX_ENTRIES or time.monotonic() >= deadline:
+                    raise ValueError('Project tree exceeds limits')
+                if stat.S_ISLNK(os.stat(name, dir_fd=fd, follow_symlinks=False).st_mode):
+                    continue
+                child = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=fd)
+                try:
+                    entry = os.fstat(child)
+                    if entry.st_uid != policy['serviceUid'] and not 200000 <= entry.st_uid <= 299999:
+                        raise ValueError('Untrusted project entry owner')
+                    if entry.st_dev != info.st_dev or entry.st_mode & 0o7000:
+                        raise ValueError('Untrusted project entry')
+                    if stat.S_ISDIR(entry.st_mode):
+                        walk(child, depth + 1)
+                    elif stat.S_ISREG(entry.st_mode) and entry.st_nlink == 1:
+                        apply_acl(child, entry, owner_uid, policy['serviceUid'], members, deadline)
+                    else:
+                        raise ValueError('Unsupported project entry')
+                finally:
+                    os.close(child)
+
+        try:
+            apply_acl(project_fd, info, owner_uid, policy['serviceUid'], members, deadline, directory=True, root_members=retained)
+            parent_acl(retained)
+            walk(project_fd, 0)
+            current = os.stat(slug, dir_fd=projects_fd, follow_symlinks=False)
+            if current.st_dev != info.st_dev or current.st_ino != info.st_ino:
+                raise ValueError('Project directory moved during synchronization')
+            apply_acl(project_fd, info, owner_uid, policy['serviceUid'], members, deadline, directory=True)
+            parent_acl(members)
+            write_json(state_fd, filename, {**record, 'activeMembers': members, 'writers': members, 'phase': 'ready'})
+            print(json.dumps({'projectId': project_id, 'revision': revision, 'cwd': os.path.join(policy['root'], owner_id, 'projects', slug), 'memberCount': len(members), 'state': 'ready'}))
+        except BaseException:
+            apply_acl(project_fd, info, owner_uid, policy['serviceUid'], retained, time.monotonic() + 2, directory=True, root_members=retained)
+            parent_acl(retained)
+            raise
+        finally:
+            os.close(project_fd)
+            os.close(projects_fd)
+            os.close(state_fd)

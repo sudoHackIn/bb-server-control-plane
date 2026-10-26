@@ -109,6 +109,10 @@ try {
     join(repo, "scripts/check-control-plane-project-access.mjs"),
     join(directory, "check-control-plane-project-access.mjs"),
   );
+  await cp(
+    join(repo, "scripts/check-control-plane-uid-leases.mjs"),
+    join(directory, "check-control-plane-uid-leases.mjs"),
+  );
   await buildNodeEsmEntry({
     cleanDist: false,
     entryPoint: join(

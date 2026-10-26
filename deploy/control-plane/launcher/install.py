@@ -51,7 +51,7 @@ def main():
         shutil.copyfile(source_jobs, jobs)
     os.chown(jobs, 0, 0)
     os.chmod(jobs, 0o644)
-    for name in ('runtime_policy.py', 'project_access.py', 'policy-preload.mjs'):
+    for name in ('runtime_policy.py', 'project_access.py', 'uid_leases.py', 'policy-preload.mjs'):
         source = pathlib.Path(__file__).with_name(name)
         target = helper.with_name(name)
         if source.resolve() != target.resolve():

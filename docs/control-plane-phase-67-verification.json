@@ -1,0 +1,161 @@
+{
+  "scope": "Private per-UID lifetime leases for managed jobs and exclusive quiescent ACL application; public shared execution remains closed",
+  "previousStageCommit": "ff1a01641",
+  "hostDaemonProtocol": 255,
+  "pluginSdkVersion": "0.6.80",
+  "databaseMigrations": [],
+  "publicContractsChanged": false,
+  "contracts": {
+    "allLauncherRuntimesUseSameLifetimeLeasePath": [
+      "qwen",
+      "workflow",
+      "script",
+      "workspace"
+    ],
+    "sharedUidLeaseBeforeGlobalLaunchUnlock": true,
+    "sharedLeaseHeldUntilDescendantCleanupAndJobRecordRemoval": true,
+    "leaseDescriptorNotInheritedByAgent": true,
+    "exclusiveAclLeaseIncludesOwnerAndPreviousNewWriters": true,
+    "staleSupervisorRecordsRefusedWithoutGuessingCleanup": true,
+    "observedUnmanagedUidProcessesRefused": true,
+    "busyDoesNotChangeAppliedPolicyOrAcl": true,
+    "pendingWritersSurviveFailedRevocation": true,
+    "legacyReadyAdoptionRequiresAllRegisteredUidsIdle": true,
+    "legacyPendingWithoutWriterProvenanceRequiresReview": true
+  },
+  "verification": {
+    "focusedDocker": {
+      "passed": true,
+      "tasks": 63,
+      "duration": "20.6s",
+      "checks": {
+        "projectAclManagedUidLifetimeLeasesSharedByTwoJobs": true,
+        "projectAclLiveHeldDescriptorJobsBlockMutationUntilBothStopped": true,
+        "projectAclStaleSupervisorLeaseBlocksMutation": true,
+        "projectAclUnmanagedUidProcessBlocksMutation": true,
+        "projectAclExclusiveLeaseRefusesNewLaunchBeforeJobRegistration": true,
+        "projectAclOtherUidLaunchRemainsAvailable": true,
+        "projectAclStoppedTombstoneDoesNotBlockMutation": true,
+        "projectAclPendingPriorWritersRemainInCleanupBarrier": true,
+        "projectAclLegacyPendingWriterStateRequiresReview": true,
+        "projectAclLegacyReadyAdoptionRequiresAllRegisteredUsersIdle": true,
+        "projectAclBusyAttemptsPreservePolicyAndAcl": true,
+        "projectAclDatabaseRunnerGrantAndViewerDowngrade": true,
+        "projectAclDatabaseRemovedGrantRevokesAndStaleReceiptDenied": true,
+        "projectAclRealMigratedRegistryAndNumericUsers": true,
+        "projectAclExistingAndInheritedFilesShared": true,
+        "projectAclHomesAndOtherProjectsUnchanged": true,
+        "projectAclRevisionConflictAndIdentityRebindDenied": true,
+        "projectAclRevocationAndStaleGrantDenied": true,
+        "projectAclHardlinkAndSymlinkTargetsUntouched": true,
+        "projectAclFailureAndSameRevisionRecovery": true,
+        "projectAclRetainedMemberSurvivesFailedNewGrant": true,
+        "projectAclSiblingGrantTraversalPreserved": true,
+        "projectAclFifoRejectedWithoutBlocking": true,
+        "projectAclAgentCannotInvokeHelper": true,
+        "projectAclLegacyForeignLaunchStillDenied": true,
+        "projectAclLargeTreeEntries": 2048,
+        "projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant": true,
+        "projectAclDatabasePolicyPersistsAndStaleReceiptDenied": true
+      },
+      "namespacedScriptsReallyExecuted": true,
+      "twoJobsSameUidWithChildHeldDescriptor": true,
+      "rootOwnedStoppedFixtureTombstoneVerifiedThenRemoved": true,
+      "narrowDeploymentSeccompProfileWithoutAddedCapabilities": true
+    },
+    "pythonModulesCompiled": 4,
+    "strictLintAndFormattingMjsFiles": 4,
+    "typecheckTasks": 6,
+    "hostAndImageArtifacts": {
+      "deploy/control-plane/launcher/jobs.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/jobs.py",
+        "sha256HostAndImage": "606e31dc083f7164aa0989f6f0468a89e438a3e07579177927716d603f96d24c"
+      },
+      "deploy/control-plane/launcher/project_access.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/project_access.py",
+        "sha256HostAndImage": "73f475e6063b838265a0c5032bc24d658cf9eca8c9114148358593baf4d83ce2"
+      },
+      "deploy/control-plane/launcher/uid_leases.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/uid_leases.py",
+        "sha256HostAndImage": "c5547b28857b5cdcf3eda98ccc36a5ad39dca1f3d7d74135eab4c7a0508e44c2"
+      },
+      "scripts/check-control-plane-uid-leases.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-uid-leases.mjs",
+        "sha256HostAndImage": "67242e4736e03146d0c1fd821f61f8561a115aef881a245bf63849a2d3eb5103"
+      },
+      "scripts/check-control-plane-project-access.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-access.mjs",
+        "sha256HostAndImage": "85759504659af246fca0db0e3b416f86ae2fe151fe88a79b1ffe8463ce06a5cf"
+      }
+    },
+    "serverUnitBaseline": {
+      "increment": 66,
+      "testsPassed": 3825,
+      "productionTypescriptChanged": false,
+      "rerunThisIncrement": false
+    },
+    "databaseUnitBaseline": {
+      "increment": 66,
+      "testsPassed": 675,
+      "schemaOrDatabasePolicyCodeChanged": false
+    },
+    "browserBaselineIncrement": 63,
+    "productionFrontendChanged": false,
+    "initialIntegrationFailure": {
+      "reason": "New fixture retained its own stopped-before-launch tombstone while existing Qwen check intentionally removes an empty jobs directory",
+      "fix": "Verify and remove only the fixture-owned tombstone after testing; do not delete other jobs, skip checks or change production stop fencing"
+    },
+    "fixtureBrokerFix": "Separate Node options from sudo arguments and use ESM in the fixed script runtime",
+    "dockerDeployment": {
+      "passed": true,
+      "tasks": 63,
+      "duration": "8m30.98s",
+      "budgetsChanged": false,
+      "projectAccess": {
+        "projectAclManagedUidLifetimeLeasesSharedByTwoJobs": true,
+        "projectAclLiveHeldDescriptorJobsBlockMutationUntilBothStopped": true,
+        "projectAclStaleSupervisorLeaseBlocksMutation": true,
+        "projectAclUnmanagedUidProcessBlocksMutation": true,
+        "projectAclExclusiveLeaseRefusesNewLaunchBeforeJobRegistration": true,
+        "projectAclOtherUidLaunchRemainsAvailable": true,
+        "projectAclStoppedTombstoneDoesNotBlockMutation": true,
+        "projectAclPendingPriorWritersRemainInCleanupBarrier": true,
+        "projectAclLegacyPendingWriterStateRequiresReview": true,
+        "projectAclLegacyReadyAdoptionRequiresAllRegisteredUsersIdle": true,
+        "projectAclBusyAttemptsPreservePolicyAndAcl": true,
+        "projectAclDatabaseRunnerGrantAndViewerDowngrade": true,
+        "projectAclDatabaseRemovedGrantRevokesAndStaleReceiptDenied": true,
+        "projectAclRealMigratedRegistryAndNumericUsers": true,
+        "projectAclExistingAndInheritedFilesShared": true,
+        "projectAclHomesAndOtherProjectsUnchanged": true,
+        "projectAclRevisionConflictAndIdentityRebindDenied": true,
+        "projectAclRevocationAndStaleGrantDenied": true,
+        "projectAclHardlinkAndSymlinkTargetsUntouched": true,
+        "projectAclFailureAndSameRevisionRecovery": true,
+        "projectAclRetainedMemberSurvivesFailedNewGrant": true,
+        "projectAclSiblingGrantTraversalPreserved": true,
+        "projectAclFifoRejectedWithoutBlocking": true,
+        "projectAclAgentCannotInvokeHelper": true,
+        "projectAclLegacyForeignLaunchStillDenied": true,
+        "projectAclLargeTreeEntries": 2048,
+        "projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant": true,
+        "projectAclDatabasePolicyPersistsAndStaleReceiptDenied": true,
+        "projectAclStateSurvivesServerRestart": true
+      },
+      "nativeQwenMcp": true,
+      "nativeWorkspace": true,
+      "serverRestart": true,
+      "crashRecovery": true,
+      "scriptDescendantCleanup": true,
+      "scriptOtherJobsSurviveUnrelatedStop": true,
+      "driverLogContainsRemoteFixturePat": false
+    }
+  },
+  "limitations": [
+    "No public role changes, automatic production reconciliation or foreign-cwd shared Qwen launch is enabled.",
+    "A persisted UID maintenance fence and per-UID service coordination must still span database changes, stop, helper application, acknowledgement, retry and restart.",
+    "The process scan is a refusal check, not a kernel-wide freeze against hostile unmanaged process origins.",
+    "Managed UID processes must originate through the fixed launcher; root/service writers and host-local storage remain trusted.",
+    "The barrier waits for acknowledged runtime cleanup; it does not erase copied files or retract already exported data."
+  ]
+}

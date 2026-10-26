@@ -1,8 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { writeControlPlaneSeccomp } from "./control-plane-seccomp.mjs";
 
 const name = `bb-project-access-check-${randomUUID()}`;
+const directory = await mkdtemp(join(tmpdir(), "bb-project-access-security-"));
+const seccomp = join(directory, "seccomp.json");
 try {
+  await writeControlPlaneSeccomp(seccomp);
   const result = spawnSync(
     "docker",
     [
@@ -15,6 +22,10 @@ try {
       "--user",
       "0:0",
       "--read-only",
+      "--security-opt",
+      `seccomp=${seccomp}`,
+      "--security-opt",
+      "systempaths=unconfined",
       "--tmpfs",
       "/srv/bb:uid=1000,gid=1000,mode=0700",
       "--tmpfs",
@@ -39,4 +50,5 @@ try {
     stdio: "ignore",
     timeout: 15000,
   });
+  await rm(directory, { recursive: true, force: true });
 }
