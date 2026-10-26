@@ -386,6 +386,8 @@ export async function verifyProjectDirectoryAccess() {
       projectAclLargeTreeEntries: 2048,
     },
     async verifyPersistence() {
+      const maintenancePersistence =
+        await uidLeases.verifyMaintenancePersistence();
       assert.equal((await applyPolicy()).revision, uidLeases.revision);
       await denied(bob, policyProject.cwd + "/policy.txt");
       assert.deepEqual(
@@ -419,6 +421,7 @@ export async function verifyProjectDirectoryAccess() {
       );
       await denied(bob, shared.cwd + "/existing.txt");
       return {
+        ...maintenancePersistence,
         projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant: true,
         projectAclDatabasePolicyPersistsAndStaleReceiptDenied: true,
       };

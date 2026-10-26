@@ -201,3 +201,69 @@ export async function prepareProjectAccess(input: {
     throw new Error("Project access helper returned another binding");
   return reply;
 }
+
+export async function controlPlaneUidMaintenance(
+  user: ControlPlaneUser,
+  request:
+    | { action: "status" }
+    | { action: "begin" | "finish"; generation: number },
+) {
+  const userId = z.string().uuid().parse(user.id);
+  const uid = z.number().int().min(200000).max(299999).parse(user.uid);
+  if (user.gid !== uid) throw new Error("Unexpected maintenance identity");
+  const operation = z
+    .discriminatedUnion("action", [
+      z.object({ action: z.literal("status") }).strict(),
+      z
+        .object({
+          action: z.enum(["begin", "finish"]),
+          generation: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        })
+        .strict(),
+    ])
+    .parse(request);
+  let stdout: string;
+  try {
+    ({ stdout } = await exec(
+      "/usr/bin/sudo",
+      [
+        "-n",
+        "--",
+        helper,
+        "uid-maintenance",
+        userId,
+        String(uid),
+        operation.action,
+        ...(operation.action === "status"
+          ? []
+          : [String(operation.generation)]),
+      ],
+      {
+        cwd: "/",
+        env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
+        timeout: 30000,
+        maxBuffer: 16384,
+      },
+    ));
+  } catch {
+    throw new Error("UID maintenance operation failed");
+  }
+  const reply = z
+    .object({
+      userId: z.string().uuid(),
+      uid: z.number().int(),
+      generation: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+      blocked: z.boolean(),
+    })
+    .strict()
+    .parse(JSON.parse(stdout));
+  if (
+    reply.userId !== userId ||
+    reply.uid !== uid ||
+    (operation.action !== "status" &&
+      (reply.generation !== operation.generation ||
+        reply.blocked !== (operation.action === "begin")))
+  )
+    throw new Error("UID maintenance helper returned another binding");
+  return reply;
+}

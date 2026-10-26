@@ -176,6 +176,7 @@ def launch_job(policy, user_id, uid, home, cwd, session_id, arguments, lock, lau
         raise ValueError('Previous job cleanup is unconfirmed')
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise RuntimeError('Could not supervise agent descendants')
+    runpy.run_path('/opt/bb-control-plane/launcher/uid_maintenance.py')['require_launch_allowed'](user_id, uid)
     uid_leases = runpy.run_path('/opt/bb-control-plane/launcher/uid_leases.py')['acquire']([uid])
     pid = os.getpid()
     clients = client_ancestors(policy['serviceUid'])

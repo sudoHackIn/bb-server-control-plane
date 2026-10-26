@@ -17,11 +17,31 @@ import {
   prepareUserEnvironment,
   prepareUserProject,
   prepareProjectAccess,
+  controlPlaneUidMaintenance,
 } from "../../src/control-plane/provisioning.js";
 
 const input = z
   .discriminatedUnion("mode", [
     z.object({ mode: z.literal("seed") }).strict(),
+    z
+      .object({
+        mode: z.literal("maintenance"),
+        userId: z.string().uuid(),
+        request: z.discriminatedUnion("action", [
+          z.object({ action: z.literal("status") }).strict(),
+          z
+            .object({
+              action: z.enum(["begin", "finish"]),
+              generation: z
+                .number()
+                .int()
+                .positive()
+                .max(Number.MAX_SAFE_INTEGER),
+            })
+            .strict(),
+        ]),
+      })
+      .strict(),
     z
       .object({
         mode: z.literal("policy-grant"),
@@ -88,6 +108,16 @@ try {
       projects.push(row);
     }
     process.stdout.write(JSON.stringify({ users, projects }));
+  } else if (input.mode === "maintenance") {
+    const user = db
+      .select()
+      .from(controlPlaneUsers)
+      .where(eq(controlPlaneUsers.id, input.userId))
+      .get();
+    if (!user) throw new Error("Unknown maintenance identity");
+    process.stdout.write(
+      JSON.stringify(await controlPlaneUidMaintenance(user, input.request)),
+    );
   } else if (input.mode === "policy-grant") {
     if (input.role === null)
       db.delete(controlPlaneProjectAccess)

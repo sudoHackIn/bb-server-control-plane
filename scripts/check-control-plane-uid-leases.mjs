@@ -88,15 +88,41 @@ export async function verifyProjectUidLeases({
         ).stdout,
       )
       .digest("hex");
+  const maintenance = (action, generation) =>
+    service({
+      mode: "maintenance",
+      userId: bob.id,
+      request: action === "status" ? { action } : { action, generation },
+    });
+  async function rejectedJob(refused) {
+    await wait(
+      () => refused.child.exitCode !== null,
+      "maintenance launch refusal",
+    );
+    assert.notEqual((await refused.done).code, 0);
+    refused.closed = true;
+    await assert.rejects(
+      readFile("/var/lib/bb-agent-launcher/jobs/" + refused.session + ".json"),
+      { code: "ENOENT" },
+    );
+  }
+  async function blockedJob() {
+    await rejectedJob(start(bob));
+  }
   const idleCode = `console.log(JSON.stringify({ready:true,uid:process.getuid()}));setInterval(()=>{},1000);`;
   const heldCode = `import fs from "node:fs";import cp from "node:child_process";const fd=fs.openSync(${JSON.stringify(project.cwd + "/policy.txt")},"r");cp.spawn(process.execPath,["-e",'const fs=require("node:fs");fs.readFileSync(3);console.log(JSON.stringify({ready:true,uid:process.getuid(),heldDescriptor:true}));setInterval(()=>{},1000)'],{stdio:["ignore","inherit","inherit",fd]});setInterval(()=>{},1000);`;
-  function start(user, code = idleCode) {
+  function start(user, code = idleCode, queued = false) {
+    const selectedBroker = queued
+      ? `console.log("queued");process.stdin.resume();process.stdin.on("end",()=>{const c=require("node:child_process").spawn("/usr/bin/sudo",process.argv.slice(1),{stdio:["pipe","inherit","inherit"]});c.stdin.on("error",()=>{});c.stdin.end(${JSON.stringify(code)});c.on("error",()=>process.exit(1));c.on("exit",code=>process.exit(code??1));})`
+      : broker;
     const session = randomUUID();
     const observed = observe(
       spawn(
         "/usr/bin/setpriv",
         [
-          ...serviceArgs,
+          ...serviceArgs.map((argument) =>
+            argument === broker ? selectedBroker : argument,
+          ),
           "launch-script",
           user.id,
           String(user.uid),
@@ -110,8 +136,8 @@ export async function verifyProjectUidLeases({
         },
       ),
     );
-    observed.child.stdin.end(code);
-    const job = { ...observed, user, session, closed: false };
+    if (!queued) observed.child.stdin.end(code);
+    const job = { ...observed, user, session, queued, closed: false };
     jobs.push(job);
     return job;
   }
@@ -149,12 +175,73 @@ export async function verifyProjectUidLeases({
   try {
     await change("runner");
     await apply();
+    assert.deepEqual(await maintenance("status"), {
+      userId: bob.id,
+      uid: bob.uid,
+      generation: 0,
+      blocked: false,
+    });
     const first = start(bob, heldCode),
       second = start(bob, heldCode);
     await ready(first);
     await ready(second);
     assert.ok(first.stdout().includes('"heldDescriptor":true'));
     assert.ok(second.stdout().includes('"heldDescriptor":true'));
+    const queuedRequest = start(bob, idleCode, true);
+    await wait(
+      () => queuedRequest.stdout().includes("queued"),
+      "request queued before maintenance",
+    );
+    assert.equal((await maintenance("begin", 1)).blocked, true);
+    queuedRequest.child.stdin.end();
+    await rejectedJob(queuedRequest);
+    await blockedJob();
+    await assert.rejects(maintenance("finish", 1));
+    assert.equal((await maintenance("begin", 2)).generation, 2);
+    assert.deepEqual(
+      await maintenance("begin", 2),
+      await maintenance("status"),
+    );
+    await assert.rejects(maintenance("finish", 1));
+    await assert.rejects(maintenance("begin", 1));
+    const boundState = await maintenance("status");
+    for (const generation of ["0", "-1", "1.5", "9007199254740992"])
+      await assert.rejects(
+        exec(
+          "/usr/bin/setpriv",
+          [
+            ...serviceArgs,
+            "uid-maintenance",
+            bob.id,
+            String(bob.uid),
+            "begin",
+            generation,
+          ],
+          { timeout: 12000, maxBuffer: 16384 },
+        ),
+      );
+    await assert.rejects(
+      exec(
+        "/usr/bin/setpriv",
+        [
+          ...serviceArgs,
+          "uid-maintenance",
+          alice.id,
+          String(bob.uid),
+          "begin",
+          "3",
+        ],
+        { timeout: 12000, maxBuffer: 16384 },
+      ),
+    );
+    assert.deepEqual(await maintenance("status"), boundState);
+    await assert.rejects(
+      as(
+        bob,
+        `require("node:fs").unlinkSync(${JSON.stringify("/var/lib/bb-agent-launcher/uid-maintenance/" + bob.id + ".json")})`,
+      ),
+      (error) => error.stderr?.includes("EACCES"),
+    );
     const leasePath =
       "/var/lib/bb-agent-launcher/jobs/" + first.session + ".json";
     const savedLease = await readFile(leasePath);
@@ -164,6 +251,10 @@ export async function verifyProjectUidLeases({
     await busy();
     await stop(second);
     await apply();
+    await blockedJob();
+    assert.equal((await maintenance("finish", 2)).blocked, false);
+    assert.equal((await maintenance("finish", 2)).blocked, false);
+    await assert.rejects(maintenance("begin", 2));
     await denied(bob, project.cwd + "/policy.txt");
 
     await change("runner");
@@ -280,7 +371,10 @@ export async function verifyProjectUidLeases({
     const pendingWriter = start(bob);
     await ready(pendingWriter);
     await busy();
+    assert.equal((await maintenance("begin", 3)).blocked, true);
     await stop(pendingWriter);
+    await assert.rejects(maintenance("finish", 3));
+    assert.equal((await maintenance("status")).blocked, true);
     await as(
       alice,
       `require("node:fs").unlinkSync(${JSON.stringify(project.cwd + "/pending-hardlink")})`,
@@ -297,9 +391,53 @@ export async function verifyProjectUidLeases({
     await apply();
     await denied(bob, project.cwd + "/policy.txt");
     assert.deepEqual(JSON.parse(await readFile(path, "utf8")).writers, []);
+    assert.equal((await maintenance("finish", 3)).blocked, false);
+    await as(
+      bob,
+      `require("node:fs").writeFileSync(process.env.HOME+"/maintenance-marker.txt","preserved")`,
+    );
+    assert.equal((await maintenance("begin", 4)).blocked, true);
+    await blockedJob();
     return {
       revision: removed.revision,
+      async verifyMaintenancePersistence() {
+        assert.deepEqual(await maintenance("status"), {
+          userId: bob.id,
+          uid: bob.uid,
+          generation: 4,
+          blocked: true,
+        });
+        await assert.rejects(maintenance("finish", 3));
+        await blockedJob();
+        assert.equal((await maintenance("finish", 4)).blocked, false);
+        await assert.rejects(maintenance("begin", 4));
+        const resumed = start(
+          bob,
+          `import fs from "node:fs";if(process.env.HOME!==${JSON.stringify(bob.home)}||fs.readFileSync(process.env.HOME+"/maintenance-marker.txt","utf8")!=="preserved")process.exit(1);${idleCode}`,
+        );
+        try {
+          await ready(resumed);
+        } finally {
+          if (!resumed.closed) await stop(resumed);
+        }
+        assert.equal((await maintenance("begin", 5)).blocked, true);
+        await assert.rejects(maintenance("finish", 4));
+        assert.equal((await maintenance("finish", 5)).blocked, false);
+        return {
+          projectUidMaintenancePersistsAcrossCallingProcessRestart: true,
+          projectUidMaintenanceHighWaterAndHomePreserved: true,
+        };
+      },
       verification: {
+        projectUidMaintenanceCanBeginWhileJobsRun: true,
+        projectUidMaintenanceIdentityAndGenerationValidation: true,
+        projectUidMaintenancePrivateStateNotAgentWritable: true,
+        projectUidMaintenanceBlocksQueuedLaunchBeforeJobRegistration: true,
+        projectUidMaintenanceOldCompletionCannotReleaseNewGeneration: true,
+        projectUidMaintenanceIdempotentBeginAndFinish: true,
+        projectUidMaintenanceClosedGenerationCannotReopen: true,
+        projectUidMaintenancePendingPolicyCannotUnblockUid: true,
+        projectUidMaintenanceRemainsBlockedAfterAclApplication: true,
         projectAclManagedUidLifetimeLeasesSharedByTwoJobs: true,
         projectAclLiveHeldDescriptorJobsBlockMutationUntilBothStopped: true,
         projectAclStaleSupervisorLeaseBlocksMutation: true,
@@ -322,6 +460,10 @@ export async function verifyProjectUidLeases({
       exclusive.child.stdin.end();
       await exclusive.done;
     }
-    for (const job of jobs) if (!job.closed) await stop(job);
+    for (const job of jobs)
+      if (!job.closed) {
+        if (job.queued) job.child.stdin.end();
+        await stop(job);
+      }
   }
 }

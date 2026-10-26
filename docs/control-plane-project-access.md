@@ -212,3 +212,54 @@ matching fence generations so an old completion cannot release a newer fence.
 Administrative grant management is the planned mutation surface; tenant project
 metadata access must not become permission to cancel another user's private jobs.
 These are remaining requirements, not claims about increment 67.
+
+
+## Persisted UID launch maintenance (increment 68)
+
+The fixed helper now has private `uid-maintenance` begin/status/finish operations,
+used through the typed server `controlPlaneUidMaintenance` adapter. Its records
+live in root-owned `0700` `uid-maintenance` storage inside the existing launcher
+volume; individual records are `0600`, UUID/UID-bound, bounded and opened without
+following symlinks. Begin/finish use atomic replacement, fsync the file/directory
+and launcher parent, and run under the existing global helper lock. No new sudo
+rule, system account, public route, Plugin SDK surface or daemon wire field is
+introduced.
+
+Begin persists an active, positive safe-integer generation while existing jobs
+may still run. Every managed launch checks it before acquiring a UID lifetime
+lease, writing a job record or creating the agent process. Stop and read operations
+remain available for draining and recovery. Other UIDs are unaffected. The marker
+continues blocking after jobs stop and after the filesystem policy becomes ready;
+those events never implicitly release it.
+
+A newer generation supersedes an older one while remaining blocked. Repeating
+an active begin or completed finish is idempotent. A stale completion cannot
+release a newer generation, and a closed generation cannot be reopened. The
+highest generation remains on disk after release. Finish requires the current
+generation, exclusive UID quiescence and no pending root project policy involving
+that UID as storage owner or writer. Unknown legacy pending writers refuse release.
+Failed precondition checks leave the barrier active.
+
+The caller still owns product authority: this helper cannot inspect central DB
+revision acknowledgements or decide which operation may finish. I/O failure or
+lost acknowledgement after atomic replacement can leave an operation committed;
+status and same-generation idempotent requests resolve that uncertainty. There is
+no exactly-once or cross-database/filesystem transaction claim.
+
+Docker exercises two live descriptor-holding jobs during begin, replacement and
+stale finish, an actual service request prepared before begin and dispatched
+afterward, post-ACL blocking, pending-policy refusal, integer/identity validation
+and agent inability to unlink the marker. A final active generation stays in
+place through the entire BB deployment/restart/crash matrix; a fresh helper then
+confirms it still blocks launch, releases it explicitly, verifies preserved HOME
+contents under the same UID and advances to a newer generation.
+
+Public roles and shared Qwen execution remain closed. The next controller must
+derive affected identities from both saved root writers and current DB grants
+(including removed/disabled participants), persist its DB operation/affected-UID context, serialize administrative changes,
+enter these root barriers before draining, apply the current policy, acknowledge
+its exact DB revision and only then finish the corresponding generations. It
+must recover incomplete operations and root high-water generations after restart,
+and expose current maintenance to mandatory server admission so rejected starts
+are retained appropriately. The root marker closes the launcher gap but is not
+that controller or an end-user grant API.

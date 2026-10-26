@@ -28,6 +28,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add an internal revision-fenced project ACL primitive and three-UID Docker checks, preserving separate HOME and legacy owner-only launch. Central role integration, concurrent-filesystem safety and shared execution remain pending. See [directory access](control-plane-project-access.md).
 - [x] Persist database-derived desired/applied project ACL revisions, invalidate them transactionally on grants and source/identity changes, and fence stale helper acknowledgements. Verify runner/viewer/removal and restart through the real helper in Docker. Public reconciliation and shared execution remain pending.
 - [x] Hold per-UID lifetime leases for every managed launcher job and require exclusive, quiescent writer leases before ACL mutation; retain former writers through pending recovery. Verify real namespaced jobs, cleanup/stale records, busy immutability and legacy adoption in Docker. Service admission fences and public shared execution remain pending.
+- [x] Persist generation-bound root UID launch barriers with typed server begin/status/finish, queued-launch refusal, quiescent/policy-ready release and restart checks. Durable service reconciliation and administrative role surfaces remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3101,3 +3102,36 @@ check intentionally removes an empty jobs directory. The new scenario now
 verifies and removes only its own stopped-before-launch tombstone after testing;
 it preserves every other job and the original missing-directory assertion. No
 production stop fence, check or deadline was weakened.
+
+
+## Sixty-eighth increment: persisted UID launch barriers
+
+The fixed launcher and typed server adapter can begin/read/finish root-owned,
+UUID/UID-bound maintenance generations. Begin persists a launch ban even while
+jobs are running; stop remains available. Launch checks it before job registration
+and process creation, covering requests prepared before maintenance. Neither
+successful job cleanup nor ACL application releases it automatically.
+
+Current-generation finish requires UID quiescence and ready root policies. Newer
+generations supersede older ones, stale completions cannot unblock them, repeats
+are idempotent and a closed generation cannot reopen. Atomic file replacement and
+file/directory/parent fsync preserve the marker and its high-water generation.
+The helper does not read central DB acknowledgement state; that remains the
+trusted controller's responsibility. See [UID maintenance behavior and remaining
+controller work](control-plane-project-access.md#persisted-uid-launch-maintenance-increment-68).
+
+No public grant mutation or shared Qwen launch is opened. Durable affected-UID
+operations, mandatory server admission, current-revision reconciliation and
+administrative API/SDK/CLI/UI still require implementation before those surfaces
+can be enabled.
+
+Verification passes all 3825 server tests in 391 files with unchanged existing
+skips, six typecheck tasks, strict lint/formatting of four TS/MJS files and
+compilation of four Python modules. The focused Docker task passes 63 tasks in
+13.77s; the complete rebuilt deployment passes 63 tasks in 9m15.049s with unchanged
+budgets, retaining native Qwen/MCP, workflows, scripts, workspace/Git, shutdown,
+restart and crash recovery. An active marker is retained until the final
+post-restart helper check: it still rejects launch, rejects stale finish, then
+allows an explicitly released job under the same UID with preserved HOME content.
+Six source/image hashes match. Database schema/policy and production frontend are
+unchanged. See [the verification record](control-plane-phase-68-verification.json).
