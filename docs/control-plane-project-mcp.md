@@ -152,6 +152,9 @@ grant revocation. See the [configuration evidence](control-plane-phase-61-verifi
 [personal UI evidence](control-plane-phase-63-verification.json).
 
 The local model backend and remote MCP endpoint are deterministic test services;
-this does not establish corporate CLI/SDK support. The complete combined Docker
-acceptance and shared-project execution/workspace policy remain open.
+this does not establish corporate CLI/SDK support. Increment 79 runs Alice's
+personal Qwen thread in Bob's ACL-ready shared project and verifies that the
+remote tool receives Alice's bearer token, Bob's token is not used, and Bob
+cannot read Alice's conversation. The complete combined Docker acceptance and
+shared-project workflow/background execution remain open.
 Do not equate `configured` or `enabled` with a working authenticated connection.

@@ -39,7 +39,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add a bounded administrator user directory to select registered project-role targets by login through the limited API, SDK and CLI. Expose ID, login and availability only; native role UI and shared native execution remain pending.
 - [x] Add administrator project-role controls to the native project settings UI: grant by registered login, change/remove nonowner grants with policy revision, and inspect pending maintenance. Keep these controls on the limited SDK; shared native execution remains pending.
 - [x] Admit runner-owned native Qwen threads in another user's ACL-ready shared project. Keep thread ownership and history personal, launch under the runner UID/HOME in the shared cwd, preserve the Qwen session on send, and fence viewer downgrade and ungranted direct launcher calls. Broader shared-project workflow and automation execution remains pending.
-- [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
+- [x] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads, including runner-owned threads in another user's shared project. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
 - [x] Add personal project MCP UI for catalog selection, personal token setup/revocation and owner connection controls through the limited SDK. Verify two certificate contexts, shared-reader restrictions, access-loss draft clearing and responsive rendering in Docker/Chrome; actual shared-project agent execution remains pending.
@@ -186,8 +186,9 @@ resume and no secret disclosure. Include a shared-project case proving that
 personal credentials cannot cross users. Increment 61 implements configuration management and encrypted credentials only.
 Increment 62 adds explicit activation and server-owned remote tool execution
 through the native provider bridge. Increment 63 adds the personal project UI.
-Shared-project workspace execution and the combined acceptance package remain
-open.
+Increment 79 verifies Alice's personal credential in a runner-owned Qwen thread
+inside Bob's shared project. Shared-project workflow/background execution and
+the complete combined acceptance package remain open.
 
 ## Per-user workflows, automations and schedules
 
@@ -3483,3 +3484,30 @@ server suite was running concurrently; the unloaded repeat passed. The full
 server suite passes 3844 tests and fails three existing installer/plugin tests,
 which reproduce in isolation; it is not counted as green. See [the verification
 record](control-plane-phase-78-verification.json).
+
+
+## Seventy-ninth increment: personal MCP credential in a shared Qwen project
+
+The project MCP connection remains attached to Bob's managed project, while an
+Alice-owned runner thread resolves Alice's connector grant and encrypted
+credential. The server-owned gateway sends her bearer token to the approved
+remote MCP endpoint; neither the project owner nor the Qwen process receives
+it. The Docker fixture checks the actual model → BB tool → remote MCP → model
+round trip under Alice's shared-project thread. It confirms that Bob's token
+was not used, Alice's result appears in her timeline without the token, and
+Bob cannot read her conversation. The same provider path already supports
+personal-project execution and resume from increment 62.
+
+This completes project MCP execution for ordinary native Qwen conversations
+with approved profiles and shared runner grants. Tenant-authored workflow and
+automation workers, wider plugin surfaces and the complete combined acceptance
+remain separate requirements.
+
+The rebuilt Docker image passes the focused native scenario in 105.530s and
+the complete composite with restart and crash recovery in 555.630s: 63/63
+Turbo tasks pass in 11m7.341s. The focused result includes the shared-project
+MCP credential and private-thread assertions. Host/image SHA-256 hashes match
+for both changed deployment scripts. An earlier direct focused run stopped in
+the existing script-job process probe with `ESRCH`; the subsequent focused and
+complete deployment runs passed. Strict lint, Prettier and `git diff --check`
+pass. See [the verification record](control-plane-phase-79-verification.json).

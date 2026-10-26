@@ -778,6 +778,11 @@ export async function verifyManagedRuntime({
           .get(sharedThreadId)?.qwen_session_id,
         sharedOwner.qwen_session_id,
       );
+      const sharedMcpVerification = await mcp.verifySharedRuntime({
+        send,
+        wait,
+        projectId: bobProjectId,
+      });
       stage("admin-role-maintenance-complete");
       verified = true;
       return {
@@ -786,6 +791,7 @@ export async function verifyManagedRuntime({
         adminRoleSdkAndCliReadSetAndInspectSavedOperation: true,
         adminUserDirectoryCliSearchReturnsOnlyMatchingIdentity: true,
         sharedProjectQwenRunsAsRunnerUidHomeAndResumesPrivateSession: true,
+        ...sharedMcpVerification,
       };
     }
 

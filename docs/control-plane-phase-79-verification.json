@@ -1,0 +1,41 @@
+{
+  "scope": "Personal MCP credential resolution for runner-owned Qwen threads in a shared project",
+  "previousStageCommit": "c5d7cd9f3",
+  "contracts": {
+    "projectConnectionBelongsToSharedProject": true,
+    "runnerCredentialSelectedFromPersistedThreadOwner": true,
+    "remoteEndpointReceivesRunnerBearerToken": true,
+    "projectOwnerBearerTokenNotUsed": true,
+    "runnerRemoteResultVisibleInPrivateTimeline": true,
+    "credentialAbsentFromTimeline": true,
+    "projectOwnerCannotReadRunnerThread": true
+  },
+  "verification": {
+    "strictLintPrettierAndDiffCheck": true,
+    "dockerDeployment": {
+      "nativeMaintenanceSuite": {
+        "passed": true,
+        "durationMs": 105530,
+        "sharedProjectMcpUsesRunnerCredentialAndKeepsThreadPrivate": true
+      },
+      "compositeSuite": {
+        "passed": true,
+        "durationMs": 555630,
+        "restartAndCrashRecovery": true
+      },
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "11m7.341s",
+      "initialDirectFocusedRunFailedInExistingScriptJobProcessProbeWithEsrch": true
+    },
+    "imageArtifacts": {
+      "managedRuntimeCheckSha256": "ea8a6d0ce6cf99c245e26dc8bf62dd3e2c7c418f0e639e8ba4c092fda09c588e",
+      "projectMcpCheckSha256": "a8eaa4186f68ba4634306b3914ac0c1fc5fca558919c74600a5e6cdc3ed6f0a2"
+    }
+  },
+  "limitations": [
+    "The remote MCP endpoint and model backend are deterministic Docker fixtures; corporate provider support is not inferred from this test.",
+    "Shared-project workflow, automation and schedule workers remain separate requirements.",
+    "The full server unit suite was not rerun in this test-only increment; increment 78 records its three pre-existing isolated failures."
+  ]
+}

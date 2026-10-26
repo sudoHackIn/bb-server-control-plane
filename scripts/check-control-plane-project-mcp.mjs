@@ -80,7 +80,7 @@ export function createProjectMcpFixture({ db, users, config }) {
   const handleModel = (body, res) => {
     const markers = [
       ...JSON.stringify(body.messages).matchAll(
-        /BB_REMOTE_MCP_(alice|bob)_(first|resume)/gu,
+        /BB_REMOTE_MCP_(alice|bob)_(first|resume|shared)/gu,
       ),
     ];
     const marker = markers.at(-1);
@@ -324,6 +324,7 @@ export function createProjectMcpFixture({ db, users, config }) {
           token,
         );
         assert.equal(profile.status, 201, JSON.stringify(profile.body));
+        subject.remoteProfileVersionId = profile.body.version.id;
         assert.equal(
           (
             await send(
@@ -410,6 +411,54 @@ export function createProjectMcpFixture({ db, users, config }) {
         projectMcpNativePersonalCredentials: true,
         projectMcpProfileToolSelection: true,
         projectMcpSecretsAbsentFromNativeTimeline: true,
+      };
+    },
+    async verifySharedRuntime({ send, wait, projectId }) {
+      const alice = subjects.find((subject) => subject.user.login === "alice");
+      const bob = subjects.find((subject) => subject.user.login === "bob");
+      if (!alice?.remoteProfileVersionId || !bob || bob.projectId !== projectId)
+        throw new Error("Missing shared project MCP fixture");
+      const beforeAlice = remoteCalls.filter(
+        (actor) => actor === "alice",
+      ).length;
+      const beforeBob = remoteCalls.filter((actor) => actor === "bob").length;
+      const started = await send(
+        "/control-plane/user/threads",
+        {
+          projectId,
+          profileVersionId: alice.remoteProfileVersionId,
+          message: "BB_REMOTE_MCP_alice_shared",
+        },
+        alice.token,
+      );
+      assert.equal(started.status, 201, JSON.stringify(started.body));
+      await completed({ subject: alice, threadId: started.body.id }, wait);
+      assert.equal(
+        remoteCalls.filter((actor) => actor === "alice").length,
+        beforeAlice + 1,
+      );
+      assert.equal(
+        remoteCalls.filter((actor) => actor === "bob").length,
+        beforeBob,
+      );
+      const owner = db
+        .prepare(
+          "SELECT owner_user_id FROM control_plane_threads WHERE thread_id=?",
+        )
+        .get(started.body.id);
+      assert.equal(owner.owner_user_id, alice.user.id);
+      assert.equal(
+        (
+          await send(
+            `/control-plane/user/threads/${started.body.id}`,
+            undefined,
+            bob.token,
+          )
+        ).status,
+        404,
+      );
+      return {
+        sharedProjectMcpUsesRunnerCredentialAndKeepsThreadPrivate: true,
       };
     },
     async resumeRuntime({ send, token, wait }) {
