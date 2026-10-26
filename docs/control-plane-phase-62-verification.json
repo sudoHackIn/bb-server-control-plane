@@ -1,0 +1,193 @@
+{
+  "scope": "Explicit project MCP activation and server-owned remote tool execution through native Qwen/BB bridge; personal credentials remain on the central service",
+  "previousStageCommit": "31c576a6f",
+  "centralDatabaseMigration": "0158_control_plane_mcp_tools",
+  "hostDaemonProtocol": 255,
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "explicitEnabledDefaultFalse": true,
+    "activationRequiresCurrentPersonalCredential": true,
+    "profileMcpServer": "project",
+    "profileTools": [
+      "mcp:*",
+      "mcp:<connector-slug>:<remote-tool-name>"
+    ],
+    "ordinaryConversationsNeedNoReusableAgent": true,
+    "credentialsAbsentFromProviderAndQwenJob": true,
+    "immutableThreadToolBindings": true,
+    "bindingChecks": [
+      "savedThreadOwner",
+      "currentProjectAndProfileGrants",
+      "authenticatedHost",
+      "activeTurn",
+      "nativeSession",
+      "connectorGrant",
+      "connectorRevision",
+      "connectionRevision",
+      "personalCredentialRevision",
+      "remoteToolDefinition"
+    ],
+    "resolvedNativeNameLength": 61,
+    "jsonSchemaArgumentValidation": true,
+    "fixedApprovedEndpointOnly": true,
+    "redirectsCookiesAndRawErrorsNotForwarded": true,
+    "currentPatReflectionRejected": true,
+    "jsonAndRequestResponseSse": true,
+    "persistentServerSubscriptions": false,
+    "automaticEffectfulRetries": false,
+    "exactlyOnceOrRemoteRollback": false,
+    "refreshRequiresNativeSessionRestart": true,
+    "limits": {
+      "activeConnectionsPerProject": 16,
+      "selectedTools": 128,
+      "catalogPages": 4,
+      "definitionBytes": 32768,
+      "argumentBytes": 65536,
+      "responseBytes": 1048576,
+      "operationMs": 30000,
+      "authorityPollMs": 250,
+      "concurrentPerUser": 4,
+      "concurrentPerServer": 16
+    }
+  },
+  "verification": {
+    "selectedServerTests": 1065,
+    "selectedServerFiles": 112,
+    "databaseTests": 659,
+    "databaseFiles": 60,
+    "sdkTests": 136,
+    "sdkFiles": 17,
+    "providerTests": 31,
+    "providerFiles": 8,
+    "hostContractTests": 76,
+    "hostContractFiles": 5,
+    "selectedCliTests": 6,
+    "selectedCliFiles": 2,
+    "typecheckTasks": 10,
+    "strictLintAndFormattingFiles": 24,
+    "databaseMocks": false,
+    "newFilesystemLintExceptions": false,
+    "realHttpMcpServerTests": {
+      "separateOwnersAndExactProfileTools": true,
+      "forgedTurnNativeSessionAndForeignBindingDenied": true,
+      "invalidArgumentsDenied": true,
+      "remoteDefinitionDriftRejected": true,
+      "credentialReflectionRejected": true,
+      "redirectNotFollowed": true,
+      "jsonAndSse": true,
+      "activeGrantRevocationAbortsRequest": true,
+      "credentialRotationInvalidatesCapturedBinding": true,
+      "disabledConnectionNotDiscovered": true
+    },
+    "docker": {
+      "passed": true,
+      "tasks": 63,
+      "cached": 59,
+      "duration": "8m58.596s",
+      "budgetsUnchanged": true,
+      "stockQwenCliWithDeterministicLocalModel": true,
+      "actualStreamableHttpEndpointWithPerUserBearer": true,
+      "managedRuntimeChecks": {
+        "projectMcpCatalogAndCredentialCli": true,
+        "projectMcpBuiltCliGuideVerified": true,
+        "projectMcpMalformedSecretInputNotLogged": true,
+        "projectMcpSecretsEncryptedAndIdentityBound": true,
+        "projectMcpSharedMetadataUsesOwnCredentials": true,
+        "projectMcpForeignMutationDenied": true,
+        "projectMcpUnsupportedConnectionFieldsRejected": true,
+        "projectMcpNativeQwenRoundTrip": true,
+        "projectMcpNativePersonalCredentials": true,
+        "projectMcpProfileToolSelection": true,
+        "projectMcpSecretsAbsentFromNativeTimeline": true,
+        "projectMcpNativeResumeAfterRestart": true,
+        "projectMcpEncryptedCredentialsSurviveRestart": true,
+        "projectMcpRevocationDoesNotAffectOtherUser": true
+      },
+      "shutdownAndCrashRecovery": true,
+      "driverLogContainsFixturePat": false,
+      "serverLogScan": {
+        "files": 2,
+        "bytes": 108325,
+        "plaintextCredentialsFound": false
+      }
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/index.js": {
+        "imagePath": "/opt/bb/apps/server/dist/index.js",
+        "sha256HostAndImage": "d805e33dbe404f83eba01d3dc80b7e940365bd7cb1439178a5ca16cc1881da76"
+      },
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "f1b249c9388bdacdfc1d0a0a5180d22982d3c5314a82b8f0abdb62761f7b5fb3"
+      },
+      "apps/cli/dist/index.js": {
+        "imagePath": "/opt/bb/apps/cli/dist/index.js",
+        "sha256HostAndImage": "f0f15fa3c437240472284c55ace49765557e64cc7ec7d0bf15053e71a037fa25"
+      },
+      "apps/host-daemon/dist/start-host-daemon.js": {
+        "imagePath": "/opt/bb/apps/host-daemon/dist/start-host-daemon.js",
+        "sha256HostAndImage": "136c6d72c040a5235a3139eb1c65ecde546d0ad5c6d36b6c723929be7704c2ef"
+      },
+      "scripts/check-control-plane-project-mcp.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-mcp.mjs",
+        "sha256HostAndImage": "4138bef36a257406b1b0acfeeb3b27671089b1420854e4530930f53f684b30ca"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "9a74a1a388f6a6cdeec9cfd21dd4487e8a2a6262849624a48ebbe8c0c6fcd4e0"
+      },
+      "packages/bundled-plugins/dist/provider-qwen-server/dist/host.js": {
+        "imagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/dist/host.js",
+        "sha256HostAndImage": "a02bc8cd518c4880d48ccc2b3ae6032fca968b13041906f9d228a6a7cebfd8fd"
+      },
+      "packages/bundled-plugins/dist/provider-qwen-server/dist/server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/dist/server.js",
+        "sha256HostAndImage": "fe80844b04d6d941804ffaba60eb56effa9208bef3712c4a0d064e8db9c9f52a"
+      },
+      "packages/bundled-plugins/dist/provider-qwen-server/skills/qwen-server/SKILL.md": {
+        "imagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/skills/qwen-server/SKILL.md",
+        "sha256HostAndImage": "9acfbc6a1f86f63b9d1a84dbf45171fb8afd5b357ae5bde07c7b534d4a85dc31"
+      }
+    },
+    "broaderServerSweep": {
+      "passed": 3820,
+      "failed": 5,
+      "skippedTests": 1,
+      "passedFiles": 387,
+      "failedFiles": 4,
+      "skippedFiles": 3,
+      "environment": {
+        "TMPDIR": "/private/tmp",
+        "npm_config_cache": "/private/tmp/bb-stage62-npm-cache",
+        "BB_FRP_CACHE_DIR": "/private/tmp/bb-stage59-frp-cache"
+      },
+      "notClaimedGreen": true,
+      "outstanding": [
+        "install-machine-script: reconnect reports a daemon not started by this installer on port 38888",
+        "builtin-registry: reserved bundled id expectation omits provider-qwen-server",
+        "pending-interactions: reused terminal request rejects with different-thread/turn reason instead of terminal-dedupe reason",
+        "builtin-plugins: source builtin hot reload does not advance before -> after",
+        "builtin-plugins: expected frontend build-failure status remains null"
+      ],
+      "priorUnconfiguredSweeps": [
+        "25 failures with default read-only HOME caches",
+        "9 failures after private caches; four additional Unix socket failures with long macOS TMPDIR"
+      ]
+    }
+  },
+  "iterations": [
+    "Initial native fixture exposed Qwen rewriting an overlong MCP function name. Shortened opaque SHA-256-derived identifier to 40 hex characters; qualified name is 61 characters and actual native calls pass.",
+    "Removed positional connector assertions from fixture after adding a second connector. One intermediate run intentionally superseded before full execution.",
+    "Final rebuilt image includes provider guide, current CLI guide and both runtime fixtures."
+  ],
+  "limitations": [
+    "Shared-project metadata uses personal credential bindings, but actual shared-project workspace execution is still pending.",
+    "Project MCP management UI and complete combined remote revocation/worker acceptance remain required.",
+    "Live Qwen sessions retain a fixed tool catalog; changed revisions require native session restart.",
+    "No corporate CLI/SDK authorization or live external model/MCP service verified.",
+    "No frontend code changes; browser baseline remains increment 51.",
+    "Full server test sweep remains non-green with the five recorded failures; selected stage checks and Docker pass.",
+    "The overall shared-server control plane feature list remains unfinished."
+  ]
+}

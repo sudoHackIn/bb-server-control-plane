@@ -10,6 +10,164 @@ const exec = promisify(execFile);
 export function createProjectMcpFixture({ db, users, config }) {
   let connector;
   const subjects = [];
+  const remoteCalls = [];
+  const modelCalls = new Set();
+  const remoteThreads = [];
+  let remoteConnector;
+  const remoteToken = (subject) =>
+    "remote-private-" + subject.user.login + "-fixture";
+  const handleRemote = (req, res, body) => {
+    if (req.url !== "/mcp") return false;
+    const subject = subjects.find(
+      (entry) => req.headers.authorization === `Bearer ${remoteToken(entry)}`,
+    );
+    if (!subject) {
+      res.writeHead(401).end();
+      return true;
+    }
+    if (req.method !== "POST") {
+      res.writeHead(405).end();
+      return true;
+    }
+    if (body.id === undefined) {
+      res.writeHead(202).end();
+      return true;
+    }
+    let result;
+    if (body.method === "initialize")
+      result = {
+        protocolVersion: body.params.protocolVersion,
+        capabilities: { tools: {} },
+        serverInfo: { name: "remote-fixture", version: "1.0.0" },
+      };
+    else if (body.method === "tools/list")
+      result = {
+        tools: [
+          {
+            name: "lookup",
+            description: "Personal lookup",
+            inputSchema: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+              additionalProperties: false,
+            },
+          },
+          {
+            name: "forbidden",
+            description: "Must not be offered",
+            inputSchema: { type: "object" },
+          },
+        ],
+      };
+    else if (body.method === "tools/call") {
+      assert.equal(body.params.name, "lookup");
+      assert.equal(body.params.arguments.value, subject.user.login);
+      remoteCalls.push(subject.user.login);
+      result = {
+        content: [
+          { type: "text", text: "REMOTE_MCP_ACTOR_" + subject.user.login },
+        ],
+      };
+    } else {
+      res.writeHead(400).end();
+      return true;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
+    return true;
+  };
+  const handleModel = (body, res) => {
+    const markers = [
+      ...JSON.stringify(body.messages).matchAll(
+        /BB_REMOTE_MCP_(alice|bob)_(first|resume)/gu,
+      ),
+    ];
+    const marker = markers.at(-1);
+    if (!marker || !body.tools?.length) return false;
+    const tool = body.tools.find((entry) =>
+      /^mcp__bb__project_mcp_[a-f0-9]{40}$/u.test(entry.function?.name),
+    );
+    assert.ok(
+      tool,
+      "Native Qwen did not receive project MCP tool: " +
+        JSON.stringify(body.tools.map((entry) => entry.function?.name)),
+    );
+    assert.equal(
+      body.tools.filter((entry) =>
+        entry.function?.name.startsWith("mcp__bb__project_mcp_"),
+      ).length,
+      1,
+    );
+    assert.equal(JSON.stringify(body).includes("remote-private-"), false);
+    const first = !modelCalls.has(marker[0]);
+    modelCalls.add(marker[0]);
+    if (!first) {
+      assert.ok(
+        body.messages.some(
+          (message) =>
+            message.role === "tool" &&
+            JSON.stringify(message.content).includes(
+              "REMOTE_MCP_ACTOR_" + marker[1],
+            ),
+        ),
+        "Missing real remote MCP result in Qwen history",
+      );
+      assert.ok(remoteCalls.includes(marker[1]));
+    }
+    const delta = first
+      ? {
+          role: "assistant",
+          tool_calls: [
+            {
+              index: 0,
+              id: "remote_" + marker[1] + "_" + marker[2],
+              type: "function",
+              function: {
+                name: tool.function.name,
+                arguments: JSON.stringify({ value: marker[1] }),
+              },
+            },
+          ],
+        }
+      : {
+          role: "assistant",
+          content: "Remote MCP completed " + marker[1] + " " + marker[2],
+        };
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.end(
+      `data: ${JSON.stringify({ id: "remote_fixture", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: "remote_fixture", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: first ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
+    );
+    return true;
+  };
+  const completed = async (entry, wait) => {
+    await wait(() => {
+      const status = db
+        .prepare("SELECT status FROM threads WHERE id=?")
+        .get(entry.threadId)?.status;
+      if (status === "error")
+        throw new Error(
+          "Remote MCP native thread failed: " +
+            JSON.stringify(
+              db
+                .prepare(
+                  "SELECT data FROM events WHERE thread_id=? ORDER BY sequence DESC LIMIT 8",
+                )
+                .all(entry.threadId),
+            ),
+        );
+      return status === "idle";
+    }, "native remote MCP " + entry.subject.user.login);
+    const timeline = JSON.stringify(
+      db
+        .prepare("SELECT data FROM events WHERE thread_id=?")
+        .all(entry.threadId),
+    );
+    assert.ok(
+      timeline.includes("REMOTE_MCP_ACTOR_" + entry.subject.user.login),
+    );
+    assert.equal(timeline.includes("remote-private-"), false);
+  };
   const cli = async (identity, args, body, expectedFailure = false) => {
     const home = "/tmp/bb-mcp-client-" + identity.user.login;
     const origin = config.publicOrigin;
@@ -100,6 +258,146 @@ export function createProjectMcpFixture({ db, users, config }) {
     assert.equal(JSON.parse(result.stdout).verified, true);
   };
   return {
+    handleRemote,
+    handleModel,
+    async verifyRuntime({ send, token, created, wait }) {
+      const response = await send(
+        "/control-plane/admin/mcp/connectors",
+        {
+          slug: "remote",
+          name: "Remote runtime fixture",
+          endpoint: "http://127.0.0.1:38888/mcp",
+        },
+        token,
+      );
+      assert.equal(response.status, 201, JSON.stringify(response.body));
+      remoteConnector = response.body;
+      for (const [index, subject] of subjects.entries()) {
+        assert.equal(
+          (
+            await send(
+              `/control-plane/admin/mcp/connectors/${remoteConnector.id}/access/${subject.user.id}`,
+              { allowed: true },
+              token,
+              "PUT",
+            )
+          ).status,
+          200,
+        );
+        const credential = await send(
+          `/control-plane/user/mcp/connectors/${remoteConnector.id}/credential`,
+          {
+            token: remoteToken(subject),
+            connectorRevision: 1,
+            expectedRevision: 0,
+          },
+          subject.token,
+          "PUT",
+        );
+        assert.equal(credential.status, 200, JSON.stringify(credential.body));
+        const connection = await cli(
+          subject,
+          ["configure", subject.projectId, "--connection-stdin"],
+          {
+            connectorId: remoteConnector.id,
+            connectorRevision: 1,
+            expectedRevision: 0,
+            enabled: true,
+          },
+        );
+        assert.equal(connection.executionState, "enabled");
+        const profile = await send(
+          "/control-plane/admin/profiles",
+          {
+            slug: "remote-" + subject.user.login,
+            name: "Remote " + subject.user.login,
+            definition: {
+              prompt: "Remote MCP fixture",
+              providerId: "qwen-server",
+              model: "qwen-job-test",
+              reasoningLevel: "none",
+              permissionMode: "full",
+              tools: ["mcp:remote:lookup"],
+              mcpServers: ["project"],
+            },
+          },
+          token,
+        );
+        assert.equal(profile.status, 201, JSON.stringify(profile.body));
+        assert.equal(
+          (
+            await send(
+              `/control-plane/admin/profiles/${profile.body.profile.id}/access/${subject.user.id}`,
+              { allowed: true },
+              token,
+              "PUT",
+            )
+          ).status,
+          200,
+        );
+        const result = await send(
+          "/api/v1/threads",
+          {
+            ...created[index].threadInput,
+            controlPlaneProfileVersionId: profile.body.version.id,
+            title: "Remote MCP " + subject.user.login,
+            input: [
+              {
+                type: "text",
+                text: "BB_REMOTE_MCP_" + subject.user.login + "_first",
+                mentions: [],
+              },
+            ],
+          },
+          token,
+        );
+        assert.equal(result.status, 201, JSON.stringify(result.body));
+        const entry = { subject, threadId: result.body.id };
+        remoteThreads.push(entry);
+        await completed(entry, wait);
+        assert.equal(
+          remoteCalls.filter((actor) => actor === subject.user.login).length,
+          1,
+        );
+        const row = db
+          .prepare(
+            "SELECT qwen_session_id FROM control_plane_threads WHERE thread_id=?",
+          )
+          .get(entry.threadId);
+        entry.sessionId = row.qwen_session_id;
+      }
+      return {
+        projectMcpNativeQwenRoundTrip: true,
+        projectMcpNativePersonalCredentials: true,
+        projectMcpProfileToolSelection: true,
+        projectMcpSecretsAbsentFromNativeTimeline: true,
+      };
+    },
+    async resumeRuntime({ send, token, wait }) {
+      const entry = remoteThreads[1];
+      const result = await send(
+        `/api/v1/threads/${entry.threadId}/send`,
+        {
+          mode: "start",
+          input: [
+            { type: "text", text: "BB_REMOTE_MCP_bob_resume", mentions: [] },
+          ],
+        },
+        token,
+      );
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      await completed(entry, wait);
+      assert.equal(remoteCalls.filter((actor) => actor === "bob").length, 2);
+      assert.equal(
+        db
+          .prepare(
+            "SELECT qwen_session_id FROM control_plane_threads WHERE thread_id=?",
+          )
+          .get(entry.threadId).qwen_session_id,
+        entry.sessionId,
+      );
+      return { projectMcpNativeResumeAfterRestart: true };
+    },
     async verify({ send, token }) {
       const guide = await exec(
         process.execPath,
@@ -206,7 +504,12 @@ export function createProjectMcpFixture({ db, users, config }) {
           bob.token,
         );
         assert.equal(shared.status, 200);
-        assert.equal(shared.body.connections[0].readiness, "configured");
+        assert.equal(
+          shared.body.connections.find(
+            (row) => row.connectorId === connector.id,
+          )?.readiness,
+          "configured",
+        );
         const denied = await send(
           `/control-plane/user/projects/${alice.projectId}/mcp`,
           {
@@ -251,7 +554,7 @@ export function createProjectMcpFixture({ db, users, config }) {
             connectorId: connector.id,
             connectorRevision: 1,
             expectedRevision: 1,
-            enabled: true,
+            command: "/bin/sh",
           },
           subject.token,
           "PUT",
@@ -267,14 +570,18 @@ export function createProjectMcpFixture({ db, users, config }) {
         projectMcpSecretsEncryptedAndIdentityBound: true,
         projectMcpSharedMetadataUsesOwnCredentials: true,
         projectMcpForeignMutationDenied: true,
-        projectMcpActivationExplicitlyUnavailable: true,
+        projectMcpUnsupportedConnectionFieldsRejected: true,
       };
     },
     async afterRestart({ send, token }) {
       for (const subject of subjects) {
         await resolve(subject);
         const list = await cli(subject, ["connections", subject.projectId]);
-        assert.equal(list.connections[0].readiness, "configured");
+        assert.equal(
+          list.connections.find((row) => row.connectorId === connector.id)
+            ?.readiness,
+          "configured",
+        );
       }
       const [alice, bob] = subjects;
       const revoked = await cli(alice, [
@@ -305,7 +612,12 @@ export function createProjectMcpFixture({ db, users, config }) {
         undefined,
         alice.token,
       );
-      assert.equal(response.body.connections[0].readiness, "access_denied");
+      assert.equal(
+        response.body.connections.find(
+          (row) => row.connectorId === connector.id,
+        )?.readiness,
+        "access_denied",
+      );
       return {
         projectMcpEncryptedCredentialsSurviveRestart: true,
         projectMcpRevocationDoesNotAffectOtherUser: true,

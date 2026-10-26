@@ -1,12 +1,13 @@
 # Project MCP configuration
 
-Increment 61 adds the management foundation for project MCP: centrally approved
-connectors, per-user connector grants, project connection records and encrypted
-personal credentials. It does not activate remote tools. Connections are stored
-with `enabled: false`, return `executionState: "not_activated"`, and connection
-lists return `executionSupported: false`. An `enabled` input is rejected rather
-than silently accepted. Actual provider delivery, live revocation, the project UI
-and two-user remote MCP calls remain required for the full feature.
+Increments 61–62 provide centrally approved connectors, per-user grants,
+project connection records, encrypted personal credentials and server-owned
+remote tool execution through native Qwen. Connections default to disabled.
+Owners may explicitly activate with `enabled:true` when their current credential
+matches the connector revision. Active records report `executionState:"enabled"`;
+connection lists report `executionSupported:true`. These flags describe enabled
+configuration, not a successful remote authentication probe. Project UI and actual
+shared-project workspace execution remain required for the complete feature.
 
 ## Stored authority and contracts
 
@@ -53,8 +54,9 @@ server filesystem lint exception or access to user workspace files is added.
 
 The private credential resolver repeats current authority and exact saved-row
 checks after key I/O. It is not an HTTP endpoint and does not accept an owner from
-user tool arguments. Subsequent runtime integration must derive that owner from
-the saved thread/run context. Browser tokens are not credential bindings.
+user tool arguments. Runtime resolution derives the owner from the saved
+thread context and rechecks grants and revisions before each call. Browser tokens
+are not credential bindings. Tokens are never sent to the daemon or Qwen job.
 
 ## API, SDK and CLI
 
@@ -72,8 +74,40 @@ and `grant`. Its personal `mcp` client exposes `list`, `get`, `credential`,
 `setCredential`, `revokeCredential`, `connections`, `configure` and `remove`.
 All responses are parsed through shared domain schemas. The matching
 `bb server access mcp` commands are documented in `bb guide machines`; secret
-input is stdin-only and output is JSON metadata. No new Plugin SDK member or
-daemon wire field is added. Protocol remains 254; Plugin SDK remains 0.6.80.
+input is stdin-only and output is JSON metadata. `configure` accepts
+`connectorId`, `connectorRevision`, `expectedRevision` and optional `enabled`
+(default false). Connection changes use revision CAS. Disabling/removing a
+connection invalidates existing tool bindings.
+
+No new Plugin SDK member is added. Protocol 255 signals the changed dynamic-tool
+semantics to host daemons; Plugin SDK remains 0.6.80.
+
+## Native execution
+
+Approved profiles opt in with `mcpServers:["project"]` and `tools:["mcp:*"]` or
+exact `mcp:<connector-slug>:<remote-tool-name>` selectors. Only explicitly selected
+connections are resolved. Migration 0158 stores immutable tool bindings tied to
+the thread, profile version, connection/connector/credential revisions and remote
+definition. Descriptions travel through the existing provider-owned BB MCP tool
+bridge; the central service performs network calls with the saved owner's PAT.
+Opaque names, including the native prefix, fit within 64 characters so the pinned
+Qwen CLI preserves them.
+
+Every call requires the authenticated host, exact saved active thread/turn/native
+session, current project/profile/connector grants and matching revisions. The
+server re-fetches the remote tool definition, compares its snapshot and validates
+arguments before invoking it. A 250ms authority poll aborts pending requests after
+revocation, and checks repeat before returning the result. No automatic effectful
+retry or rollback of completed external operations is promised. Catalog changes
+require restarting the native Qwen session; stale bindings fail explicitly.
+
+The approved Streamable HTTP endpoint supports JSON and request-response SSE.
+Redirects, cookies, arbitrary headers/commands and persistent server-initiated
+subscriptions are disabled. Raw network errors are suppressed and catalog/result
+values containing the current PAT are rejected. Limits: 16 active connections per
+project, 128 tools, four catalog pages, 32KiB per definition, 64KiB arguments,
+1MiB per HTTP response, 30 seconds per operation, four simultaneous operations per
+user and 16 per server.
 
 ## Evidence and remaining delivery
 
@@ -84,16 +118,17 @@ body limits. Secret-storage tests exercise key creation races, symlinks, malform
 keys and unsafe directories. The SDK's existing automation definition test now
 narrows the agent/script union before reading an agent prompt.
 
-Docker must verify the actual limited API and built CLI for both users, ciphertext
-at rest, server-account resolution using the production credential service,
-restart, shared-project metadata, revocation and rejected activation/identity
-injection. This is configuration acceptance, not a remote MCP provider-to-tool
-round trip. See [the verification record](control-plane-phase-61-verification.json).
+Docker verifies the actual limited API and built CLI for both users, encrypted
+storage and server-account credential resolution. The execution fixture launches
+two real stock Qwen CLI sessions, selects one remote tool per approved profile,
+checks each service request's distinct personal bearer token and consumes the
+actual remote result in the next model turn. It also resumes Bob's saved Qwen
+session after server restart. Unit/integration tests exercise JSON/SSE, forged
+turn/session/foreign bindings, schema drift, redirects, PAT reflection and active
+grant revocation. See the [configuration evidence](control-plane-phase-61-verification.json)
+and [execution evidence](control-plane-phase-62-verification.json).
 
-The next execution stage must resolve enabled, authorized connections from saved
-user/project context at start and resume, enforce profile restrictions, send only
-the matching user's credentials through a supported provider/tool adapter, and
-verify real remote tools, redirects, failures and active revocation in Docker.
-The shared-project execution/workspace policy must be verified separately from
-read-only connection metadata. Ship the project UI with those actual states;
-do not equate `configured` with a working or authenticated remote connection.
+The local model backend and remote MCP endpoint are deterministic test services;
+this does not establish corporate CLI/SDK support. The complete combined Docker
+acceptance, shared-project execution/workspace policy and project UI remain open.
+Do not equate `configured` or `enabled` with a working authenticated connection.

@@ -87,7 +87,7 @@ export const controlPlaneMcpConnectionSchema = z
       "revision_mismatch",
       "access_denied",
     ]),
-    executionState: z.literal("not_activated"),
+    executionState: z.enum(["not_activated", "enabled"]),
   })
   .strict();
 export type ControlPlaneMcpConnectorCreate = z.infer<

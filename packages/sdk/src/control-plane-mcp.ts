@@ -124,7 +124,7 @@ export function createControlPlaneMcpClient(request: Request) {
         return z
           .object({
             connections: z.array(controlPlaneMcpConnectionSchema),
-            executionSupported: z.literal(false),
+            executionSupported: z.boolean(),
           })
           .parse(await request(projectPath(projectId), "GET"));
       },
@@ -132,10 +132,14 @@ export function createControlPlaneMcpClient(request: Request) {
         projectId: string,
         input: z.infer<typeof controlPlaneMcpConnectionCreateSchema> & {
           expectedRevision: number;
+          enabled?: boolean;
         },
       ) {
         const parsed = controlPlaneMcpConnectionCreateSchema
-          .extend({ expectedRevision: z.number().int().nonnegative() })
+          .extend({
+            expectedRevision: z.number().int().nonnegative(),
+            enabled: z.boolean().default(false),
+          })
           .strict()
           .parse(input);
         return controlPlaneMcpConnectionSchema.parse(

@@ -39,7 +39,7 @@ export function registerServerMcpCommands(
   const mcp = access
     .command("mcp")
     .description(
-      "Configure approved project MCP connectors and personal credentials; activation is not available yet",
+      "Manage approved project MCP connectors, credentials and activation",
     );
   const output = (value: object) => console.log(JSON.stringify(value, null, 2));
   const revision = (value: string) =>
@@ -177,7 +177,10 @@ export function registerServerMcpCommands(
               await input(
                 options.connectionStdin,
                 controlPlaneMcpConnectionCreateSchema
-                  .extend({ expectedRevision: z.number().int().nonnegative() })
+                  .extend({
+                    expectedRevision: z.number().int().nonnegative(),
+                    enabled: z.boolean().default(false),
+                  })
                   .strict(),
               ),
             ),

@@ -359,6 +359,35 @@ export const controlPlaneMcpConnections = sqliteTable(
   ],
 );
 
+export const controlPlaneMcpToolBindings = sqliteTable(
+  "control_plane_mcp_tool_bindings",
+  {
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => controlPlaneMcpConnections.id, { onDelete: "cascade" }),
+    connectionRevision: integer("connection_revision").notNull(),
+    connectorRevision: integer("connector_revision").notNull(),
+    credentialRevision: integer("credential_revision").notNull(),
+    profileVersionId: text("profile_version_id")
+      .notNull()
+      .references(() => controlPlaneProfileVersions.id),
+    definition: text("definition", { mode: "json" })
+      .$type<JsonValue>()
+      .notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.threadId, table.name] }),
+    index("control_plane_mcp_tool_bindings_connection_idx").on(
+      table.connectionId,
+    ),
+  ],
+);
+
 export const controlPlaneProfiles = sqliteTable("control_plane_profiles", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull().unique(),

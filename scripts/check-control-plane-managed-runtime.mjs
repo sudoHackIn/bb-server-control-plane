@@ -50,15 +50,20 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   let approvalVerification;
   let workspaceVerification, workspaceRestartVerification;
   let providerVerification, providerRestartVerification;
-  let mcpVerification, mcpRestartVerification;
+  let mcpVerification,
+    mcpRestartVerification,
+    mcpRuntimeVerification,
+    mcpRuntimeRestartVerification;
   const toolCalls = new Map();
   const delegatedResults = new Set();
   let resumedWithHistory = false;
   const backend = createServer(async (req, res) => {
     let text = "";
     for await (const part of req) text += part;
-    const body = JSON.parse(text);
+    const body = text ? JSON.parse(text) : {};
+    if (mcp.handleRemote(req, res, body)) return;
     if (
+      mcp.handleModel(body, res) ||
       messageSources.handle(body, res) ||
       daemonRequests.handle(body, res) ||
       approvals.handle(body, res) ||
@@ -513,6 +518,13 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     stage("provider-lifecycle-complete");
     mcpVerification = await mcp.verify({ send, token });
     stage("project-mcp-configuration-complete");
+    mcpRuntimeVerification = await mcp.verifyRuntime({
+      send,
+      token,
+      created,
+      wait,
+    });
+    stage("project-mcp-native-complete");
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
       launch,
@@ -765,6 +777,11 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
         .get(created[0].threadId).qwen_session_id,
       created[0].sessionId,
     );
+    mcpRuntimeRestartVerification = await mcp.resumeRuntime({
+      send,
+      token,
+      wait,
+    });
     stage("restart-complete");
     await personal.beforeCrash(child.pid);
     let daemonPid;
@@ -920,6 +937,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       nativeUidHomeTools: true,
       nativeTimeline: true,
       ...mcpVerification,
+      ...mcpRuntimeVerification,
+      ...mcpRuntimeRestartVerification,
       ...mcpRestartVerification,
       ...providerVerification,
       ...providerRestartVerification,

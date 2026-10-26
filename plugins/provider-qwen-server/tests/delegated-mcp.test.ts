@@ -139,3 +139,29 @@ it("rejects unavailable, ambiguous and unsupported delegated names and permits o
   expect(enabled.settings.mcp.allowed).toEqual(["bb"]);
   expect(enabled.settings.tools.visible).toEqual(["mcp__bb__approved"]);
 });
+
+it("transports server-resolved project tools only with profile opt-in and honors capability reduction", () => {
+  const source = context();
+  source.profile.definition.tools = ["mcp:fixture:lookup"];
+  source.profile.definition.mcpServers = ["project"];
+  const project = { ...available[0]!, name: "project_mcp_" + "a".repeat(40) };
+  const catalog = [
+    ...available,
+    project,
+    { ...project, name: "project_mcp_forged" },
+  ];
+  expect(
+    selectDelegatedTools(source, catalog, []).map((tool) => tool.name),
+  ).toEqual([project.name]);
+  expect(selectDelegatedTools(source, catalog, ["mcp:*"])).toEqual([]);
+  expect(selectDelegatedTools(source, catalog, [project.name])).toEqual([]);
+  expect(
+    profilePolicy(source, {}, [project.name]).settings.tools.visible,
+  ).toEqual(["mcp__bb__" + project.name]);
+  expect(() =>
+    profilePolicy(source, { excludeTools: ["mcp:fixture:lookup"] }),
+  ).toThrow("exclusions");
+  source.profile.definition.mcpServers = [];
+  expect(selectDelegatedTools(source, catalog, [])).toEqual([]);
+  expect(() => profilePolicy(source, {})).toThrow();
+});

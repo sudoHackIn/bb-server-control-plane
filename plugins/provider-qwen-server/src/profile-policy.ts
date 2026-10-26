@@ -41,7 +41,7 @@ export function profilePolicy(
     throw new Error(
       "Unverified SDK MCP servers cannot run in the service process",
     );
-  if (profile.mcpServers.some((name) => name !== "bb"))
+  if (profile.mcpServers.some((name) => !["bb", "project"].includes(name)))
     throw new Error("Unsupported managed MCP server");
   if (!reasoning.has(profile.reasoningLevel))
     throw new Error("Unsupported Qwen reasoning level");
@@ -66,12 +66,24 @@ export function profilePolicy(
     if (
       !known.has(name) &&
       !(
+        profile.mcpServers.includes("project") &&
+        /^mcp:(?:\*|[a-z][a-z0-9-]{0,62}:[A-Za-z0-9_.-]{1,128})$/u.test(name)
+      ) &&
+      !(
         profile.mcpServers.includes("bb") &&
         /^bb:[A-Za-z_][A-Za-z0-9_]{0,127}$/u.test(name) &&
         name !== "bb:update_environment_directory"
       )
     )
       throw new Error("Unknown native Qwen tool in profile");
+  if (
+    options.excludeTools?.some(
+      (name) => name.startsWith("mcp:") && name !== "mcp:*",
+    )
+  )
+    throw new Error(
+      "Use profile policy or exact delegated names for project MCP exclusions",
+    );
   const disallowed = new Set(options.excludeTools ?? []);
   const allowed = profile.tools.filter(
     (name) => known.has(name) && !disallowed.has(name),

@@ -296,16 +296,28 @@ a new token does not replace a lost key while encrypted credentials exist.
 `mcp connections <project-id>` reads project connection metadata and readiness
 for your identity. Only project owners can use `mcp configure <project-id>
 --connection-stdin`, with `connectorId`, `connectorRevision` and
-`expectedRevision` (0 for a new connection). `mcp remove <project-id>
+`expectedRevision` (0 for a new connection), and optional `enabled` (default
+false). Activation requires your current personal credential. `mcp remove <project-id>
 <connection-id> --revision <number>` removes that exact revision. Readers of a
 shared project use their own credential binding. A connector revision change
 requires explicit connection refresh and a new personal credential binding.
 
-These are configuration operations: connections remain disabled, report
-`executionState: "not_activated"`, and lists report `executionSupported: false`.
-There is no activation flag, arbitrary MCP installation or claim of a live remote
-tool connection. Provider delivery and project UI are subsequent integration
-stages; the existing native `bb` tool bridge is separate.
+Connections report `executionState: "enabled"` when explicitly activated, and
+lists report `executionSupported: true`. An approved profile must opt in with
+`mcpServers: ["project"]` and `tools: ["mcp:*"]` or exact
+`mcp:<connector-slug>:<remote-tool-name>` selectors. The server resolves only
+selected connectors and sends tool descriptions through the native BB bridge;
+personal bearer tokens stay on the server. Remote installation and stdio commands
+are not accepted. HTTP JSON and request-response SSE are supported, with no
+persistent server-initiated subscriptions or automatic effectful retries.
+
+Each invocation rechecks the saved thread owner, project/profile grants, active
+turn/session, connection and personal credential revisions, then compares the
+remote tool definition before calling it. Revocation cancels pending network
+requests; a remote operation already performed cannot be rolled back. Changes to
+credentials, connection revisions or the remote catalog require restarting the
+Qwen session to refresh its tool snapshot. Shared project execution and project
+UI are subsequent integration stages.
 
 `bb server access profiles list [--limit <count>] [--cursor <id>]` lists your
 permitted agent profiles. `profiles get <profile-id> [--version <version-id>]`

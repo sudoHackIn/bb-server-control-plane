@@ -411,13 +411,13 @@ it("rechecks authority after asynchronous key access and preserves disabled-conf
         connectorId: f.connector.id,
         connectorRevision: 1,
         expectedRevision: 0,
-        enabled: true,
+        command: "/bin/sh",
       },
     );
     expect(invalid.status).toBe(400);
     expect(
       (await f.aliceApi.mcp.connections(f.alice.project.id)).executionSupported,
-    ).toBe(false);
+    ).toBe(true);
     const oversized = await f.request(
       `/control-plane/user/mcp/connectors/${f.connector.id}/credential`,
       f.aliceToken,
@@ -537,5 +537,50 @@ it("validates catalog endpoints, strict fields and page cursors without exposing
     expect(
       (await f.aliceApi.mcp.connections(f.alice.project.id)).connections,
     ).toEqual([]);
+  });
+});
+
+it("requires a current personal credential for activation through the typed SDK and persists explicit disabling", async () => {
+  await withTestHarness(async (harness) => {
+    const f = await fixture(harness);
+    const input = {
+      connectorId: f.connector.id,
+      connectorRevision: 1,
+      expectedRevision: 0,
+      enabled: true,
+    };
+    await expect(
+      f.aliceApi.mcp.configure(f.alice.project.id, input),
+    ).rejects.toThrow();
+    await f.aliceApi.mcp.setCredential(f.connector.id, {
+      token: "activation-personal-token",
+      connectorRevision: 1,
+      expectedRevision: 0,
+    });
+    const active = await f.aliceApi.mcp.configure(f.alice.project.id, input);
+    expect(active).toMatchObject({
+      enabled: true,
+      executionState: "enabled",
+      revision: 1,
+    });
+    expect(
+      (await f.aliceApi.mcp.connections(f.alice.project.id)).executionSupported,
+    ).toBe(true);
+    const disabled = await f.aliceApi.mcp.configure(f.alice.project.id, {
+      ...input,
+      expectedRevision: 1,
+      enabled: false,
+    });
+    expect(disabled).toMatchObject({
+      enabled: false,
+      executionState: "not_activated",
+      revision: 2,
+    });
+    await expect(
+      f.aliceApi.mcp.configure(f.alice.project.id, {
+        ...input,
+        expectedRevision: 1,
+      }),
+    ).rejects.toThrow("409");
   });
 });

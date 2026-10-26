@@ -1,3 +1,4 @@
+import { resolveProjectMcpTools } from "../../control-plane/mcp-runtime.js";
 import {
   resolveHostEnvironment,
   mergeHostAndProviderEnvironment,
@@ -221,6 +222,13 @@ export async function resolveThreadRuntimeCommandConfig(
   );
   const dynamicTools = dynamicToolContributions.map(
     (contribution) => contribution.tool,
+  );
+  dynamicTools.push(
+    ...(await resolveProjectMcpTools(
+      deps.db,
+      deps.config.dataDir,
+      args.thread.id,
+    )),
   );
   const instructionSections: string[] = [];
   for (const contribution of dynamicToolContributions) {

@@ -36,9 +36,18 @@ export function selectDelegatedTools(
     if (!available.some((tool) => tool.name === name))
       throw new Error("Approved delegated BB tool is unavailable");
   }
+  const project = available
+    .filter(
+      (tool) =>
+        /^project_mcp_[a-f0-9]{40}$/u.test(tool.name) &&
+        profile.mcpServers.includes("project") &&
+        profile.tools.some((name) => name.startsWith("mcp:")),
+    )
+    .map((tool) => tool.name);
   const selected = available.filter(
     (tool) =>
-      names.includes(tool.name) &&
+      (names.includes(tool.name) ||
+        (project.includes(tool.name) && !excluded.includes("mcp:*"))) &&
       ![tool.name, `bb:${tool.name}`, `mcp__bb__${tool.name}`].some((name) =>
         excluded.includes(name),
       ),

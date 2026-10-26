@@ -75,6 +75,19 @@ unavailable or unsupported tool fails explicitly. Caller exclusions reduce
 capabilities; they never enable a tool. `update_environment_directory` remains
 unsupported for managed threads.
 
+Approved project connectors use `mcpServers: ["project"]` with `tools: ["mcp:*"]`
+or exact `mcp:<connector-slug>:<remote-tool-name>` selectors. The central server
+resolves the current owner's active project connections, filters remote tools
+and supplies opaque `project_mcp_` names through the same native tool channel.
+Personal connector tokens never enter this provider or the isolated Qwen process.
+Every call returns to the server for current thread/turn/session, grants and
+credential/connection revision checks. Changes require restarting the native
+session to refresh its captured tool catalog. Revoked bindings fail explicitly;
+remote side effects already completed cannot be undone. Project configuration
+uses the limited control-plane API/SDK/CLI; it does not authorize raw SDK MCP
+instances or user-installed transports. Caller exclusions may remove all project
+tools with `mcp:*` or exact resolved names, but cannot add capabilities.
+
 The protected policy clears HOME-configured MCP servers before registering the
 provider-owned adapter, including an impostor named `bb`. User-supplied SDK MCP
 instances and arbitrary stdio/HTTP MCP transports are rejected. Full private

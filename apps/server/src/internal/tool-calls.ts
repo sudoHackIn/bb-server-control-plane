@@ -1,3 +1,5 @@
+import { isControlPlaneThreadManaged } from "@bb/db";
+import { invokeProjectMcpTool } from "../control-plane/mcp-runtime.js";
 import {
   hostDaemonToolCallRequestSchema,
   typedRoutes,
@@ -78,6 +80,21 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
       }
 
       assertControlPlaneDaemonRequest(deps.db, payload);
+      if (
+        payload.tool.startsWith("project_mcp_") &&
+        isControlPlaneThreadManaged(deps.db, thread.id)
+      ) {
+        const controller = new AbortController();
+        return streamToolCallResponse(
+          invokeProjectMcpTool(
+            deps.db,
+            deps.config.dataDir,
+            payload,
+            AbortSignal.any([controller.signal, context.req.raw.signal]),
+          ),
+          controller,
+        );
+      }
       return withControlPlaneToolAuthority(
         deps.db,
         thread.id,

@@ -46,9 +46,11 @@ it("upgrades existing registered users/projects and preserves encrypted MCP rows
       .digest("hex");
     expect(
       db.$client
-        .prepare("DELETE FROM __drizzle_migrations WHERE hash = ?")
+        .prepare(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations WHERE hash = ?)",
+        )
         .run(hash).changes,
-    ).toBe(1);
+    ).toBeGreaterThanOrEqual(1);
     migrate(db);
     expect(registry.reserve("alice", 2).uid).toBe(user.uid);
     const connector = createControlPlaneMcpConnector(db, {

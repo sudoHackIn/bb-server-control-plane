@@ -251,7 +251,7 @@ export function listControlPlaneMcpConnections(
                 row.credentialRevision !== row.currentRevision
               ? "credentials_required"
               : "configured",
-      executionState: "not_activated",
+      executionState: row.connection.enabled ? "enabled" : "not_activated",
     }),
   );
 }
@@ -262,6 +262,7 @@ export function configureControlPlaneMcpConnection(
   connectorId: string,
   connectorRevision: number,
   expectedRevision: number,
+  enabled = false,
 ) {
   return db.transaction(
     (tx) => {
@@ -284,13 +285,40 @@ export function configureControlPlaneMcpConnection(
         .get();
       if ((old?.revision ?? 0) !== expectedRevision)
         throw new ControlPlaneMcpError("conflict");
+      if (
+        enabled &&
+        !old?.enabled &&
+        (tx
+          .select({ count: sql<number>`count(*)`.mapWith(Number) })
+          .from(connections)
+          .where(
+            and(
+              eq(connections.projectId, projectId),
+              eq(connections.enabled, true),
+            ),
+          )
+          .get()?.count ?? 0) >= 16
+      )
+        throw new ControlPlaneMcpError("conflict");
+      if (enabled) {
+        const credential = controlPlaneMcpCredentialMetadata(
+          tx,
+          userId,
+          connectorId,
+        );
+        if (
+          !credential.configured ||
+          credential.connectorRevision !== connectorRevision
+        )
+          throw new ControlPlaneMcpError("credential_unavailable");
+      }
       const now = Date.now();
       if (old)
         tx.update(connections)
           .set({
             connectorRevision,
             revision: old.revision + 1,
-            enabled: false,
+            enabled,
             updatedAt: now,
           })
           .where(eq(connections.id, old.id))
@@ -303,7 +331,7 @@ export function configureControlPlaneMcpConnection(
             connectorId,
             connectorRevision,
             revision: 1,
-            enabled: false,
+            enabled,
             createdAt: now,
             updatedAt: now,
           })

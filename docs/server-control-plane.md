@@ -27,6 +27,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); actual remote tool execution, activation and project UI remain pending.
+- [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution and UI remain pending.
 - [ ] Complete the reusable agent experience on top of approved versioned profiles: catalog/editor, explicit selection for chats and automations, and workflow steps pinned to agent versions. Ship the same operations through UI, limited SDK and CLI.
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
@@ -148,8 +149,9 @@ Acceptance requires real provider-to-MCP calls in Docker with two users, distinc
 credentials, project/connector access denial, revoked credentials/connections,
 resume and no secret disclosure. Include a shared-project case proving that
 personal credentials cannot cross users. Increment 61 implements configuration management and encrypted credentials only.
-Actual provider delivery, activation, project UI and remote-tool acceptance remain
-open; the existing verified BB MCP bridge alone does not satisfy this requirement.
+Increment 62 adds explicit activation and server-owned remote tool execution
+through the native provider bridge. Shared-project workspace execution, project UI
+and the combined acceptance package remain open.
 
 ## Per-user workflows, automations and schedules
 
@@ -2821,3 +2823,69 @@ and to identify the turn-source migration by SQL hash rather than assuming it is
 latest. Production migrations remain strict. An existing SDK test now explicitly
 narrows agent/script definitions. The CLI's generic JSON error prevents Node's
 parser from echoing malformed secret input.
+
+
+## Sixty-second increment: server-owned project MCP execution
+
+Project owners can explicitly activate a configured connector through the limited
+API, SDK or `bb server access mcp configure --connection-stdin` with `enabled:true`.
+A current personal credential is required; omission still defaults to disabled.
+An approved immutable profile opts in through `mcpServers:["project"]` and
+`tools:["mcp:*"]` or exact `mcp:<connector-slug>:<remote-tool-name>` selectors.
+Ordinary conversations can use these connections without a reusable agent.
+
+The server connects to the approved Streamable HTTP endpoint, filters the remote
+catalog against the profile and persists immutable thread/tool bindings in
+migration `0158_control_plane_mcp_tools`. Qwen receives descriptions through its
+existing native BB tool bridge. Tokens remain in server-side encrypted storage;
+no credential or arbitrary HTTP/stdio MCP configuration is sent to the daemon or
+Qwen job. Host protocol 255 denotes this changed dynamic-tool meaning; the
+Plugin SDK stays at 0.6.80 with no new public members.
+
+Every invocation checks the authenticated machine and saved active thread/turn/
+native session, then current user/project/profile/connector grants and exact
+connection, connector and personal credential revisions. The remote definition
+is fetched again and compared before the effectful call; arguments are checked
+against its JSON schema. Another thread cannot reuse the binding. Resolved names including the native
+MCP prefix fit within 64 characters, so the pinned CLI does not rewrite them. A 250ms
+revocation poll aborts pending transport requests, and authority is rechecked
+before returning results. A completed external operation cannot be rolled back;
+there is no automatic effectful retry or exactly-once guarantee.
+
+The gateway rejects redirects and cookie forwarding, fixes every request to the
+approved endpoint and suppresses raw transport errors. Catalogs/results containing
+the current PAT are rejected. JSON and request-response SSE are supported;
+persistent server-initiated subscriptions are not. Limits are 16 active project
+connections, 128 selected tools, four catalog pages, 32KiB per definition, 64KiB
+arguments, 1MiB per HTTP response, 30 seconds per operation, four concurrent
+operations per user and 16 per server. Changes to bindings require restarting the
+native Qwen session; already-running harnesses retain a fixed tool snapshot and
+stale bindings fail explicitly.
+
+Verification passed: 1065 selected server tests in 112 files, 659 database tests,
+136 SDK tests, 31 provider tests, 76 host-contract tests and six selected CLI
+tests; ten typecheck tasks and strict lint/formatting for all 24 changed code
+files. Real HTTP MCP tests cover both owners, JSON/SSE, forged turn/session and
+foreign bindings, invalid arguments, definition drift, redirects, PAT reflection,
+active grant revocation and stale credential/connection snapshots.
+
+The final rebuilt Docker image passed all 63 tasks in 8m58.596s with unchanged
+budgets. Two stock Qwen CLI threads invoke actual remote MCP calls using distinct
+personal bearer credentials, consume their results and offer only the selected
+tool. Bob resumes the same native session and calls again after server restart.
+Shutdown and crash cleanup remain green. Nine host/image artifacts match,
+including both provider bundles and its guide; driver/server logs contain no
+fixture PAT values. The initial native check exposed Qwen rewriting overlong tool
+names; the final 61-character qualified names preserve the persisted bindings.
+Evidence is recorded in `docs/control-plane-phase-62-verification.json`.
+
+A broader full-server sweep remains non-green: 3820 tests pass and five fail in
+four files (installer reconnect, reserved builtin IDs, terminal interaction error
+reason, and two builtin reload/build-status checks). The verification record lists
+them explicitly. Private temporary npm/FRP caches avoid read-only HOME writes,
+and a short temporary path avoids macOS Unix-socket limits. These unresolved
+checks are not part of the passing stage selection and must not be reported as a
+fully green repository.
+The complete project MCP feature remains open: actual shared-project workspace
+execution and project management UI are still required. No frontend code changes
+in this increment; browser baseline remains increment 51.

@@ -9,6 +9,7 @@ import { withControlPlaneUser } from "./access.js";
 
 function allowed(profile: ControlPlaneProfileDefinition, tool: string) {
   return (
+    !tool.startsWith("project_mcp_") &&
     profile.mcpServers.includes("bb") &&
     profile.tools.includes(`bb:${tool}`) &&
     !["update_environment_directory", "bb_workflow_run"].includes(tool)

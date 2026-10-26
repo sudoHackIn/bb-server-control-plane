@@ -4,6 +4,7 @@ import {
 } from "../../vitest.shared.js";
 
 export default defineWorkspaceTestConfig({
+  ssr: { noExternal: ["@modelcontextprotocol/sdk", "eventsource-parser"] },
   test: {
     silent: "passed-only",
     testTimeout: 15_000,

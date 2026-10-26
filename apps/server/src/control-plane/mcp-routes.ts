@@ -250,7 +250,7 @@ export function installControlPlaneMcpRoutes(
             userId!,
             context.req.param("projectId") ?? "",
           ),
-          executionSupported: false,
+          executionSupported: true,
         }),
       true,
     ),
@@ -261,7 +261,10 @@ export function installControlPlaneMcpRoutes(
       const input = await readBody(
         context,
         controlPlaneMcpConnectionCreateSchema
-          .extend({ expectedRevision: z.number().int().nonnegative() })
+          .extend({
+            expectedRevision: z.number().int().nonnegative(),
+            enabled: z.boolean().default(false),
+          })
           .strict(),
       );
       return input.ok
@@ -273,6 +276,7 @@ export function installControlPlaneMcpRoutes(
               input.value.connectorId,
               input.value.connectorRevision,
               input.value.expectedRevision,
+              input.value.enabled,
             ),
           )
         : input.response;

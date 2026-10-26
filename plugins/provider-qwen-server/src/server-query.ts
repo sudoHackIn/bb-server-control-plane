@@ -251,7 +251,17 @@ export function serverQuery({
         const name = request.toolName.startsWith("mcp__bb__")
           ? `bb:${request.toolName.slice(9)}`
           : request.toolName;
-        if (!latest.profile.definition.tools.includes(name))
+        const projectTool = request.toolName.startsWith("mcp__bb__")
+          ? request.toolName.slice(9)
+          : request.toolName;
+        const projectAllowed =
+          /^project_mcp_[a-f0-9]{40}$/u.test(projectTool) &&
+          delegatedNames.includes(projectTool) &&
+          latest.profile.definition.mcpServers.includes("project") &&
+          latest.profile.definition.tools.some((tool) =>
+            tool.startsWith("mcp:"),
+          );
+        if (!projectAllowed && !latest.profile.definition.tools.includes(name))
           throw new Error("Tool is not authorized");
       };
       await validate();
