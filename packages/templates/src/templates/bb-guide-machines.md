@@ -448,6 +448,12 @@ password from private stdin. `bb server access status` shows the current login;
 `bb server access logout` revokes it. Sessions are private files under
 `~/.bb/server-access`, bound to the server origin, and expire after one day or a
 server restart. Do not supply administrative sessions to agent processes.
+`bb server access users list [--prefix <login>] [--cursor <login>]
+[--limit 1..100] --json` reads the limited administrator user directory.
+The prefix is case-sensitive; each page returns user IDs, logins, enabled and
+environment status, plus `nextCursor` when more matches exist. It does not
+return UID, HOME or credentials. Use a returned user ID with `bb server access
+projects set-role` or `remove-role` and the project's current policy revision.
 Shared deployments must set `BB_CONTROL_PLANE_REQUIRED=1`; a private
 `control-plane.json` in the server data directory configures the public HTTPS
 origin and administrator password hash. Without configuration and without the

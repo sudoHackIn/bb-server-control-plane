@@ -109,6 +109,8 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access browser`
 - `bb server access browser-context`
 - `bb server access bootstrap`
+- `bb server access users`
+- `bb server access users list`
 - `bb server access projects`
 - `bb server access projects list`
 - `bb server access projects get`

@@ -1,0 +1,80 @@
+{
+  "scope": "Bounded administrator user directory for selecting project-role targets by login",
+  "previousStageCommit": "63dd96e46",
+  "administratorUserDirectoryApiSdkCliEnabled": true,
+  "nativeRoleUiEnabled": false,
+  "sharedNativeExecutionEnabled": false,
+  "databaseSchemaChanged": false,
+  "contracts": {
+    "activeAdministratorRequestRequired": true,
+    "anonymousAndPersonalCredentialsDenied": true,
+    "boundedCaseSensitivePrefixAndCursorPagination": true,
+    "responseOmitsUidHomePathsAndCredentials": true,
+    "dockerCliSearchResolvesAliceToStableUserId": true
+  },
+  "verification": {
+    "server": {
+      "testsPassed": 3846,
+      "filesPassed": 395,
+      "filesSkipped": 3,
+      "testsSkipped": 1,
+      "duration": "225.79s",
+      "unsandboxedForNpmCache": true
+    },
+    "sdk": {
+      "testsPassed": 137,
+      "filesPassed": 18
+    },
+    "cli": {
+      "testsPassed": 886,
+      "filesPassed": 78,
+      "testsSkipped": 1,
+      "processLifecycleTestUnsandboxed": true
+    },
+    "typecheckTasks": 8,
+    "docker": {
+      "nativeMaintenanceSuite": {
+        "passed": true,
+        "durationMs": 128504,
+        "adminUserDirectoryCliSearchReturnsOnlyMatchingIdentity": true
+      },
+      "compositeSuite": {
+        "passed": true,
+        "durationMs": 644808,
+        "startupRecoveryAndCrashCleanup": true
+      },
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "13m0.651s",
+      "hostExitCode": 0,
+      "focusedInnerDeadlineMs": 150000,
+      "focusedOuterDeadlineMs": 180000,
+      "compositeInnerDeadlineMs": 660000,
+      "compositeOuterDeadlineMs": 690000
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "fe6eac77c3fc1883abfe3593b248c6eb524549a9249eadf1b9a334cd319452a0"
+      },
+      "apps/cli/dist/index.js": {
+        "imagePath": "/opt/bb/apps/cli/dist/index.js",
+        "sha256HostAndImage": "356f3fd5172e9268e68ff7a553bb07f466985dc26712a8abfa08c82ae3ff5139"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "9135d46a0cfd1d31eed5d8d25484bb57862b6f74d8825dd55d2878d60231cd1d"
+      }
+    },
+    "strictLintAndFormattingCodeFiles": 6,
+    "newSkips": 0
+  },
+  "developmentFixes": [
+    "The first complete Docker deployment passed the new user-directory CLI scenario but a pre-existing composite thread creation returned 409/environment_not_ready instead of 201.",
+    "The same rebuilt image passed a second complete Docker deployment without code changes or concurrent host tests. The first failure's root cause was not established."
+  ],
+  "limitations": [
+    "The directory is administrator-only and does not itself grant project access.",
+    "Native role UI and actual shared-project Qwen execution remain open."
+  ]
+}

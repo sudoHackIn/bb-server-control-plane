@@ -72,6 +72,35 @@ it("scopes role inspection and mutation to an active administrator request", asy
       token: () => adminToken,
       fetch: async (input, init) => server.app.fetch(new Request(input, init)),
     }).admin.projectRoles;
+    const usersClient = createControlPlaneClient({
+      origin,
+      token: () => adminToken,
+      fetch: async (input, init) => server.app.fetch(new Request(input, init)),
+    }).admin.users;
+    expect((await send("GET", "/control-plane/admin/users")).status).toBe(401);
+    expect(
+      (await send("GET", "/control-plane/admin/users", personalToken)).status,
+    ).toBe(401);
+    expect(
+      (await send("GET", "/control-plane/admin/users?limit=101", adminToken))
+        .status,
+    ).toBe(400);
+    const firstUserPage = await usersClient.list({ limit: 1 });
+    expect(firstUserPage.users).toHaveLength(1);
+    expect(firstUserPage.nextCursor).toBe(firstUserPage.users[0]?.login);
+    const nextUserPage = await usersClient.list({
+      cursor: firstUserPage.nextCursor ?? undefined,
+      limit: 1,
+    });
+    expect(nextUserPage.users[0]?.login).not.toBe(
+      firstUserPage.users[0]?.login,
+    );
+    expect((await usersClient.list({ prefix: "ali" })).users).toContainEqual(
+      expect.objectContaining({
+        userId: alice.user.id,
+        login: alice.user.login,
+      }),
+    );
     expect((await send("GET", base)).status).toBe(401);
     expect((await send("GET", base, personalToken)).status).toBe(401);
     expect(

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, gt, gte, lt, ne } from "drizzle-orm";
 import {
   controlPlaneProjectAccess,
   controlPlaneProjectMaintenance,
@@ -22,6 +22,13 @@ const roleSchema = z
   })
   .strict();
 const userIdSchema = z.string().uuid();
+const userDirectoryQuerySchema = z
+  .object({
+    prefix: z.string().max(100).default(""),
+    cursor: z.string().max(256).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
 
 function pendingProjectOperation(db: DbConnection, projectId: string) {
   return db
@@ -46,6 +53,38 @@ export function installControlPlaneProjectRoleRoutes(
     hasActiveControlPlaneAdministrativeRequest()
       ? null
       : context.json({ error: "administrator_required" }, 403);
+  app.get("/control-plane/admin/users", (context) => {
+    const denied = authorized(context);
+    if (denied) return denied;
+    const query = userDirectoryQuerySchema.safeParse(context.req.query());
+    if (!query.success) return context.json({ error: "invalid_request" }, 400);
+    const { prefix, cursor, limit } = query.data;
+    const rows = deps.db
+      .select({
+        userId: controlPlaneUsers.id,
+        login: controlPlaneUsers.login,
+        enabled: controlPlaneUsers.enabled,
+        environmentStatus: controlPlaneUsers.environmentStatus,
+      })
+      .from(controlPlaneUsers)
+      .where(
+        and(
+          gte(controlPlaneUsers.login, prefix),
+          lt(controlPlaneUsers.login, `${prefix}\uffff`),
+          cursor === undefined
+            ? undefined
+            : gt(controlPlaneUsers.login, cursor),
+        ),
+      )
+      .orderBy(asc(controlPlaneUsers.login))
+      .limit(limit + 1)
+      .all();
+    const users = rows.slice(0, limit);
+    return context.json({
+      users,
+      nextCursor: rows.length > limit ? users.at(-1)?.login : null,
+    });
+  });
   app.use(`${base}/*`, controlPlaneBodyLimit(4096));
   app.get(base, (context) => {
     const denied = authorized(context);

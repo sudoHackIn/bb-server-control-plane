@@ -531,3 +531,15 @@ underlying routes. The CLI outputs the saved operation ID from a changed role,
 including the pending result of a postcommit reconciliation failure.
 
 This stage adds no native role editor or shared-project native Qwen execution.
+
+
+## Administrator user directory (increment 76)
+
+`GET /control-plane/admin/users` accepts optional `prefix`, `cursor` and
+`limit` (1–100). Results are ordered by login and include only the stable user
+ID, login, enabled flag and environment status. `nextCursor` is the last login
+on the returned page when more matching users exist. The SDK method is
+`createControlPlaneClient(...).admin.users.list(...)`; the CLI equivalent is
+`bb server access users list`. Only an active administrator session can use
+these surfaces. The prefix is case-sensitive. This directory resolves a login
+to a role target; mutation still uses the revision-checked role endpoint.

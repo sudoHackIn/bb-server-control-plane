@@ -615,6 +615,24 @@ export async function verifyManagedRuntime({
         password,
         { env: cliEnv },
       );
+      const directory = JSON.parse(
+        await command(
+          [
+            ...cli,
+            "users",
+            "list",
+            "--prefix",
+            "alice",
+            "--limit",
+            "1",
+            "--json",
+          ],
+          "",
+          { env: cliEnv },
+        ),
+      );
+      assert.equal(directory.users.length, 1);
+      assert.equal(directory.users[0].userId, aliceUserId);
       const listed = JSON.parse(
         await command(
           [...cli, "projects", "roles", bobProjectId, "--json"],
@@ -664,6 +682,7 @@ export async function verifyManagedRuntime({
         ...nativeMaintenanceVerification,
         adminRoleApiRequiresAuthenticationAndReconcilesRunnerGrant: true,
         adminRoleSdkAndCliReadSetAndInspectSavedOperation: true,
+        adminUserDirectoryCliSearchReturnsOnlyMatchingIdentity: true,
       };
     }
 

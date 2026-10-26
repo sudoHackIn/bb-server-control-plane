@@ -129,6 +129,44 @@ export function registerServerAccessCommands(
         );
       }),
     );
+  access
+    .command("users")
+    .description("Find registered users as an administrator")
+    .command("list")
+    .option("--prefix <login>", "Case-sensitive login prefix")
+    .option("--cursor <login>", "Continue after the returned login")
+    .option("--limit <count>", "Maximum users, from 1 to 100", "50")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (options: {
+          prefix?: string;
+          cursor?: string;
+          limit: string;
+        }) => {
+          const limit = z.coerce
+            .number()
+            .int()
+            .min(1)
+            .max(100)
+            .parse(options.limit);
+          console.log(
+            JSON.stringify(
+              await createControlPlaneClient({
+                origin: endpoint(getUrl(), "/").origin,
+                fetch: cliFetch,
+              }).admin.users.list({
+                prefix: options.prefix,
+                cursor: options.cursor,
+                limit,
+              }),
+              null,
+              2,
+            ),
+          );
+        },
+      ),
+    );
   const projects = access
     .command("projects")
     .description("Manage your authorized server projects");

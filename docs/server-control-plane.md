@@ -36,6 +36,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Make one private project role change and all affected UID admission reservations a single SQLite transaction, then resume the saved maintenance operation through the coordinator. Verify the real three-UID grant and ACL application in Docker. Administrative API/SDK/CLI/UI controls and shared native execution remain pending.
 - [x] Expose a limited administrator HTTP route to inspect project grants, change one runner/viewer role with an expected revision, and inspect the saved maintenance operation. Require an active administrator session; keep personal credentials and the central BB API outside this route. SDK/CLI/UI controls and shared native execution remain pending.
 - [x] Expose the administrator project-role route through the limited SDK and CLI, including revision-checked grant/remove, grant listing and saved-operation inspection. Keep these commands on the same authenticated control-plane transport; UI controls and shared native execution remain pending.
+- [x] Add a bounded administrator user directory to select registered project-role targets by login through the limited API, SDK and CLI. Expose ID, login and availability only; native role UI and shared native execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3392,3 +3393,30 @@ The server entry, CLI entry and both deployment scripts match their image
 copies. The process-lifecycle CLI test and server plugin-packaging tests required
 access outside the filesystem sandbox to inspect their fixture process and use
 the existing npm cache. See [the verification record](control-plane-phase-75-verification.json).
+
+
+## Seventy-sixth increment: administrator user directory
+
+The limited administrator API lists registered identities by a case-sensitive
+login prefix with bounded keyset pagination. It exposes a user ID, login,
+enabled flag and environment status; it omits UID, HOME, project paths and
+credentials. The same method is available through the SDK and `bb server access
+users list`, using the established administrator session. Personal and anonymous
+credentials cannot read it. This gives the future role editor a stable way to
+select a target before applying a revision-checked grant.
+
+The route test checks administrator-only access, invalid limits, prefix search
+and cursor pagination. The focused Docker scenario searches for Alice through
+the CLI after administrator login, then uses the existing role APIs to inspect
+her grant. The native role UI and shared-project Qwen execution remain open.
+
+Verification passes 3846 server tests in 395 files, 137 SDK tests in 18 files
+and 886 CLI tests in 78 files; existing skips are unchanged. Eight typecheck
+tasks, strict lint/formatting of six changed code files and `git diff --check`
+pass. The rebuilt Docker image passes the focused native/admin/user-directory
+suite in 128.504s and the complete composite in 644.808s: 63/63 Turbo tasks
+pass in 13m0.651s. The server entry, CLI entry and focused deployment script
+match their image copies. An earlier Docker attempt passed the new focused
+scenario but failed an existing composite thread-creation check with
+`environment_not_ready`; the subsequent complete deployment passed without
+code changes. See [the verification record](control-plane-phase-76-verification.json).
