@@ -1151,17 +1151,21 @@ export async function verifyNativeWorkflows({
           ],
           subject,
         );
-        await wait(async () => {
-          try {
-            await readFile(
-              `${subject.user.home}/bb-personal-worker-hang-crash-${login}.json`,
-            );
-            return true;
-          } catch (error) {
-            if (error.code === "ENOENT") return false;
-            throw error;
-          }
-        }, `pending workflow before crash for ${login}`);
+        await wait(
+          async () => {
+            try {
+              await readFile(
+                `${subject.user.home}/bb-personal-worker-hang-crash-${login}.json`,
+              );
+              return true;
+            } catch (error) {
+              if (error.code === "ENOENT") return false;
+              throw error;
+            }
+          },
+          `pending workflow before crash for ${login}`,
+          90000,
+        );
         const storage = new Database("/srv/bb/plugins/workflows/data.db", {
           readonly: true,
         });

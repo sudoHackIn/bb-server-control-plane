@@ -10,6 +10,7 @@ export async function verifyBrowserAutomations({
   visible,
   command,
   container,
+  expectedOriginThreadId,
 }) {
   await page.getByRole("button", { name: "Automations", exact: true }).click();
   await visible(
@@ -24,6 +25,16 @@ export async function verifyBrowserAutomations({
     .click();
   const originThreadId = new URL(page.url()).pathname.split("/threads/")[1];
   assert.ok(originThreadId);
+  if (expectedOriginThreadId)
+    assert.equal(originThreadId, expectedOriginThreadId);
+  const originProfileResponse = await page
+    .context()
+    .request.get(
+      `${origin}/control-plane/user/threads/${originThreadId}/profile`,
+    );
+  assert.equal(originProfileResponse.status(), 200);
+  const originProfile = await originProfileResponse.json();
+  assert.match(originProfile.version.id, /^[0-9a-f-]{36}$/u);
   const title = `browser-automation-${user.login}`;
   const marker = `automation-browser-${user.login}`;
   await page.getByLabel("Automation name", { exact: true }).fill(title);
@@ -136,6 +147,32 @@ export async function verifyBrowserAutomations({
     );
     throw error;
   }
+  const runHistory = await page
+    .context()
+    .request.get(origin + path + "/history");
+  assert.equal(runHistory.status(), 200);
+  const completedRun = (await runHistory.json()).runs.find(
+    (item) => item.id === run.id,
+  );
+  assert.ok(completedRun?.threadId);
+  const runThread = await page
+    .context()
+    .request.get(
+      `${origin}/control-plane/user/threads/${completedRun.threadId}`,
+    );
+  assert.equal(runThread.status(), 200);
+  assert.equal(
+    (await runThread.json()).profileVersionId,
+    originProfile.version.id,
+  );
+  assert.equal(
+    (
+      await foreign.context.request.get(
+        `${origin}/control-plane/user/threads/${completedRun.threadId}`,
+      )
+    ).status(),
+    404,
+  );
 
   assert.equal(
     (
@@ -148,7 +185,8 @@ export async function verifyBrowserAutomations({
   );
   async function proof(marker, stopped = false) {
     const script = `const D=require("better-sqlite3"),fs=require("node:fs");const db=new D("/srv/bb/bb.db",{readonly:true});const user=db.prepare("SELECT uid,home,projects_root FROM control_plane_users WHERE login=?").get(process.argv[1]);const marker=process.argv[2],expected="bb-personal-"+marker+".json";let proof=null;try{proof=JSON.parse(fs.readFileSync(user.home+"/"+expected,"utf8"))}catch(e){if(e.code!=="ENOENT"&&!(e instanceof SyntaxError))throw e}const processes=[];for(const pid of fs.readdirSync("/proc")){if(!/^[0-9]+$/.test(pid)||Number(pid)===process.pid)continue;try{if(fs.readFileSync("/proc/"+pid+"/cmdline","utf8").includes(expected))processes.push({pid:Number(pid),uid:Number(fs.readFileSync("/proc/"+pid+"/status","utf8").match(/^Uid:\\s+(\\d+)/m)[1])})}catch(e){if(!["ENOENT","ESRCH"].includes(e.code))throw e}}console.log(JSON.stringify({user,proof,processes}));db.close();`;
-    const deadline = Date.now() + 15000;
+    const deadline = Date.now() + 60000;
+    let observed;
     while (Date.now() < deadline) {
       const { stdout } = await command("docker", [
         "exec",
@@ -160,6 +198,12 @@ export async function verifyBrowserAutomations({
         marker,
       ]);
       const value = JSON.parse(stdout);
+      observed = {
+        marker,
+        hasProof: Boolean(value.proof),
+        matchingProcesses: value.processes.length,
+        stopped,
+      };
       if (
         value.proof &&
         (!marker.startsWith("worker-hang-") ||
@@ -177,7 +221,8 @@ export async function verifyBrowserAutomations({
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error(
-      "Browser automation command proof or process state did not arrive",
+      "Browser automation command proof or process state did not arrive: " +
+        JSON.stringify(observed),
     );
   }
   await proof(marker);

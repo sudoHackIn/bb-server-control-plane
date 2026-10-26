@@ -1,0 +1,37 @@
+{
+  "scope": "Connected production-browser journey from certificate login through personal project, approved agent, conversation, automation and result",
+  "previousStageCommit": "f11904efe",
+  "contracts": {
+    "certificateLoginOpensPersonalWorkspace": true,
+    "userSelectsOwnProjectInNativeSidebar": true,
+    "userChoosesApprovedAgentVersionForNewConversation": true,
+    "realQwenConversationRendersInPersonalUi": true,
+    "automationUsesSameOriginThreadAndPinnedProfileVersion": true,
+    "manualRunResultRendersInPersonalUi": true,
+    "foreignProjectAgentAndAutomationWorkerThreadIdsReturnNotFound": true,
+    "foreignAutomationOperationsRemainDenied": true
+  },
+  "verification": {
+    "dockerImageBuild": "pnpm exec turbo run build:control-plane-image --filter=@bb/server",
+    "deploymentCommand": "pnpm exec turbo run test:control-plane-browser --filter=@bb/server",
+    "nativeMaintenanceSuite": {
+      "passed": true,
+      "durationMs": 123234
+    },
+    "compositeSuite": {
+      "passed": true,
+      "durationMs": 711754,
+      "browserJourney": true,
+      "restartAndCrashRecovery": true
+    },
+    "turboTasksPassed": 63,
+    "turboTasksTotal": 63,
+    "turboDuration": "14m4.024s",
+    "strictLintPrettierAndDiffCheck": true
+  },
+  "limitations": [
+    "The model backend and remote integrations in Docker are deterministic fixtures; this does not prove corporate Qwen authentication.",
+    "Complete foreign-ID coverage through the UI, limited API and CLI remains an open acceptance item.",
+    "Automation authority and saved profile behavior after restart and subsequent project or profile access loss remain open acceptance items."
+  ]
+}

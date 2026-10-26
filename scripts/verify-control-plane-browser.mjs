@@ -146,6 +146,23 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         .count(),
       0,
     );
+    assert.equal(
+      (
+        await bob.context.request.get(
+          `${ready.origin}/control-plane/user/projects/${aliceUser.projectId}`,
+        )
+      ).status(),
+      404,
+    );
+    await visible(
+      alice.page.getByRole("button", { name: "Personal alice", exact: true }),
+    );
+    await alice.page
+      .getByRole("button", { name: "Personal alice", exact: true })
+      .click();
+    await alice.page.waitForURL(
+      `${ready.origin}/projects/${aliceUser.projectId}`,
+    );
     const unauthorizedRequests = requests.filter(
       (request) =>
         request.path.startsWith("/api/") ||
@@ -177,6 +194,21 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     assert.equal(response.status(), 201);
     const thread = await response.json();
     assert.equal(thread.projectId, aliceUser.projectId);
+    const chosenAgentResponse = await alice.context.request.get(
+      `${ready.origin}/control-plane/user/threads/${thread.id}/profile`,
+    );
+    assert.equal(chosenAgentResponse.status(), 200);
+    const chosenAgent = await chosenAgentResponse.json();
+    assert.equal(chosenAgent.profile.name, "Personal alice");
+    assert.equal(chosenAgent.version.id, thread.profileVersionId);
+    assert.equal(
+      (
+        await bob.context.request.get(
+          `${ready.origin}/control-plane/user/profiles/${chosenAgent.profile.id}`,
+        )
+      ).status(),
+      404,
+    );
     await alice.page.waitForURL(
       `${ready.origin}/projects/${thread.projectId}/threads/${thread.id}`,
     );
@@ -197,6 +229,16 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         { exact: true },
       ),
     );
+    await verifyBrowserAutomations({
+      page: alice.page,
+      foreign: bob,
+      user: aliceUser,
+      origin: ready.origin,
+      visible,
+      command,
+      container: name,
+      expectedOriginThreadId: thread.id,
+    });
     const projectMcp = await verifyBrowserProjectMcp({
       actors: [
         { actor: alice, user: aliceUser },
@@ -378,22 +420,16 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         .click();
       await visible(page.getByRole("textbox", { name: "Message your agent…" }));
     }
-    await Promise.all(
-      [
-        [alice, aliceUser, bob],
-        [bob, bobUser, alice],
-      ].map(async ([actor, user, foreign]) => {
-        await verifyBrowserAutomations({
-          page: actor.page,
-          foreign,
-          user,
-          origin: ready.origin,
-          visible,
-          command,
-          container: name,
-        });
-      }),
-    );
+    await verifyBrowserAutomations({
+      page: bob.page,
+      foreign: alice,
+      user: bobUser,
+      origin: ready.origin,
+      visible,
+      command,
+      container: name,
+      expectedOriginThreadId: bobUser.threadId,
+    });
     for (const [actor, foreignId] of [
       [alice, browserWorkflowIds[1]],
       [bob, browserWorkflowIds[0]],

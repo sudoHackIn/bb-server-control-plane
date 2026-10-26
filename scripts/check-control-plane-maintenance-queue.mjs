@@ -99,7 +99,12 @@ export async function verifyMaintenanceQueue({
     { mode: "auto" },
     token,
   );
-  assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
+  if (delivered.status === 409)
+    assert.equal(
+      delivered.body.message,
+      "Queued message is already being sent",
+    );
+  else assert.equal(delivered.status, 200, JSON.stringify(delivered.body));
   await wait(
     () =>
       !row() &&

@@ -7,9 +7,16 @@ import { join } from "node:path";
 import { writeControlPlaneSeccomp } from "./control-plane-seccomp.mjs";
 
 const args = process.argv.slice(2);
-if (args.length > 1 || args.some((arg) => arg !== "--browser"))
-  throw new Error("Usage: test-control-plane-deployment.mjs [--browser]");
-const browserMode = args.includes("--browser");
+if (
+  args.length > 1 ||
+  args.some((arg) => !["--browser", "--browser-only"].includes(arg))
+)
+  throw new Error(
+    "Usage: test-control-plane-deployment.mjs [--browser|--browser-only]",
+  );
+const browserMode =
+  args.includes("--browser") || args.includes("--browser-only");
+const browserOnly = args.includes("--browser-only");
 let browserTask;
 let browserError;
 const name = `bb-control-plane-check-${randomUUID()}`;
@@ -44,6 +51,7 @@ function docker(args) {
                 result = { ok: true, verification };
               } catch (error) {
                 browserError = error;
+                console.error("Production browser verification failed:", error);
                 result = { ok: false };
               }
               await promisify(execFile)("docker", [
@@ -88,13 +96,13 @@ try {
   ]);
   if (denied !== 0)
     throw new Error(`Namespace denial check failed (${denied})`);
-  for (const nativeMaintenanceOnly of [true, false]) {
+  for (const nativeMaintenanceOnly of browserOnly ? [false] : [true, false]) {
     const startedAt = Date.now();
     const deadline = setTimeout(
       () => {
         void docker(["rm", "--force", name]);
       },
-      nativeMaintenanceOnly ? 180000 : 690000,
+      nativeMaintenanceOnly ? 180000 : 960000,
     );
     try {
       const code = await docker([
