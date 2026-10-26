@@ -561,8 +561,51 @@ export async function verifyManagedRuntime({
         wait,
       });
       stage("native-maintenance-complete");
+      const bobProjectId = created[1]?.threadInput.projectId;
+      const aliceUserId = users.find((user) => user.login === "alice")?.id;
+      if (!bobProjectId || !aliceUserId)
+        throw new Error("Missing role API fixture identities");
+      const rolePath = `/control-plane/admin/projects/${bobProjectId}/access`;
+      assert.equal((await send(rolePath)).status, 401);
+      const beforeRole = await send(rolePath, undefined, token);
+      assert.equal(beforeRole.status, 200);
+      const granted = await send(
+        `${rolePath}/${aliceUserId}`,
+        { role: "runner", expectedRevision: beforeRole.body.revision },
+        token,
+        "PUT",
+      );
+      assert.ok(
+        [200, 202].includes(granted.status),
+        JSON.stringify(granted.body),
+      );
+      assert.equal(granted.body.changed, true);
+      assert.equal(granted.body.revision, beforeRole.body.revision + 1);
+      const completed = await wait(async () => {
+        const status = await send(
+          `${rolePath}/maintenance/${granted.body.operationId}`,
+          undefined,
+          token,
+        );
+        return status.status === 200 && status.body.phase === "complete";
+      }, "administrative role maintenance completion");
+      assert.equal(completed, true);
+      const afterRole = await send(rolePath, undefined, token);
+      assert.equal(afterRole.status, 200);
+      assert.equal(afterRole.body.revision, granted.body.revision);
+      assert.equal(afterRole.body.appliedRevision, granted.body.revision);
+      assert.equal(afterRole.body.pendingOperationId, null);
+      assert.ok(
+        afterRole.body.grants.some(
+          (grant) => grant.userId === aliceUserId && grant.role === "runner",
+        ),
+      );
+      stage("admin-role-maintenance-complete");
       verified = true;
-      return nativeMaintenanceVerification;
+      return {
+        ...nativeMaintenanceVerification,
+        adminRoleApiRequiresAuthenticationAndReconcilesRunnerGrant: true,
+      };
     }
 
     approvalVerification = await approvals.verify({ send, wait, token });

@@ -17,11 +17,7 @@ const nativeMaintenanceOnly =
 const controller = new AbortController();
 const deadline = setTimeout(
   () => controller.abort(),
-  nativeMaintenanceOnly
-    ? 150000
-    : process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1"
-      ? 660000
-      : 540000,
+  nativeMaintenanceOnly ? 150000 : 660000,
 );
 const children = new Set();
 const status = await readFile("/proc/self/status", "utf8");

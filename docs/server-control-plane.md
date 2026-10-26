@@ -34,6 +34,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Preserve queued input, source identity and retry budgets when the mandatory execution guard observes UID maintenance; verify repeated explicit sends, retry sweeps and late failure handling, plus one native Qwen delivery after release under the advanced generation. Native maintenance draining and accepted-turn settlement remain pending.
 - [x] Connect private project maintenance to native BB lifecycle settlement, preserve intentional queue pauses, defer owned workflow/schedule dispatch and recover saved operations through periodic reconciliation after restart. Public atomic role mutation and shared native project execution remain pending.
 - [x] Make one private project role change and all affected UID admission reservations a single SQLite transaction, then resume the saved maintenance operation through the coordinator. Verify the real three-UID grant and ACL application in Docker. Administrative API/SDK/CLI/UI controls and shared native execution remain pending.
+- [x] Expose a limited administrator HTTP route to inspect project grants, change one runner/viewer role with an expected revision, and inspect the saved maintenance operation. Require an active administrator session; keep personal credentials and the central BB API outside this route. SDK/CLI/UI controls and shared native execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3332,3 +3333,34 @@ in 530.916s: 63/63 Turbo tasks pass in 10m40.377s. The server bundle and role
 scenario script match the image; the compiled project fixture hash is recorded.
 The full server suite required access to the user-owned npm cache used by its
 plugin packaging tests. See [the verification record](control-plane-phase-73-verification.json).
+
+
+## Seventy-fourth increment: administrator project role HTTP API
+
+The protected administrator route can list a project's grants and desired/applied
+policy revisions, change one nonowner role with a revision precondition, and read
+the phase of the resulting saved maintenance operation. A completed request
+returns its operation ID; if reconciliation fails after the atomic commit, the
+route returns the pending operation for recovery instead of reporting an
+uncommitted change. Only an active administrator request may use these routes.
+Malformed roles, stale revisions and anonymous or personal credentials are
+refused. The route calls the same private coordinator as the periodic restart
+sweep. Its responses contain no root-helper invocation capability.
+
+The focused Docker suite performs an actual administrator grant after native
+maintenance, polls the operation to `complete`, and checks that the applied ACL
+revision and saved role agree. The existing complete matrix remains a separate
+required deployment check. SDK and CLI methods, administrative UI, user-facing
+role management and shared-project Qwen execution remain open. See [the role
+contract](control-plane-project-access.md#administrator-role-api-increment-74).
+
+Verification passes 3846 server tests in 395 files with existing skips
+unchanged, six typecheck tasks and strict lint/formatting of seven changed code
+files. The rebuilt Docker image passes the focused native and administrator-role
+scenario in 98.340s and the complete composite in 544.637s: 63/63 Turbo tasks
+pass in 10m49.21s. Three host/image artifacts match. Two earlier composite
+attempts exhausted the previous 540-second inner deadline; the ordinary
+composite now uses the pre-existing browser-mode 660/690-second inner/outer
+budget with identical assertions. The optional external production-browser
+verification failed separately and is not counted as a pass. See [the
+verification record](control-plane-phase-74-verification.json).

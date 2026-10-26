@@ -19,6 +19,7 @@ import { ControlPlaneRegistry } from "@bb/db";
 import { createControlPlaneUserAccess } from "./control-plane/user-access.js";
 import { createControlPlaneThreadService } from "./control-plane/threads.js";
 import { createControlPlaneProjectService } from "./control-plane/projects.js";
+import { installControlPlaneProjectRoleRoutes } from "./control-plane/project-role-routes.js";
 import { requirePrimaryHostId } from "./services/hosts/primary-host.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import { recheckEnvironmentProvisioning } from "./services/threads/thread-environment-providers.js";
@@ -544,6 +545,8 @@ export function createApp(
     deps.config.appUrl = controlPlane.publicOrigin;
   }
   controlPlane?.install(app);
+  if (controlPlane && accessConfig?.users)
+    installControlPlaneProjectRoleRoutes(app, deps);
   if (!controlPlane)
     app.get("/control-plane/browser-context", (context) => {
       context.header("cache-control", "no-store");

@@ -55,17 +55,23 @@ const coordinators = new WeakMap<
   DbConnection,
   ReturnType<typeof createControlPlaneNativeProjectMaintenanceCoordinator>
 >();
+export function getControlPlaneNativeProjectMaintenanceCoordinator(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+) {
+  let coordinator = coordinators.get(deps.db);
+  if (!coordinator) {
+    coordinator = createControlPlaneNativeProjectMaintenanceCoordinator(deps);
+    coordinators.set(deps.db, coordinator);
+  }
+  return coordinator;
+}
 export async function runControlPlaneProjectMaintenanceSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ) {
   if (isExecutionStopping(deps.db)) return;
   const pending = listPendingControlPlaneProjectMaintenance(deps.db, 10);
   if (pending.length === 0) return;
-  let coordinator = coordinators.get(deps.db);
-  if (!coordinator) {
-    coordinator = createControlPlaneNativeProjectMaintenanceCoordinator(deps);
-    coordinators.set(deps.db, coordinator);
-  }
+  const coordinator = getControlPlaneNativeProjectMaintenanceCoordinator(deps);
   for (const operation of pending) {
     if (isExecutionStopping(deps.db)) return;
     if (operation.projectId === null) continue;

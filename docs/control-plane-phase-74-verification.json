@@ -1,0 +1,81 @@
+{
+  "scope": "Limited administrator HTTP grant inspection, role mutation and saved maintenance status on the shared server",
+  "previousStageCommit": "5428a639c",
+  "publicAdministratorRoleHttpEnabled": true,
+  "personalRoleMutationEnabled": false,
+  "roleSdkCliUiEnabled": false,
+  "sharedNativeExecutionEnabled": false,
+  "databaseSchemaChanged": false,
+  "contracts": {
+    "activeAdministratorRequestRequiredForGrantReadWriteAndOperationStatus": true,
+    "anonymousAndPersonalCredentialsDenied": true,
+    "singleNonownerRoleAndExpectedRevisionValidated": true,
+    "sameCoordinatorUsedByHttpAndPeriodicRecovery": true,
+    "postcommitReconciliationFaultReturnsSavedPendingOperation": true,
+    "administrativeResponseContainsNoRootHelperCapability": true,
+    "dockerAdminGrantWaitsForAppliedRevision": true
+  },
+  "verification": {
+    "server": {
+      "testsPassed": 3846,
+      "filesPassed": 395,
+      "filesSkipped": 3,
+      "testsSkipped": 1,
+      "duration": "2m30.413s",
+      "unsandboxedForNpmCache": true
+    },
+    "focusedRouteRegression": {
+      "testsPassed": 1,
+      "filesPassed": 1
+    },
+    "serverTypecheckTasks": 6,
+    "docker": {
+      "nativeMaintenanceSuite": {
+        "passed": true,
+        "durationMs": 98340,
+        "adminRoleGrantAndAclAcknowledgement": true
+      },
+      "compositeSuite": {
+        "passed": true,
+        "durationMs": 544637,
+        "startupRecoveryAndCrashCleanup": true
+      },
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "10m49.21s",
+      "hostExitCode": 0,
+      "focusedInnerDeadlineMs": 150000,
+      "focusedOuterDeadlineMs": 180000,
+      "compositeInnerDeadlineMs": 660000,
+      "compositeOuterDeadlineMs": 690000
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "b822f1a13f71158df422807c50b8e35fd485a3272b7b6f952d6e6d9eb3c47412"
+      },
+      "scripts/check-control-plane-deployment.mjs": {
+        "imagePath": "/opt/bb/deployment-check.mjs",
+        "sha256HostAndImage": "03e3f6dc9324a11614b8ba5f9f244e7728f7919e714ea70f5355ce1a6b0ed5d6"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "e4fd02e070f97edc3bc939f05ba97499835e89b594442218b5d43140d2b7d47c"
+      }
+    },
+    "strictLintAndFormattingCodeFiles": 7,
+    "newSkips": 0
+  },
+  "developmentFixes": [
+    "The first complete deployment passed the new HTTP role scenario and restart but reached the previous 540-second composite deadline during crash recovery.",
+    "The second ordinary deployment passed the HTTP scenario but the authorized source-message wait after restart reached the same old global deadline.",
+    "The optional browser-mode deployment passed the role scenario but its separate external production-browser verification reported failure; it is not represented as a successful composite deployment.",
+    "The ordinary composite Docker deadline was raised from 540/570 to the pre-existing browser-mode 660/690-second budget without removing or changing assertions. Its successful 544.637-second duration confirms the old inner limit was insufficient on this host."
+  ],
+  "limitations": [
+    "The role API is administrator-only HTTP; limited SDK, CLI and native UI controls remain open.",
+    "Actual shared-project Qwen execution remains closed.",
+    "A lost response can be reconciled by reading the project revision and pending operation; the request has no client-supplied idempotency key yet.",
+    "The optional production-browser verification failed in this development run; the required ordinary Docker matrix passed."
+  ]
+}

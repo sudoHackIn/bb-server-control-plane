@@ -490,3 +490,25 @@ completed saved operation, retained shared content and separate HOME isolation
 after restart. Role removal has a migrated SQLite reservation test; the earlier
 three-UID Docker ACL scenario continues to cover direct revocation and former
 writers. See [the stage 73 record](control-plane-phase-73-verification.json).
+
+
+## Administrator role API (increment 74)
+
+`GET /control-plane/admin/projects/:projectId/access` reports the current
+grant list, desired/applied revisions and any pending project operation.
+`PUT /control-plane/admin/projects/:projectId/access/:userId` accepts a
+runner/viewer/null role and the expected revision. It returns the saved operation
+ID when a role changes; a postcommit reconciliation error returns the pending
+operation with HTTP 202. `GET .../maintenance/:operationId` lets the
+administrator inspect its phase and revision. The routes require the active
+administrator request context from the central access gate, including for
+reads. Personal tokens never authorize them.
+
+These are limited control-plane methods rather than access to general BB
+project APIs. The SDK, CLI and UI contracts and actual shared native agent
+launch remain future stages.
+The focused Docker suite authenticates as an administrator, rejects an
+anonymous inspection, grants Alice runner access to Bob's project and waits for
+the saved operation and applied revision to complete. The complete composite
+matrix passes separately under the 660/690-second budget already used for
+browser deployments. See [the stage 74 record](control-plane-phase-74-verification.json).

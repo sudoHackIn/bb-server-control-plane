@@ -94,7 +94,7 @@ try {
       () => {
         void docker(["rm", "--force", name]);
       },
-      nativeMaintenanceOnly ? 180000 : browserMode ? 690000 : 570000,
+      nativeMaintenanceOnly ? 180000 : 690000,
     );
     try {
       const code = await docker([
