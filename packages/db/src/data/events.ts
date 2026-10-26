@@ -2959,7 +2959,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineLifecycleWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineLifecycleWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const completedConversationRows = db
@@ -2968,7 +2971,10 @@ function selectStoredConversationOutlineEventRows(
     .where(
       and(
         rootWhere,
-        storedConversationOutlineCompletedWhere(args.threadId, args.sequenceStart),
+        storedConversationOutlineCompletedWhere(
+          args.threadId,
+          args.sequenceStart,
+        ),
       ),
     );
   const structuralRows = db
@@ -4163,7 +4169,7 @@ export function listThreadIdsStoppedSinceLastTurnStart(
       and(
         inArray(events.threadId, [...args.threadIds]),
         eq(events.type, "system/thread/interrupted"),
-        sql`json_extract(${events.data}, '$.reason') = 'manual-stop'`,
+        sql`json_extract(${events.data}, '$.reason') IN ('manual-stop','access-maintenance')`,
         sql`${events.sequence} = (
           SELECT MAX(latest.sequence)
           FROM events AS latest

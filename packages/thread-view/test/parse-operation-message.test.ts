@@ -166,6 +166,9 @@ describe("parseOperationMessage operation titles", () => {
 
   describe("thread-interrupted", () => {
     it("does not name or link back to the current thread", () => {
+      expect(interruptedTitle("access-maintenance", THREAD_NAME)).toBe(
+        "Stopped while project access is updated",
+      );
       expect(interruptedTitle("manual-stop", THREAD_NAME)).toBe(
         "Stopped manually",
       );
@@ -281,5 +284,7 @@ describe("parseOperationMessage operation titles", () => {
 });
 
 it("explains an intentional machine removal without suggesting a daemon failure", () => {
-  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe("Stopped because the machine was removed");
+  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe(
+    "Stopped because the machine was removed",
+  );
 });

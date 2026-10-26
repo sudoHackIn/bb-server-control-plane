@@ -108,6 +108,18 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isUidMaintenanceFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error.name === "ControlPlaneThreadError" ||
+      error.name === "ControlPlaneJobError") &&
+    "reason" in error &&
+    error.reason === "maintenance"
+  );
+}
+
 export function isRetryableProviderFailure(error: unknown): boolean {
   const detail = message(error).toLowerCase();
   if (
@@ -1090,28 +1102,41 @@ export function createWorkflowService(
           try {
             while (true) {
               throwIfCancelled(signal);
-              backgroundJobs.withAuthority(run.authorityBindingId, () => null);
-              const current = await backgroundJobs.getWorker(
-                run.authorityBindingId,
-                child.id,
-              );
-              if (current.error !== null)
-                failThreadCall(child.id, current.error);
-              else if (current.status === "idle") {
-                onThreadIdle(child.id, current.output, current.idleSequence);
-                await idleHandlerTasks.get(call.id);
-              } else if (current.status === "error")
-                failThreadCall(
-                  child.id,
-                  current.error ?? "Workflow worker failed",
+              try {
+                backgroundJobs.withAuthority(
+                  run.authorityBindingId,
+                  () => null,
                 );
-              const stored = getCall(db, run.id, callIndex);
-              if (
-                stored?.status === "succeeded" ||
-                stored?.status === "failed" ||
-                stored?.status === "cancelled"
-              )
-                return await waitForCall(call, signal);
+                const current = await backgroundJobs.getWorker(
+                  run.authorityBindingId,
+                  child.id,
+                );
+                if (current.error !== null)
+                  failThreadCall(child.id, current.error);
+                else if (current.status === "idle") {
+                  onThreadIdle(child.id, current.output, current.idleSequence);
+                  await idleHandlerTasks.get(call.id);
+                } else if (current.status === "error")
+                  failThreadCall(
+                    child.id,
+                    current.error ?? "Workflow worker failed",
+                  );
+                const stored = getCall(db, run.id, callIndex);
+                if (
+                  stored?.status === "succeeded" ||
+                  stored?.status === "failed" ||
+                  stored?.status === "cancelled"
+                )
+                  return await waitForCall(call, signal);
+              } catch (error) {
+                if (
+                  !isUidMaintenanceFailure(error) &&
+                  !backgroundJobs
+                    .internal_DO_NOT_USE_executionPausedUserIds()
+                    .includes(run.ownerUserId ?? "")
+                )
+                  throw error;
+              }
               await sleep(100, signal);
             }
           } finally {
@@ -1451,6 +1476,12 @@ export function createWorkflowService(
   async function notify(run: WorkflowRunRow): Promise<void> {
     const latest = getRunRequired(db, run.id);
     if (latest.notificationSent) return;
+    if (
+      backgroundJobs
+        ?.internal_DO_NOT_USE_executionPausedUserIds()
+        .includes(latest.ownerUserId ?? "")
+    )
+      return;
     const settings = settingsForRun(latest);
     if (!beginNotificationAttempt(db, run.id)) return;
     try {
@@ -1784,7 +1815,12 @@ export function createWorkflowService(
   }
 
   async function reconcileRunningCalls(): Promise<void> {
+    const pausedOwners = new Set(
+      backgroundJobs?.internal_DO_NOT_USE_executionPausedUserIds() ?? [],
+    );
     for (const call of listRunningCalls(db)) {
+      const owner = getRun(db, call.runId)?.ownerUserId;
+      if (owner && pausedOwners.has(owner)) continue;
       const threadId = call.childThreadId!;
       try {
         if (backgroundJobs) {
@@ -1816,6 +1852,7 @@ export function createWorkflowService(
           failThreadCall(threadId, "Workflow worker is in an error state");
         }
       } catch (error) {
+        if (isUidMaintenanceFailure(error)) continue;
         if (isMissingThread(error)) {
           failThreadCall(threadId, "Workflow worker was deleted");
         } else {
@@ -1917,10 +1954,19 @@ export function createWorkflowService(
     const active = new Set<Promise<void>>();
     let nextMaintenanceAt = 0;
     while (!signal.aborted) {
-      const shouldClaim = claimRequested;
+      const shouldClaim = claimRequested || backgroundJobs !== null;
       claimRequested = false;
-      while (shouldClaim && active.size < currentSettings.maxActiveRuns) {
-        const run = claimQueuedRun(db, currentSettings.maxActiveRuns);
+      while (
+        shouldClaim &&
+        !shuttingDown &&
+        !signal.aborted &&
+        active.size < currentSettings.maxActiveRuns
+      ) {
+        const run = claimQueuedRun(
+          db,
+          currentSettings.maxActiveRuns,
+          backgroundJobs?.internal_DO_NOT_USE_executionPausedUserIds() ?? [],
+        );
         if (run === null) break;
         publishRunsChanged(run.originThreadId);
         const controller = new AbortController();

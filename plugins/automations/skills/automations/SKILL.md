@@ -31,6 +31,10 @@ remain available. The personal automation UI is a later stage; personal
 reads and mutations use the limited API described below. User credentials do not grant the
 native CLI/RPC administrative API.
 
+On a managed shared server, queued runs wait while project access is being
+updated. Scheduled automations keep their due time during that pause. After access
+is restored, execution checks the current permissions again.
+
 Choosing a mode:
 
 Use `script` when the output is fully determined by code: watchdogs, threshold alerts, health checks, heartbeats, and API pollers with a fixed output shape. Scripts run on the bb server. New standard-project scripts use the server-host project source when one exists; Personal and projects without one run in the plugin's shared script storage directory. Existing scripts without a saved policy also run there. Use `--working-directory automation-storage|project|<absolute-server-path>` to select the policy. Script automations do not have an environment field and do not accept environment flags.

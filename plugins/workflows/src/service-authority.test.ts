@@ -14,6 +14,7 @@ import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 
 function fixture() {
   const owner = randomUUID();
+  const pausedOwners = new Set<string>();
   let caller: string | null = owner;
   const profileVersionId = randomUUID();
   const bindings = new Map<string, InternalDoNotUseBackgroundJobBinding>();
@@ -44,6 +45,7 @@ function fixture() {
     bindings.delete(id);
   });
   const authority: InternalDoNotUseBackgroundJobs = {
+    internal_DO_NOT_USE_executionPausedUserIds: () => [...pausedOwners],
     get userId() {
       return caller;
     },
@@ -128,6 +130,7 @@ function fixture() {
     resumedFromRunId: null,
   };
   return {
+    pausedOwners,
     owner,
     bb,
     authority,
@@ -337,49 +340,134 @@ it.each(["accepted", "denied", "unavailable"] as const)(
   },
 );
 
-it("retries a transient scoped notification failure after service restart", async () => {
+it.each([
+  new Error("host offline"),
+  Object.assign(new Error("maintenance"), {
+    name: "ControlPlaneJobError",
+    reason: "maintenance",
+  }),
+])(
+  "retries a transient scoped notification failure after service restart: %s",
+  async (failure) => {
+    const test = fixture();
+    const controller = new AbortController();
+    let worker: Promise<void> | undefined;
+    test.authority.notifyOrigin = async () => {
+      throw failure;
+    };
+    try {
+      const run = await test.service.start(test.input);
+      settleRun(test.db, {
+        id: run.id,
+        status: "succeeded",
+        result: null,
+        error: null,
+      });
+      worker = test.service.runWorker(controller.signal);
+      await vi.waitFor(() =>
+        expect(getRunRequired(test.db, run.id).notificationAttemptCount).toBe(
+          1,
+        ),
+      );
+      controller.abort();
+      await worker;
+      expect(getRunRequired(test.db, run.id).notificationOutcome).toBe(
+        "pending",
+      );
+      expect(test.originLookup).not.toHaveBeenCalled();
+      expect(test.send).not.toHaveBeenCalled();
+      test.db
+        .prepare(
+          "UPDATE workflow_runs SET notification_next_attempt_at = 0 WHERE id = ?",
+        )
+        .run(run.id);
+      test.authority.notifyOrigin = async () => "accepted";
+      const next = new AbortController();
+      const restarted = createWorkflowService(test.bb, test.db);
+      const running = restarted.runWorker(next.signal);
+      try {
+        await vi.waitFor(() =>
+          expect(getRunRequired(test.db, run.id).notificationOutcome).toBe(
+            "delivered",
+          ),
+        );
+      } finally {
+        next.abort();
+        await running;
+      }
+    } finally {
+      controller.abort();
+      await worker;
+      await test.harness.dispose();
+    }
+  },
+);
+
+it("retains queued managed work during UID maintenance and claims it after release", async () => {
   const test = fixture();
   const controller = new AbortController();
   let worker: Promise<void> | undefined;
-  test.authority.notifyOrigin = async () => {
-    throw new Error("host offline");
-  };
+  const evaluate = vi.fn(async () => "resumed");
+  test.authority.evaluateWorkflow = evaluate;
+  const pauseReads = vi.fn(() => [...test.pausedOwners]);
+  test.authority.internal_DO_NOT_USE_executionPausedUserIds = pauseReads;
+  try {
+    const run = await test.service.start(test.input);
+    test.pausedOwners.add(test.owner);
+    test.setCaller(null);
+    worker = test.service.runWorker(controller.signal);
+    await vi.waitFor(() => expect(pauseReads).toHaveBeenCalled());
+    expect(getRunRequired(test.db, run.id)).toMatchObject({
+      status: "queued",
+      startedAt: null,
+      error: null,
+    });
+    expect(evaluate).not.toHaveBeenCalled();
+    test.pausedOwners.clear();
+    await vi.waitFor(
+      () => expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+      { timeout: 2500 },
+    );
+    expect(evaluate).toHaveBeenCalledTimes(1);
+  } finally {
+    controller.abort();
+    await worker;
+    await test.harness.dispose();
+  }
+});
+
+it("keeps owned notifications pending without attempts until maintenance releases the owner", async () => {
+  const test = fixture();
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  const reads = vi.fn(() => [...test.pausedOwners]);
+  const notify = vi.fn(async () => "accepted" as const);
+  test.authority.internal_DO_NOT_USE_executionPausedUserIds = reads;
+  test.authority.notifyOrigin = notify;
   try {
     const run = await test.service.start(test.input);
     settleRun(test.db, {
       id: run.id,
       status: "succeeded",
-      result: null,
+      result: { value: 42 },
       error: null,
     });
+    test.pausedOwners.add(test.owner);
     worker = test.service.runWorker(controller.signal);
+    await vi.waitFor(() => expect(reads).toHaveBeenCalled());
+    expect(getRunRequired(test.db, run.id)).toMatchObject({
+      notificationSent: false,
+      notificationOutcome: "pending",
+      notificationAttemptCount: 0,
+    });
+    expect(notify).not.toHaveBeenCalled();
+    test.pausedOwners.clear();
     await vi.waitFor(() =>
-      expect(getRunRequired(test.db, run.id).notificationAttemptCount).toBe(1),
+      expect(getRunRequired(test.db, run.id).notificationOutcome).toBe(
+        "delivered",
+      ),
     );
-    controller.abort();
-    await worker;
-    expect(getRunRequired(test.db, run.id).notificationOutcome).toBe("pending");
-    expect(test.originLookup).not.toHaveBeenCalled();
-    expect(test.send).not.toHaveBeenCalled();
-    test.db
-      .prepare(
-        "UPDATE workflow_runs SET notification_next_attempt_at = 0 WHERE id = ?",
-      )
-      .run(run.id);
-    test.authority.notifyOrigin = async () => "accepted";
-    const next = new AbortController();
-    const restarted = createWorkflowService(test.bb, test.db);
-    const running = restarted.runWorker(next.signal);
-    try {
-      await vi.waitFor(() =>
-        expect(getRunRequired(test.db, run.id).notificationOutcome).toBe(
-          "delivered",
-        ),
-      );
-    } finally {
-      next.abort();
-      await running;
-    }
+    expect(notify).toHaveBeenCalledTimes(1);
   } finally {
     controller.abort();
     await worker;

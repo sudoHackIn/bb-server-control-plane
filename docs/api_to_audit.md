@@ -3684,6 +3684,23 @@ administrative request. Re-enable likewise requires user scope or a live
 administrative request in addition to current execution grants. A null profile version resolves the managed origin
 thread's persisted version, never the newest version by default.
 
+`internal_DO_NOT_USE_executionPausedUserIds()` reports current non-idle UID
+maintenance owners with live authority objects within this builtin's allowed kinds.
+User scope returns only the caller; service scope supports scheduler queue filtering.
+The only consumers are builtin Workflows' queue claim and worker observation,
+and builtin Automations' managed reconciliation/schedule sweep. It is a snapshot, never an execution grant:
+actual dispatch still checks current authority and captured launch generation.
+Builtin Workflows also defers owned origin notifications before an attempt while
+paused. Private job-authority and notification adapters preserve temporary
+maintenance errors instead of settling notification delivery as denied; actual
+revocation still denies it and receipt replay still checks current authority.
+Captured in-process thread/job errors with reason `maintenance` remain temporary
+when a worker observer handles them after release. This private fault distinction
+does not replace current-grant checks. Queued workflow start time and automation
+schedule cursors do not advance while
+that owner is paused. Startup reconciliation retains deferred automation run IDs
+until their owner's maintenance completes. SDK 0.6.81 declares this internal method.
+
 `userId` reads the current caller dynamically; plugins must not cache it. Null
 is internal administrative/service metadata scope, not a public fallback.
 `canReadProject` supports early project rejection; `readOrigin` requires user or

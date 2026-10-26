@@ -1,3 +1,5 @@
+import { createControlPlaneThreadService } from "../../src/control-plane/threads.js";
+import { stopExecutionAdmission } from "../../src/services/system/execution-admission.js";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { expect, it } from "vitest";
@@ -203,5 +205,56 @@ it("preserves maintenance classification across background job authority without
     expect(isControlPlaneMaintenanceError(new Error("maintenance"))).toBe(
       false,
     );
+  });
+});
+
+it("prioritizes shutdown admission over maintenance for personal starts and sends without mutating history or queues", async () => {
+  await withTestHarness(async (h) => {
+    const { alice, bob, row, begin } = fixture(h);
+    begin();
+    const before = listEvents(h.db, { threadId: alice.thread.id });
+    const queued = getQueuedThreadMessage(h.db, row.id);
+    const count = h.db.select().from(threads).all().length;
+    const service = createControlPlaneThreadService({ deps: h.deps });
+    try {
+      await expect(
+        service.send(alice.user.id, alice.thread.id, {
+          message: "Blocked by maintenance",
+          mode: "queue-if-active",
+        }),
+      ).rejects.toMatchObject({ reason: "maintenance" });
+      stopExecutionAdmission(h.db);
+      const refusal = {
+        status: 503,
+        body: { code: "server_stopping", retryable: true },
+      };
+      await expect(
+        service.start(alice.user.id, {
+          projectId: alice.project.id,
+          profileVersionId: alice.profile.versionId,
+          message: "Must not create",
+        }),
+      ).rejects.toMatchObject(refusal);
+      await expect(
+        service.send(alice.user.id, alice.thread.id, {
+          message: "Must not send",
+          mode: "queue-if-active",
+        }),
+      ).rejects.toMatchObject(refusal);
+      await expect(
+        service.send(bob.user.id, alice.thread.id, {
+          message: "Must not reveal another thread",
+          mode: "queue-if-active",
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+      expect(service.get(alice.user.id, alice.thread.id)).toMatchObject({
+        id: alice.thread.id,
+      });
+      expect(listEvents(h.db, { threadId: alice.thread.id })).toEqual(before);
+      expect(getQueuedThreadMessage(h.db, row.id)).toEqual(queued);
+      expect(h.db.select().from(threads).all()).toHaveLength(count);
+    } finally {
+      service.close();
+    }
   });
 });

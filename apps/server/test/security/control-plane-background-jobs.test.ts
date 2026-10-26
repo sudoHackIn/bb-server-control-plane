@@ -5,7 +5,11 @@ import { eq } from "drizzle-orm";
 import { expect, it } from "vitest";
 import { z } from "zod";
 import { createMigratedConnection } from "@bb/db/testing";
-import { controlPlaneUsers, setControlPlaneProfileAccess } from "@bb/db";
+import {
+  controlPlaneUsers,
+  setControlPlaneProfileAccess,
+  reserveControlPlaneUidMaintenance,
+} from "@bb/db";
 import { createControlPlaneBackgroundJobs } from "../../src/control-plane/background-jobs.js";
 import {
   createControlPlaneAccess,
@@ -367,6 +371,50 @@ it("resolves worker profiles under current parent and profile grants", async () 
         jobs.resolveWorkerProfile(parent.id, bob.profile.versionId),
       ).toThrow("not authorized");
     });
+  } finally {
+    db.$client.close();
+  }
+});
+
+it("scopes execution-pause metadata to the current user and builtin object kinds without granting execution", async () => {
+  const db = createMigratedConnection();
+  try {
+    const { alice, bob } = seedControlPlaneJobSubjects(db);
+    const jobs = createControlPlaneBackgroundJobs(db, "workflows", true);
+    const a = await withControlPlaneUser(alice.user.id, () =>
+      jobs.bind(alice.input),
+    );
+    await withControlPlaneUser(bob.user.id, () => jobs.bind(bob.input));
+    for (const subject of [alice, bob])
+      reserveControlPlaneUidMaintenance(db, {
+        userId: subject.user.id,
+        projectId: subject.project.id,
+        operationId: randomUUID(),
+        rootGeneration: 0,
+      });
+    expect(new Set(jobs.internal_DO_NOT_USE_executionPausedUserIds())).toEqual(
+      new Set([alice.user.id, bob.user.id]),
+    );
+    expect(
+      withControlPlaneUser(alice.user.id, () =>
+        jobs.internal_DO_NOT_USE_executionPausedUserIds(),
+      ),
+    ).toEqual([alice.user.id]);
+    expect(
+      withControlPlaneUser(bob.user.id, () =>
+        jobs.internal_DO_NOT_USE_executionPausedUserIds(),
+      ),
+    ).toEqual([bob.user.id]);
+    expect(
+      createControlPlaneBackgroundJobs(
+        db,
+        "automations",
+        true,
+      ).internal_DO_NOT_USE_executionPausedUserIds(),
+    ).toEqual([]);
+    expect(() => jobs.withAuthority(a.id, () => null)).toThrow(
+      "not authorized",
+    );
   } finally {
     db.$client.close();
   }

@@ -942,6 +942,44 @@ describe("automation data access", () => {
     ).toEqual([healthy.id]);
   });
 
+  it("selects another owner's due work past a full paused-owner backlog without moving schedule cursors", () => {
+    const db = createTestDb();
+    try {
+      const bind = db.prepare(
+        "INSERT INTO automation_authorities(automation_id,owner_user_id,binding_id,revision) VALUES(?,?,?,1)",
+      );
+      for (let index = 0; index < 101; index++) {
+        const item = createScheduledAutomation(
+          db,
+          1000,
+          `auto_paused_${index}`,
+        );
+        bind.run(item.id, "alice", `binding_${item.id}`);
+      }
+      const bob = createScheduledAutomation(db, 1001, "auto_bob");
+      bind.run(bob.id, "bob", "binding_bob");
+      expect(
+        listDueAutomations(db, {
+          now: 2000,
+          limit: 100,
+          pausedOwnerIds: ["alice"],
+        }).map((row) => row.id),
+      ).toEqual([bob.id]);
+      expect(
+        db
+          .prepare(
+            "SELECT count(*) AS n FROM automations WHERE next_run_at=1000 AND id LIKE 'auto_paused_%'",
+          )
+          .get(),
+      ).toEqual({ n: 101 });
+      expect(listDueAutomations(db, { now: 2000, limit: 100 })).toHaveLength(
+        100,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
   it("rejects denormalized fields that disagree with stored JSON", () => {
     const mismatches = [
       "UPDATE automations SET trigger_type = 'once' WHERE id = ?",

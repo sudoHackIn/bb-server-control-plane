@@ -1,3 +1,4 @@
+import { createNativeMaintenanceFixture } from "./check-control-plane-native-maintenance.mjs";
 import { verifyMaintenanceQueue } from "./check-control-plane-maintenance-queue.mjs";
 import { createProjectMcpFixture } from "./check-control-plane-project-mcp.mjs";
 import { createProviderLifecycleFixture } from "./check-control-plane-provider-lifecycle.mjs";
@@ -14,7 +15,12 @@ import { readFile, writeFile, readdir, unlink } from "node:fs/promises";
 import Database from "better-sqlite3";
 import WebSocket from "ws";
 
-export async function verifyManagedRuntime({ launch, signal, password }) {
+export async function verifyManagedRuntime({
+  launch,
+  signal,
+  password,
+  nativeMaintenanceOnly = false,
+}) {
   const startedAt = Date.now();
   const stage = (name) =>
     console.log(
@@ -38,6 +44,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   const users = db
     .prepare("SELECT * FROM control_plane_users ORDER BY uid")
     .all();
+  const nativeMaintenance = createNativeMaintenanceFixture({ db, users });
   const mcp = createProjectMcpFixture({ db, users, config });
   const workspace = createWorkspaceFixture({ db, users });
   const providers = createProviderLifecycleFixture({ db, users });
@@ -50,6 +57,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   let personalVerification, personalRestartVerification;
   let approvalVerification;
   let maintenanceQueueVerification;
+  let nativeMaintenanceVerification, nativeMaintenanceRestartVerification;
   let workspaceVerification, workspaceRestartVerification;
   let providerVerification, providerRestartVerification;
   let mcpVerification,
@@ -65,6 +73,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     const body = text ? JSON.parse(text) : {};
     if (mcp.handleRemote(req, res, body)) return;
     if (
+      nativeMaintenance.handle(body, res) ||
       mcp.handleModel(body, res) ||
       messageSources.handle(body, res) ||
       daemonRequests.handle(body, res) ||
@@ -544,6 +553,17 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       wait,
     });
     stage("maintenance-queue-complete");
+    if (nativeMaintenanceOnly) {
+      nativeMaintenanceVerification = await nativeMaintenance.verify({
+        send,
+        token,
+        created,
+        wait,
+      });
+      stage("native-maintenance-complete");
+      verified = true;
+      return nativeMaintenanceVerification;
+    }
 
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
@@ -665,6 +685,10 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       "in-flight native plugin cron sweep",
     );
     await personal.beforeRestart();
+    await nativeMaintenance.beforeRestart({
+      serverPid: child.pid,
+      threadId: created[0].threadId,
+    });
     const shutdownHold = "/srv/bb/shutdown-admission-hold";
     const shutdownReady = "/srv/bb/shutdown-admission-ready";
     await writeFile(
@@ -739,7 +763,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       await unlink(shutdownReady);
     }
     await shutdownExit;
-    await personal.afterShutdown();
+    await personal.afterShutdown(child.pid);
     assert.equal(
       connected(),
       undefined,
@@ -752,6 +776,9 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       false,
     );
     token = await start();
+    nativeMaintenanceRestartVerification = await nativeMaintenance.afterRestart(
+      { wait },
+    );
     workspaceRestartVerification = await workspace.afterRestart({
       send,
       token,
@@ -966,6 +993,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       ...workspaceRestartVerification,
       ...daemonRequestVerification,
       ...maintenanceQueueVerification,
+      ...nativeMaintenanceVerification,
+      ...nativeMaintenanceRestartVerification,
       ...messageSourceVerification,
       ...messageSourceRestartVerification,
       managedDaemonShutdownRefusesToolsAndApprovals: true,

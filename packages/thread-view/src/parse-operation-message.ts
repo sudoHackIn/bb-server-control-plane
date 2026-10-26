@@ -128,6 +128,8 @@ function threadInterruptedTitle(
       return "Stopped because the machine was removed";
     case "manual-stop":
       return "Stopped manually";
+    case "access-maintenance":
+      return "Stopped while project access is updated";
     case "host-daemon-restarted":
       return "Stopped — host daemon restarted";
     case "provider-turn-idle":

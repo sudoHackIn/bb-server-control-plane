@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 import {
   attachCallThread,
+  claimQueuedRun,
   isWorkerRetired,
   retiredWorkers,
   recordWorkerCleanup,
@@ -70,6 +71,30 @@ describe("workflow durable data", () => {
       resumedFromRunId: null,
     });
   }
+
+  it("does not let a paused owner block other owners or spend a queued run's start budget", () => {
+    const alice = newRun(),
+      bob = newRun();
+    db.prepare(
+      "UPDATE workflow_runs SET owner_user_id=?,created_at=? WHERE id=?",
+    ).run("alice", 1, alice.id);
+    db.prepare(
+      "UPDATE workflow_runs SET owner_user_id=?,created_at=? WHERE id=?",
+    ).run("bob", 2, bob.id);
+    expect(claimQueuedRun(db, 1, ["alice"])?.id).toBe(bob.id);
+    expect(getRunRequired(db, alice.id)).toMatchObject({
+      status: "queued",
+      startedAt: null,
+    });
+    settleRun(db, {
+      id: bob.id,
+      status: "succeeded",
+      result: null,
+      error: null,
+    });
+    expect(claimQueuedRun(db, 1, ["alice"])).toBeNull();
+    expect(claimQueuedRun(db, 1, [])?.id).toBe(alice.id);
+  });
 
   function legacyRun() {
     const id = "legacy-run";

@@ -12,6 +12,7 @@ import {
   getQueuedThreadMessage,
   holdQueuedThreadMessageForEdit,
   listIdleThreadsWithQueuedMessages,
+  isThreadQueueAutoSendPaused,
   listQueuedThreadMessages,
   releaseQueuedMessageClaim,
   releaseQueuedThreadMessageEditHold,
@@ -774,6 +775,52 @@ describe("queued thread messages", () => {
     ).toEqual([thirdQueuedMessage.id]);
   });
 
+  it.each([false, true])(
+    "preserves prior manual pause=%s through access maintenance events",
+    (paused) => {
+      const { db, project } = setup();
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        status: "idle",
+      });
+      if (paused)
+        insertEvents(db, noopNotifier, [
+          {
+            threadId: thread.id,
+            sequence: 1,
+            type: "system/thread/interrupted",
+            scope: threadScope(),
+            itemId: null,
+            itemKind: null,
+            parentToolCallId: null,
+            data: JSON.stringify({ reason: "manual-stop" }),
+          },
+        ]);
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 2,
+          type: "system/thread/interrupted",
+          scope: threadScope(),
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ reason: "access-maintenance" }),
+        },
+      ]);
+      expect(isThreadQueueAutoSendPaused(db, thread.id)).toBe(paused);
+      const row = queueTurnEndMessage(db, thread.id, defaultInput);
+      expect(
+        claimQueuedThreadMessageGroup(db, noopNotifier, row.id, {
+          kind: "automatic",
+          isGroupEligible: () => true,
+          retryingFailure: false,
+        }) !== null,
+      ).toBe(!paused);
+    },
+  );
+
   it("pauses ordinary turn-end rows without pausing system notices", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -1002,8 +1049,6 @@ describe("queued thread messages", () => {
       sendAt: null,
     });
 
-    // The requeue wrote the wait on the lead only; the tail must not be
-    // claimable alone, or the drain would dispatch half a composed prompt.
     expect(
       claimNextQueuedThreadMessageGroup(
         db,
@@ -1013,7 +1058,6 @@ describe("queued thread messages", () => {
       ),
     ).toBeNull();
 
-    // An independent row behind the blocked group still drains past it.
     const independent = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
       content: textInput("independent"),
@@ -1086,8 +1130,6 @@ describe("queued thread messages", () => {
       threadId: thread.id,
     });
 
-    // The requested drain clears the lead's wait and claims by id; the claim
-    // is a claim on the batch, so the tail dispatches with it.
     expect(
       claimQueuedThreadMessageGroup(db, noopNotifier, lead.id, {
         kind: "explicit-send",

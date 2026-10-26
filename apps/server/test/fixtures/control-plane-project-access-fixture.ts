@@ -40,6 +40,15 @@ const input = z
     z.object({ mode: z.literal("seed") }).strict(),
     z
       .object({
+        mode: z.literal("native-group"),
+        threadIds: z.array(z.string()).min(1).max(2),
+        operationId: z.string().uuid(),
+        queue: z.boolean(),
+        workerPid: z.number().int().positive().optional(),
+      })
+      .strict(),
+    z
+      .object({
         mode: z.literal("native-maintenance"),
         action: z.enum(["begin", "finish"]),
         threadId: z.string(),
@@ -132,12 +141,106 @@ const input = z
   ])
   .parse(JSON.parse(process.argv[2] ?? "null"));
 const db = createConnection(
-  input.mode === "native-maintenance"
+  input.mode === "native-maintenance" || input.mode === "native-group"
     ? "/srv/bb/bb.db"
     : "/srv/bb/acl-check.db",
 );
 try {
-  if (input.mode === "native-maintenance") {
+  if (input.mode === "native-group") {
+    const contexts = input.threadIds.map((threadId) =>
+      requireControlPlaneThreadDispatch(db, threadId),
+    );
+    const first = contexts[0];
+    if (!first) throw new Error("Missing native group context");
+    if (
+      contexts.some(
+        (context) =>
+          !context ||
+          context.user.id !== first.user.id ||
+          context.project.projectId !== first.project.projectId,
+      )
+    )
+      throw new Error("Native group ownership changed");
+    const policy = getControlPlaneProjectAccessPolicy(
+      db,
+      first.project.projectId,
+    );
+    if (!policy) throw new Error("Missing native policy");
+    const root = await inspectProjectAccess(
+      policy.owner,
+      policy.project.projectId,
+      policy.project.slug,
+    );
+    const identities = new Map(
+      [policy.owner, ...policy.members].map((user) => [user.id, user]),
+    );
+    for (const writer of root.writers) {
+      const user = db
+        .select()
+        .from(controlPlaneUsers)
+        .where(eq(controlPlaneUsers.id, writer.userId))
+        .get();
+      if (!user || user.uid !== writer.uid)
+        throw new Error("Native writer changed");
+      identities.set(user.id, user);
+    }
+    const participants: {
+      userId: string;
+      uid: number;
+      rootGeneration: number;
+    }[] = [];
+    for (const user of identities.values())
+      participants.push({
+        userId: user.id,
+        uid: user.uid,
+        rootGeneration: (
+          await controlPlaneUidMaintenance(user, { action: "status" })
+        ).generation,
+      });
+    const result = db.transaction(
+      () => {
+        const group = reserveControlPlaneProjectMaintenance(db, {
+          id: input.operationId,
+          projectId: policy.project.projectId,
+          projectRevision: policy.revision,
+          workerId: randomUUID(),
+          workerPid: input.workerPid ?? process.pid,
+          participants,
+        });
+        const queueIds = input.queue
+          ? input.threadIds.map(
+              (threadId, index) =>
+                createQueuedThreadMessage(db, noopNotifier, {
+                  threadId,
+                  content: [
+                    {
+                      type: "text",
+                      text:
+                        index === 0
+                          ? "BB_ACCESS_MAINTENANCE_CONTINUE_ACTIVE"
+                          : "BB_ACCESS_MAINTENANCE_CONTINUE_PAUSED",
+                      mentions: [],
+                    },
+                  ],
+                  model: first.profileVersion.definition.model,
+                  reasoningLevel:
+                    first.profileVersion.definition.reasoningLevel,
+                  permissionMode: "full",
+                  serviceTier: "default",
+                  senderThreadId: threadId,
+                  waitingOn: { kind: "thread-busy" },
+                  sendAt: null,
+                  payload: { kind: "inline" },
+                  systemNotice: null,
+                }).id,
+            )
+          : [];
+        return { group, queueIds };
+      },
+      { behavior: "immediate" },
+    );
+    process.stdout.write(JSON.stringify(result));
+  } else if (input.mode === "native-maintenance") {
     const binding = db
       .select({ thread: threads, owner: controlPlaneUsers })
       .from(controlPlaneThreads)

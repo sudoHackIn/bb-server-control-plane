@@ -66,12 +66,6 @@ function docker(args) {
   });
 }
 
-const deadline = setTimeout(
-  () => {
-    void docker(["rm", "--force", name]);
-  },
-  browserMode ? 690000 : 570000,
-);
 try {
   const denied = await docker([
     "run",
@@ -94,46 +88,75 @@ try {
   ]);
   if (denied !== 0)
     throw new Error(`Namespace denial check failed (${denied})`);
-  const code = await docker([
-    "run",
-    "--rm",
-    "--name",
-    name,
-    ...(browserMode
-      ? [
-          "--publish",
-          "127.0.0.1:8080:8080",
-          "--env",
-          "BB_CONTROL_PLANE_BROWSER_TEST=1",
-        ]
-      : ["--network", "none"]),
-    "--user",
-    "0:0",
-    "--read-only",
-    "--security-opt",
-    `seccomp=${seccomp}`,
-    "--security-opt",
-    "systempaths=unconfined",
-    "--tmpfs",
-    "/srv/bb:uid=1000,gid=1000,mode=0700",
-    "--tmpfs",
-    "/tmp:mode=1777",
-    "--mount",
-    "type=volume,dst=/srv/agent-users",
-    "--mount",
-    "type=volume,dst=/var/lib/bb-agent-launcher",
-    "--entrypoint",
-    "node",
-    "bb-control-plane:local",
-    "deployment-check.mjs",
-  ]);
+  for (const nativeMaintenanceOnly of [true, false]) {
+    const startedAt = Date.now();
+    const deadline = setTimeout(
+      () => {
+        void docker(["rm", "--force", name]);
+      },
+      nativeMaintenanceOnly ? 180000 : browserMode ? 690000 : 570000,
+    );
+    try {
+      const code = await docker([
+        "run",
+        "--rm",
+        "--name",
+        name,
+        ...(nativeMaintenanceOnly
+          ? [
+              "--network",
+              "none",
+              "--env",
+              "BB_CONTROL_PLANE_NATIVE_MAINTENANCE_TEST=1",
+            ]
+          : browserMode
+            ? [
+                "--publish",
+                "127.0.0.1:8080:8080",
+                "--env",
+                "BB_CONTROL_PLANE_BROWSER_TEST=1",
+              ]
+            : ["--network", "none"]),
+        "--user",
+        "0:0",
+        "--read-only",
+        "--security-opt",
+        `seccomp=${seccomp}`,
+        "--security-opt",
+        "systempaths=unconfined",
+        "--tmpfs",
+        "/srv/bb:uid=1000,gid=1000,mode=0700",
+        "--tmpfs",
+        "/tmp:mode=1777",
+        "--mount",
+        "type=volume,dst=/srv/agent-users",
+        "--mount",
+        "type=volume,dst=/var/lib/bb-agent-launcher",
+        "--entrypoint",
+        "node",
+        "bb-control-plane:local",
+        "deployment-check.mjs",
+      ]);
+      if (code !== 0) throw new Error(`Deployment check failed (${code})`);
+      console.log(
+        JSON.stringify({
+          controlPlaneDeploymentSuite: nativeMaintenanceOnly
+            ? "native-maintenance"
+            : "composite",
+          durationMs: Date.now() - startedAt,
+          passed: true,
+        }),
+      );
+    } finally {
+      clearTimeout(deadline);
+      await docker(["rm", "--force", name]);
+    }
+  }
   await browserTask;
   if (browserError) throw browserError;
   if (browserMode && !browserTask)
     throw new Error("Browser fixture did not run");
-  if (code !== 0) throw new Error(`Deployment check failed (${code})`);
 } finally {
-  clearTimeout(deadline);
   await docker(["rm", "--force", name]);
   await rm(directory, { recursive: true, force: true });
 }

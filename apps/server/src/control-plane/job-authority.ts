@@ -21,6 +21,8 @@ export function withControlPlaneJobAuthority<T>(
     if (principal?.kind === "user" && principal.userId !== context.user.id)
       throw new ControlPlaneJobError();
   } catch (error) {
+    if (error instanceof ControlPlaneJobError && error.reason === "maintenance")
+      throw error;
     if (error instanceof ControlPlaneJobError)
       throw new ApiError(
         403,

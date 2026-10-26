@@ -1,3 +1,4 @@
+import { runControlPlaneProjectMaintenanceSweep } from "../../control-plane/native-project-maintenance.js";
 import {
   runThreadPruningSweep,
   THREAD_PRUNING_SWEEP_LIMITS,
@@ -526,6 +527,12 @@ export function createThreadEventPruningJob(
 }
 
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
+  {
+    cadenceMs: 5000,
+    category: "durable-intent-retry",
+    name: "control-plane-project-maintenance",
+    run: runControlPlaneProjectMaintenanceSweep,
+  },
   {
     cadenceMs: 0,
     category: "durable-intent-retry",

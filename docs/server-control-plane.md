@@ -32,6 +32,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Persist per-UID server maintenance intent, enforce non-idle admission in core thread/background/workspace paths, and seal every managed launch with its captured generation. Verify DB/root restart, exact-revision rebase and post-release stale-command refusal. Multi-UID role reconciliation and public administrative surfaces remain pending.
 - [x] Add private durable project-participant reconciliation: atomic cohort reservation, former-writer recovery, confirmed job draining, exact ACL acknowledgement and all-participant DB release after root completion. Verify interrupted release and dead-worker recovery in Docker. Atomic administrative role mutation, startup sweep, queue retention and shared native execution remain pending.
 - [x] Preserve queued input, source identity and retry budgets when the mandatory execution guard observes UID maintenance; verify repeated explicit sends, retry sweeps and late failure handling, plus one native Qwen delivery after release under the advanced generation. Native maintenance draining and accepted-turn settlement remain pending.
+- [x] Connect private project maintenance to native BB lifecycle settlement, preserve intentional queue pauses, defer owned workflow/schedule dispatch and recover saved operations through periodic reconciliation after restart. Public atomic role mutation and shared native project execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -120,6 +121,26 @@ an audit of existing paths. No final increment number is an acceptance gate.
 Packages overlap and do not replace the unchecked requirements below. Project
 MCP and agent product work can proceed without waiting for every audit package;
 new execution paths must enforce authority from their first implementation.
+
+## Agent definition coverage
+
+The fork already has named, immutable-version profiles with prompt, Qwen provider,
+model, reasoning, native/delegated tool allowlists, MCP selectors and permissions.
+Native threads pin a profile version and actual execution checks current access.
+This is our control-plane layer; the schema currently accepts only `qwen-server`.
+The verified prompt policy appends instructions to Qwen's built-in prompt rather
+than claiming complete system-prompt replacement.
+
+The profile schema has no `skills` or `spawns` fields. A complete reusable-agent
+catalog/editor and explicit agent-version selection for automation/workflow steps
+remain part of the existing unfinished agent delivery package. Current ancestry
+and grant checks are not a configurable per-agent delegation graph. Restricted
+native nested execution is rejected until its adapter is verified; that rejection
+must not be presented as an implemented `spawns` policy.
+
+The agent loop and coding tools still belong to Qwen. No OMP runtime or its coding
+tools have been integrated. Tool allowlists and MCP policy remain independent of
+the UID/process boundary: they do not turn the user's HOME into a filesystem jail.
 
 ## Project MCP connections
 
@@ -3246,3 +3267,38 @@ native Qwen/MCP, workspace/Git, workflows, automations, scripts, restart and cra
 recovery after the real user's generation advance. Eleven host/image artifacts
 and two compiled fixture hashes match the final image. The failed development
 attempts and their fixes are retained in [the verification record](control-plane-phase-71-verification.json).
+
+
+## Seventy-second increment: native maintenance drain and startup recovery
+
+The private project coordinator now drains native BB threads before applying the
+filesystem policy. It waits for pre-start cancellation, active-turn interruption
+and idle runtime release acknowledgements, retaining the UID barrier on an
+uncertain stop. The `access-maintenance` interruption reason keeps this operation
+separate from the user's Stop action. Automatic queue continuation resumes after
+release; an existing or concurrent user pause still requires explicit continuation.
+Late daemon reports cannot revive the interrupted turn.
+
+A periodic recovery sweep waits for the host daemon before reclaiming saved
+preparing/draining operations. It retains participant generations and exact-policy
+fences. Builtin Workflows and Automations use private owner-pause metadata to defer
+queued starts and due schedules without advancing their execution state. The
+metadata does not grant execution authority; normal current-grant checks still run.
+This also protects accepted background work while a saved operation blocks its
+owner during server restart.
+
+Host protocol 257 and SDK 0.6.81 introduce the shared interruption taxonomy and
+private builtin pause contract. Workflows and Automations are 0.1.1 and require
+SDK 0.6.81; Qwen Server remains 0.1.1. Deploy the server, daemon and builtin plugins
+together. Public administrative role mutation and actual shared native project
+execution remain closed. See [the lifecycle contract](control-plane-project-access.md#native-lifecycle-drain-and-recovery-increment-72).
+
+Verification passes the final 3845 server, 281 Workflows and 146 Automations
+tests, plus the earlier 6792-test full repository run and 15 typecheck tasks.
+Strict lint and formatting pass on all 42 changed code files. The rebuilt Docker
+image passes both the focused live-Qwen maintenance suite in 98.811s and the
+complete existing deployment matrix in 558.221s: 63 of 63 Turbo tasks pass in
+11m3.727s. Startup recovery, notification receipt replay, workflow recovery and
+native script cleanup after a crash all pass. Twenty-two host/image artifacts
+match; three compiled fixture hashes are recorded. The earlier failed and
+inconclusive deployment attempts remain in [the verification record](control-plane-phase-72-verification.json).

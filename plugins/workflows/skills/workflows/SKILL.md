@@ -15,6 +15,10 @@ data. Worker threads retain normal workspace tools and permissions.
 The plugin is disabled on fresh installations; `bb plugin enable workflows`
 turns it on. `bb workflows` commands must run from a BB project thread.
 
+On a managed shared server, queued runs wait while project access is being
+updated. Scheduled automations keep their due time during that pause. After access
+is restored, execution checks the current permissions again.
+
 ## Start safely
 
 1. Inspect the task and repository before you choose the work list.

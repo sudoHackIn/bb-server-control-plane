@@ -1,3 +1,7 @@
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { withTestHarness } from "../helpers/test-app.js";
+import { runControlPlaneProjectMaintenanceSweep } from "../../src/control-plane/native-project-maintenance.js";
 import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { createMigratedConnection } from "@bb/db/testing";
@@ -91,4 +95,29 @@ it("deduplicates identical operation arguments independently of property order a
   } finally {
     db.$client.close();
   }
+});
+
+it("defers saved maintenance recovery until its native daemon is available", async () => {
+  const child = spawn(process.execPath, ["-e", ""]);
+  await once(child, "exit");
+  const workerPid = child.pid;
+  if (workerPid === undefined) throw new Error("Missing completed worker PID");
+  await withTestHarness(async (h) => {
+    const { alice } = seedControlPlaneJobSubjects(h.db);
+    const policy = getControlPlaneProjectAccessPolicy(h.db, alice.project.id);
+    if (!policy) throw new Error("Missing policy");
+    const saved = reserveControlPlaneProjectMaintenance(h.db, {
+      id: randomUUID(),
+      projectId: alice.project.id,
+      projectRevision: policy.revision,
+      workerId: randomUUID(),
+      workerPid,
+      participants: [
+        { userId: alice.user.id, uid: alice.user.uid, rootGeneration: 0 },
+      ],
+    });
+    expect(h.hub.hasDaemonForHost(alice.environment.hostId)).toBe(false);
+    await runControlPlaneProjectMaintenanceSweep(h.deps);
+    expect(getControlPlaneProjectMaintenance(h.db, saved.id)).toEqual(saved);
+  });
 });

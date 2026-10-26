@@ -399,3 +399,71 @@ runtime settlement, preserving intentional queue pauses and wiring automatic
 startup reconciliation remain pending. Public role mutation and shared native
 execution remain closed. No database schema, host wire contract, SDK API or
 production frontend changes are introduced by this increment.
+
+
+## Native lifecycle drain and recovery (increment 72)
+
+The production adapter enumerates every non-deleted owned BB thread across the
+participant's projects, including archived threads. Each stop checks the same
+blocked UID operation/generation and thread owner. It revokes desktop control,
+cancels pre-start work, interrupts an active turn and awaits idle runtime release.
+The existing 60-second stop budget is shared across settlement attempts. An
+unknown acknowledgement or generation change fails closed; the project worker
+claim remains held while that process lives. No ACL is applied on an uncertain
+native stop. Root job quiescence is still required independently.
+
+`access-maintenance` is a persisted interruption reason rather than a user pause.
+Queue pause detection ignores it when looking for a later action which clears a
+manual pause. An explicit user Stop during maintenance records manual intent even
+if the thread is already stopping. Late daemon turn-state reports preserve the
+stored interruption reason and cannot revive a stopped turn. If global server
+shutdown overlaps maintenance, visible personal execution requests retain the
+existing retryable `503/server_stopping` response; foreign thread IDs still fail
+the ordinary visibility check. Accepted turns keep
+their durable interruption; this does not promise automatic replay of side effects.
+
+The five-second sweep reconciles saved project operations and skips shutdown.
+Preparing/draining work waits for a connected host daemon before claiming, avoiding
+an uncertain stop merely because daemon enrollment has not completed at startup.
+Live-worker claims cannot be stolen; exited claims can resume the saved operation.
+Changed policy revisions still require explicit rebase, never an automatic change
+to the captured authorization decision.
+
+Builtin Workflows and Automations receive lifecycle-scoped, owner-filtered private
+pause metadata. Queued workflows skip paused owners without starving other owners;
+due automations retain their schedule cursor. Skipped startup automation recovery
+is retried after release. Active background observation treats captured temporary
+maintenance refusals as pending rather than permanent authorization failures.
+Actual worker starts and resumed calls still enforce current saved authority.
+Owned workflow notifications wait before beginning an attempt while paused. The
+private job-authority and notification adapters preserve a temporary maintenance
+fault rather than converting it into permanent denial; a captured fault which
+races the pause snapshot remains retryable. After release, a committed native
+notification receipt can be replayed without appending another turn request.
+Revoked profiles still deny delivery.
+Paused automation owners are excluded in SQL before due-page pagination, so a
+large paused-owner backlog does not hide another owner's due work. This is not a
+general grant to plugins or a guarantee that an interrupted workflow call
+executes its external effects exactly once.
+
+The deployment fixture seeds a private maintenance operation; no public role
+mutation endpoint is enabled. Atomic administrative grant mutation/cohort
+reservation, API/SDK/CLI/UI role controls and shared native project execution
+remain separate acceptance work. Protocol 257, SDK 0.6.81 and builtin Workflows/
+Automations 0.1.1 must be deployed together. The native timeline now labels the
+maintenance interruption; a real-browser check of that specific label is not
+claimed by this increment.
+
+
+Deployment verification runs the new live native-drain scenario in its own fresh
+Docker container with 150/180-second inner/outer deadlines. The complete existing
+composite matrix still uses 540/570-second deadlines and retains the saved
+maintenance intent before shutdown, notification receipt replay, native workflow/
+automation recovery and crash checks. Both suites are required by the ordinary
+`test:control-plane-deployment` task and execute sequentially. The focused suite
+is additional acceptance, not a replacement for the composite deployment.
+The final rebuilt image passes both suites: the focused suite in 98.811s and the
+full matrix in 558.221s, with 63/63 Turbo tasks successful. The full matrix
+confirms startup recovery of the saved UID operation, unchanged participant
+generations, notification receipt replay, workflow crash recovery and native
+script cleanup. See [the stage 72 record](control-plane-phase-72-verification.json).

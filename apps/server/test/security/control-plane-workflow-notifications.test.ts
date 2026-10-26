@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
+  reserveControlPlaneUidMaintenance,
   controlPlaneJobNotifications,
   controlPlaneJobBindings,
   createControlPlaneJobBinding,
@@ -169,5 +171,53 @@ it("does not accept notifications from another owner, a substituted origin or af
     expect(
       harness.db.select().from(controlPlaneJobNotifications).all(),
     ).toEqual([]);
+  });
+});
+
+it("retains a committed notification receipt and reports maintenance as temporary while preserving revocation denial", async () => {
+  await withTestHarness(async (h) => {
+    const { alice } = seedControlPlaneJobSubjects(h.db);
+    const binding = createControlPlaneJobBinding(h.db, {
+      ...alice.input,
+      userId: alice.user.id,
+      profileVersionId: alice.profile.versionId,
+    });
+    const requestId = createClientTurnRequestId();
+    acceptControlPlaneWorkflowNotification(
+      h.db,
+      binding.id,
+      alice.thread.id,
+      requestId,
+    );
+    reserveControlPlaneUidMaintenance(h.db, {
+      userId: alice.user.id,
+      projectId: alice.project.id,
+      operationId: randomUUID(),
+      rootGeneration: 0,
+    });
+    await expect(
+      withControlPlaneService(() =>
+        notifyControlPlaneWorkflowOrigin(
+          h.deps,
+          binding.id,
+          "Previously accepted",
+        ),
+      ),
+    ).rejects.toMatchObject({ reason: "maintenance" });
+    expect(
+      h.db.select().from(controlPlaneJobNotifications).all(),
+    ).toMatchObject([{ bindingId: binding.id, requestId }]);
+    expect(h.db.select().from(events).all()).toEqual([]);
+    setControlPlaneProfileAccess(
+      h.db,
+      alice.profile.profileId,
+      alice.user.id,
+      false,
+    );
+    await expect(
+      withControlPlaneService(() =>
+        notifyControlPlaneWorkflowOrigin(h.deps, binding.id, "Revoked"),
+      ),
+    ).resolves.toBe("denied");
   });
 });

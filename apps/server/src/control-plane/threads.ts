@@ -1,3 +1,4 @@
+import { assertExecutionAdmission } from "../services/system/execution-admission.js";
 import { createControlPlaneThreadStreams } from "./thread-stream.js";
 import { createThreadTimelineWindows } from "../services/threads/thread-timeline-windows.js";
 import {
@@ -97,6 +98,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
   }
   function executable(userId: string, id: string) {
     const value = read(userId, id);
+    assertExecutionAdmission(deps.db);
     const context = requireControlPlaneThreadDispatch(deps.db, id);
     if (context?.user.id !== userId) throw new ControlPlaneThreadError();
     return { thread: value.thread, context };
@@ -149,6 +151,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       input: ControlPlaneThreadStart,
       worker: { bindingId: string; callId: string } | null = null,
     ) {
+      assertExecutionAdmission(deps.db);
       const job = worker
         ? requireControlPlaneJobDispatch(deps.db, worker.bindingId)
         : null;

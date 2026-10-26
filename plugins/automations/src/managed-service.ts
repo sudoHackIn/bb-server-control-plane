@@ -81,6 +81,7 @@ export function createManagedAutomationService({
   jobs: InternalDoNotUseBackgroundJobs;
 }): AutomationService {
   const dispatching = new Set<string>();
+  const pendingStartupRuns = new Set<string>();
   let ticking = false;
   let lifecycleSignal: AbortSignal | undefined;
   let stopping = false;
@@ -484,11 +485,16 @@ export function createManagedAutomationService({
       );
     }
   }
-  async function reconcile(startup: boolean) {
+  async function reconcile(startup: boolean, pausedUsers: ReadonlySet<string>) {
+    const running = listRunningAutomationRuns(db);
+    const runningIds = new Set(running.map((run) => run.id));
+    for (const id of pendingStartupRuns)
+      if (!runningIds.has(id)) pendingStartupRuns.delete(id);
+    if (startup) for (const run of running) pendingStartupRuns.add(run.id);
     let workers: Awaited<
       ReturnType<InternalDoNotUseBackgroundJobs["listWorkers"]>
     >["workers"] = [];
-    if (startup) {
+    if (startup || pendingStartupRuns.size > 0) {
       let cursor: string | null = null;
       do {
         const page = jobs.listWorkers({
@@ -500,11 +506,18 @@ export function createManagedAutomationService({
         cursor = page.nextCursor;
       } while (cursor);
     }
-    for (const run of listRunningAutomationRuns(db)) {
+    for (const run of running) {
       if (dispatching.has(run.id)) continue;
       const saved = runHead(run.id);
       const row = getAutomation(db, run.automationId);
       if (!row) continue;
+      const owner = saved
+        ? jobs.get(saved.definitionBindingId)?.ownerUserId
+        : null;
+      if (owner && pausedUsers.has(owner) && !cancellationRequested(run.id))
+        continue;
+      const recovering = pendingStartupRuns.has(run.id);
+      pendingStartupRuns.delete(run.id);
       if (scripts.has(run.id) && !cancellationRequested(run.id)) {
         await scripts.reconcile(row, run);
         continue;
@@ -519,7 +532,7 @@ export function createManagedAutomationService({
           throw new Error(
             "Automation run has no durable execution authority after restart",
           );
-        if (!threadId && startup) {
+        if (!threadId && recovering) {
           const found = workers.find(
             (worker) =>
               worker.parentBindingId === saved.bindingId &&
@@ -537,7 +550,7 @@ export function createManagedAutomationService({
           }
         }
         if (!threadId) {
-          if (!startup) continue;
+          if (!recovering) continue;
           throw new Error(
             "Automation dispatch was interrupted before an owned worker was attached",
           );
@@ -619,15 +632,20 @@ export function createManagedAutomationService({
           db.prepare(
             "UPDATE automations SET enabled=0,next_run_at=NULL,last_error='Owner assignment required before managed execution' WHERE NOT EXISTS (SELECT 1 FROM automation_authorities o WHERE o.automation_id=automations.id)",
           ).run();
-        await reconcile(startup);
+        const pausedUsers = new Set(
+          jobs.internal_DO_NOT_USE_executionPausedUserIds(),
+        );
+        await reconcile(startup, pausedUsers);
         await releaseCompletedRuntimes();
         for (const row of listDueAutomations(db, {
           now: Date.now(),
           limit: 100,
+          pausedOwnerIds: [...pausedUsers],
         })) {
           if (signal.aborted || stopping) break;
           try {
             const root = head(row);
+            if (pausedUsers.has(root.ownerUserId)) continue;
             const claim = jobs.withAuthority(root.bindingId, () =>
               db
                 .transaction(() => {

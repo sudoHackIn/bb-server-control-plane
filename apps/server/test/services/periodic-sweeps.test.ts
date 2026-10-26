@@ -1,3 +1,4 @@
+import * as dispatchHooks from "../../src/services/threads/dispatch-hooks.js";
 import { eq } from "drizzle-orm";
 import {
   CLOSED_SESSION_ROW_RETENTION_MS,
@@ -9,7 +10,6 @@ import {
   getEnvironment,
   hostDaemonSessions,
   listQueuedThreadMessages,
-  RETAINED_EVENT_OUTPUT_TARGETS,
   retainedEventOutputs,
   threads,
   threadPruningCursors,
@@ -348,16 +348,12 @@ describe("runPeriodicSweeps", () => {
     await withTestHarness(async (harness) => {
       let releaseIdleRecovery: ReleaseCallback | null = null;
       let resolveIdleRecoveryStarted: ReleaseCallback | null = null;
-      let resolveSecondAttempt: ((kind: "idle" | "scheduled") => void) | null =
-        null;
+      let secondAttemptKind: "idle" | "scheduled" | null = null;
       const idleRecoveryStarted = new Promise<void>((resolve) => {
         resolveIdleRecoveryStarted = resolve;
       });
       const idleRecoveryRelease = new Promise<void>((resolve) => {
         releaseIdleRecovery = resolve;
-      });
-      const secondAttempt = new Promise<"idle" | "scheduled">((resolve) => {
-        resolveSecondAttempt = resolve;
       });
       let attempts = 0;
       installHooks({
@@ -374,8 +370,8 @@ describe("runPeriodicSweeps", () => {
                   resolveIdleRecoveryStarted();
                 }
                 await idleRecoveryRelease;
-              } else if (attempts === 2 && resolveSecondAttempt) {
-                resolveSecondAttempt(kind);
+              } else if (attempts === 2) {
+                secondAttemptKind = kind;
               }
               return kind === "scheduled"
                 ? ({ action: "proceed" } as const)
@@ -410,24 +406,30 @@ describe("runPeriodicSweeps", () => {
         pluginService: harness.pluginService,
         pluginCatalogService: harness.pluginCatalogService,
       };
+      const hookPass = vi.spyOn(dispatchHooks, "runMessageDispatchHookPass");
       const firstSweep = runPeriodicSweeps(deps);
       await idleRecoveryStarted;
       const overlappingSweep = runPeriodicSweeps(deps);
-      for (
-        let yielded = 0;
-        yielded <= RETAINED_EVENT_OUTPUT_TARGETS.length + 1;
-        yielded += 1
-      ) {
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      }
-      releaseRunningJob(releaseIdleRecovery);
       try {
-        await expect(secondAttempt).resolves.toBe("scheduled");
+        await expect
+          .poll(
+            () =>
+              hookPass.mock.calls.some(
+                ([, request]) => request.thread.id === scheduledThread.id,
+              ),
+            { timeout: 5000 },
+          )
+          .toBe(true);
+        releaseRunningJob(releaseIdleRecovery);
+        await expect
+          .poll(() => secondAttemptKind, { timeout: 5000 })
+          .toBe("scheduled");
         await overlappingSweep;
         expect(
           listQueuedThreadMessages(harness.db, scheduledThread.id),
         ).toEqual([]);
       } finally {
+        releaseRunningJob(releaseIdleRecovery);
         await Promise.all([firstSweep, overlappingSweep]);
       }
     });

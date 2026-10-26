@@ -1014,8 +1014,8 @@ export function createUserThreadFixture({ db, users }) {
         200,
       );
     },
-    async afterShutdown() {
-      await saved.workflows.afterShutdown();
+    async afterShutdown(serverPid) {
+      await saved.workflows.afterShutdown(serverPid);
       await saved.automations.afterShutdown();
     },
     async afterRestart() {

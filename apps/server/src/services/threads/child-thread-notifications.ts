@@ -126,6 +126,8 @@ function childThreadInterruptionCauseText(
       return " because its host was removed";
     case "provider-turn-idle":
       return " because its provider turn went idle";
+    case "access-maintenance":
+      return " while project access is updated";
     case "manual-stop":
       return "";
   }

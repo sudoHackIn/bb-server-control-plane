@@ -1,12 +1,12 @@
 {
   "name": "bb-plugin-automations",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Schedule recurring and one-shot agent or script work.",
   "private": true,
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.6.80"
+    "bbPluginSdk": ">=0.6.81"
   },
   "bb": {
     "name": "Automations",

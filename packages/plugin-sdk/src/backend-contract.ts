@@ -1923,6 +1923,8 @@ export interface InternalDoNotUseBackgroundJobBinding {
 }
 
 export interface InternalDoNotUseBackgroundJobs {
+  /** Current UID maintenance owners within this builtin plugin's object kinds; user scope returns only the caller. This snapshot grants no execution authority. */
+  internal_DO_NOT_USE_executionPausedUserIds(): readonly string[];
   /** Current caller on each access. Null means internal administrative/service scope. */
   readonly userId: string | null;
   canReadProject(projectId: string): boolean;

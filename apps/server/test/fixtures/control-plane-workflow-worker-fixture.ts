@@ -10,7 +10,9 @@ import {
   createThread,
   getThread,
   setControlPlaneProfileAccess,
-  archiveThread,
+  controlPlaneJobBindings,
+  threads,
+  insertThreadPluginMetadata,
   getControlPlaneJobBinding,
   controlPlaneThreads,
   noopNotifier,
@@ -89,6 +91,11 @@ try {
     );
     process.stdout.write(JSON.stringify({ changed: true }) + "\n");
   } else if (mode === "orphan") {
+    const { serverPid } = z
+      .object({ serverPid: z.number().int().positive() })
+      .strict()
+      .parse(JSON.parse(process.argv[3] ?? "null"));
+    assert.throws(() => process.kill(serverPid, 0), { code: "ESRCH" });
     const original = savedSchema.parse(
       JSON.parse(await readFile(statePath, "utf8")),
     );
@@ -96,60 +103,92 @@ try {
       readonly: true,
     });
     try {
-      const orphans = original.map((subject, index) => {
-        const parent = getControlPlaneJobBinding(db, null, subject.parentId);
-        assert.ok(parent?.originThreadId);
-        const origin = getThread(db, parent.originThreadId);
-        assert.ok(origin?.environmentId);
-        const synthetic = createControlPlaneJobBinding(db, {
-          kind: "workflow-run",
-          objectId: `wfr_${randomUUID()}`,
-          revision: 1,
-          userId: subject.userId,
-          projectId: origin.projectId,
-          profileVersionId: subject.profileVersionId,
-          originThreadId: origin.id,
-          sourceBindingId: null,
-        });
-        assert.equal(
-          storage
-            .prepare("SELECT id FROM workflow_runs WHERE id = ?")
-            .get(synthetic.objectId),
-          undefined,
-        );
-        const binding = createControlPlaneJobBinding(db, {
-          kind: "workflow-worker",
-          objectId: randomUUID(),
-          revision: 1,
-          userId: subject.userId,
-          projectId: origin.projectId,
-          profileVersionId: subject.profileVersionId,
-          originThreadId: origin.id,
-          sourceBindingId: synthetic.id,
-        });
-        const child = createThread(db, noopNotifier, {
-          providerId: "qwen-server",
-          projectId: origin.projectId,
-          environmentId: origin.environmentId,
-          status: "idle",
-          visibility: "hidden",
-          originPluginId: "workflows",
-          controlPlaneOwnerUserId: subject.userId,
-          controlPlaneProfileVersionId: subject.profileVersionId,
-          controlPlaneJobBindingId: binding.id,
-          pluginMetadata: {
-            pluginId: "workflows",
-            metadata: {
-              workflowWorker: 1,
-              runId: synthetic.objectId,
-              callId: `wfc_${randomUUID()}`,
-              originThreadId: origin.id,
-            },
-          },
-        });
-        if (index === 1) archiveThread(db, noopNotifier, child.id);
-        return { threadId: child.id, bindingId: binding.id };
-      });
+      const orphans = db.transaction(
+        (tx) =>
+          original.map((subject, index) => {
+            const parent = getControlPlaneJobBinding(
+              tx,
+              null,
+              subject.parentId,
+            );
+            assert.ok(parent?.originThreadId);
+            assert.equal(parent.ownerUserId, subject.userId);
+            assert.equal(parent.profileVersionId, subject.profileVersionId);
+            const origin = getThread(tx, parent.originThreadId);
+            assert.ok(origin?.environmentId);
+            const now = Date.now();
+            const synthetic = tx
+              .insert(controlPlaneJobBindings)
+              .values({
+                ...parent,
+                id: randomUUID(),
+                kind: "workflow-run",
+                objectId: `wfr_${randomUUID()}`,
+                revision: 1,
+                sourceBindingId: null,
+                enabled: true,
+                deletedAt: null,
+                createdAt: now,
+              })
+              .returning()
+              .get();
+            assert.equal(
+              storage
+                .prepare("SELECT id FROM workflow_runs WHERE id = ?")
+                .get(synthetic.objectId),
+              undefined,
+            );
+            const binding = tx
+              .insert(controlPlaneJobBindings)
+              .values({
+                ...synthetic,
+                id: randomUUID(),
+                kind: "workflow-worker",
+                objectId: randomUUID(),
+                sourceBindingId: synthetic.id,
+              })
+              .returning()
+              .get();
+            const child = tx
+              .insert(threads)
+              .values({
+                id: `thr_${randomUUID().replaceAll("-", "").slice(0, 10)}`,
+                providerId: "qwen-server",
+                projectId: origin.projectId,
+                environmentId: origin.environmentId,
+                status: "idle",
+                visibility: "hidden",
+                originPluginId: "workflows",
+                archivedAt: index === 1 ? now : null,
+                lastReadAt: now,
+                latestAttentionAt: now,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning()
+              .get();
+            tx.insert(controlPlaneThreads)
+              .values({
+                threadId: child.id,
+                ownerUserId: subject.userId,
+                profileVersionId: subject.profileVersionId,
+                jobBindingId: binding.id,
+              })
+              .run();
+            insertThreadPluginMetadata(tx, {
+              threadId: child.id,
+              pluginId: "workflows",
+              metadata: {
+                workflowWorker: 1,
+                runId: synthetic.objectId,
+                callId: `wfc_${randomUUID()}`,
+                originThreadId: origin.id,
+              },
+            });
+            return { threadId: child.id, bindingId: binding.id };
+          }),
+        { behavior: "immediate" },
+      );
       process.stdout.write(JSON.stringify(orphans) + "\n");
     } finally {
       storage.close();

@@ -1318,8 +1318,8 @@ export async function verifyNativeWorkflows({
         storage.close();
       }
     },
-    async afterShutdown() {
-      orphanWorkers = await workerFixture("orphan");
+    async afterShutdown(serverPid) {
+      orphanWorkers = await workerFixture("orphan", { serverPid });
       await workerFixture(
         "notification-retry",
         runs.map((run) => run.id),

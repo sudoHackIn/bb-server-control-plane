@@ -1100,6 +1100,10 @@ export function createPluginApi(options: {
         assertLive();
         return source.remove(id);
       },
+      internal_DO_NOT_USE_executionPausedUserIds() {
+        assertLive();
+        return source.internal_DO_NOT_USE_executionPausedUserIds();
+      },
       withAuthority(id, run) {
         assertLive();
         return source.withAuthority(id, run);

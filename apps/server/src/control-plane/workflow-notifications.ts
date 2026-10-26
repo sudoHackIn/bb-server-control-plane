@@ -1,3 +1,4 @@
+import { isControlPlaneMaintenanceError } from "./maintenance-errors.js";
 import type { ClientTurnRequestId } from "@bb/domain";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -108,6 +109,7 @@ export async function notifyControlPlaneWorkflowOrigin(
       },
     );
   } catch (error) {
+    if (isControlPlaneMaintenanceError(error)) throw error;
     if (error instanceof NotificationAlreadyAccepted) return "accepted";
     if (error instanceof NotificationOriginUnavailable) return "unavailable";
     if (

@@ -22,8 +22,9 @@ thread identity. The provider requests the registered user UID/GID, HOME, cwd
 and native Qwen session binding plus its bound approved profile version; caller-selected paths and identities are not
 deployment settings. No shared-service fallback is allowed.
 
-Provider 0.1.1 requires host daemon protocol 256 and the private context's
-`maintenanceGeneration`. The generation is captured with server authority and
+The current shared-server deployment uses host daemon protocol 257 and SDK
+0.6.81 for the access-maintenance interruption taxonomy. Provider 0.1.1 requires
+the private context's `maintenanceGeneration`. The generation is captured with server authority and
 passed to every managed launcher; an old request is refused even after UID
 maintenance finishes. Caller options cannot supply or override it. Deploy the
 server, daemon, provider and root helper modules together. On a maintenance/stale

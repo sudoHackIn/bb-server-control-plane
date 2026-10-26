@@ -655,7 +655,7 @@ export function deleteAutomation(
 
 export function listDueAutomations(
   db: Db,
-  args: { now: number; limit: number },
+  args: { now: number; limit: number; pausedOwnerIds?: readonly string[] },
 ): AutomationRow[] {
   if (args.limit <= 0) return [];
   const pageSize = Math.max(args.limit, 100);
@@ -667,6 +667,11 @@ export function listDueAutomations(
        AND trigger_type IN ('schedule', 'once')
        AND next_run_at IS NOT NULL
        AND next_run_at <= ?
+       AND NOT EXISTS (
+         SELECT 1 FROM automation_authorities a
+         WHERE a.automation_id = automations.id
+           AND a.owner_user_id IN (SELECT value FROM json_each(?))
+       )
      ORDER BY next_run_at ASC, created_at ASC, id ASC
      LIMIT ? OFFSET ?`,
   );
@@ -674,7 +679,12 @@ export function listDueAutomations(
   let offset = 0;
   while (due.length < args.limit) {
     const page = query
-      .all(args.now, pageSize, offset)
+      .all(
+        args.now,
+        JSON.stringify(args.pausedOwnerIds ?? []),
+        pageSize,
+        offset,
+      )
       .map(requiredAutomationRow);
     if (page.length === 0) break;
     offset += page.length;

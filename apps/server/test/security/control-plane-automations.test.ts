@@ -11,6 +11,10 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   ControlPlaneRegistry,
+  reserveControlPlaneUidMaintenance,
+  checkpointControlPlaneUidMaintenance,
+  getControlPlaneProjectAccessPolicy,
+  acknowledgeControlPlaneProjectAccessPolicy,
   controlPlaneUserSessions,
   installedPlugins,
   createThread,
@@ -550,6 +554,58 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
         ),
     ).toEqual(["owned prompt", "owned prompt v2"]);
     native.due(other.id);
+    const pausedCursor = z.object({ nextRunAt: z.number().nullable() }).parse(
+      await invoke(bob.user.id, "automations_get", {
+        projectId: bob.project.id,
+        automationId: other.id,
+      }),
+    ).nextRunAt;
+    const maintenance = reserveControlPlaneUidMaintenance(harness.db, {
+      userId: bob.user.id,
+      projectId: bob.project.id,
+      operationId: randomUUID(),
+      rootGeneration: 0,
+    });
+    await native.tick(true);
+    await native.tick();
+    expect(starts).toBe(1);
+    expect(
+      z.object({ nextRunAt: z.number().nullable() }).parse(
+        await invoke(bob.user.id, "automations_get", {
+          projectId: bob.project.id,
+          automationId: other.id,
+        }),
+      ).nextRunAt,
+    ).toBe(pausedCursor);
+    expect(
+      checkpointControlPlaneUidMaintenance(
+        harness.db,
+        bob.user.id,
+        maintenance.operationId,
+        maintenance.generation,
+        "blocked",
+      ),
+    ).toBe(true);
+    const policy = getControlPlaneProjectAccessPolicy(
+      harness.db,
+      bob.project.id,
+    );
+    if (!policy) throw new Error("Missing paused project policy");
+    acknowledgeControlPlaneProjectAccessPolicy(
+      harness.db,
+      bob.project.id,
+      policy.revision,
+    );
+    for (const phase of ["releasing", "idle"] as const)
+      expect(
+        checkpointControlPlaneUidMaintenance(
+          harness.db,
+          bob.user.id,
+          maintenance.operationId,
+          maintenance.generation,
+          phase,
+        ),
+      ).toBe(true);
     await native.tick();
     await expect
       .poll(async () => {

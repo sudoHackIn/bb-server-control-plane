@@ -4,13 +4,15 @@ import type {
   InternalDoNotUseBackgroundJobBinding,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import {
   controlPlaneJobBindingSchema,
   controlPlaneJobListSchema,
 } from "@bb/domain";
 import {
   controlPlaneThreads,
+  controlPlaneUidMaintenance,
+  controlPlaneJobBindings,
   createControlPlaneJobBinding,
   getControlPlaneJobBinding,
   getControlPlaneProjectOwner,
@@ -83,6 +85,31 @@ export function createControlPlaneBackgroundJobs(
     return job;
   }
   return {
+    internal_DO_NOT_USE_executionPausedUserIds() {
+      const principal = currentControlPlanePrincipal();
+      return db
+        .selectDistinct({ userId: controlPlaneUidMaintenance.userId })
+        .from(controlPlaneUidMaintenance)
+        .innerJoin(
+          controlPlaneJobBindings,
+          eq(
+            controlPlaneJobBindings.ownerUserId,
+            controlPlaneUidMaintenance.userId,
+          ),
+        )
+        .where(
+          and(
+            ne(controlPlaneUidMaintenance.phase, "idle"),
+            inArray(controlPlaneJobBindings.kind, kinds),
+            isNull(controlPlaneJobBindings.deletedAt),
+            principal?.kind === "user"
+              ? eq(controlPlaneUidMaintenance.userId, principal.userId)
+              : undefined,
+          ),
+        )
+        .all()
+        .map((row) => row.userId);
+    },
     get userId() {
       const principal = currentControlPlanePrincipal();
       return principal?.kind === "user" ? principal.userId : null;

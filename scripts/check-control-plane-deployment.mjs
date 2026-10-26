@@ -12,10 +12,16 @@ import { verifyProjectDirectoryAccess } from "./check-control-plane-project-acce
 
 const origin = "http://127.0.0.1:8080";
 const password = "deployment-check-admin-password";
+const nativeMaintenanceOnly =
+  process.env.BB_CONTROL_PLANE_NATIVE_MAINTENANCE_TEST === "1";
 const controller = new AbortController();
 const deadline = setTimeout(
   () => controller.abort(),
-  process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1" ? 660000 : 540000,
+  nativeMaintenanceOnly
+    ? 150000
+    : process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1"
+      ? 660000
+      : 540000,
 );
 const children = new Set();
 const status = await readFile("/proc/self/status", "utf8");
@@ -180,7 +186,9 @@ try {
     signal: controller.signal,
     password,
   });
-  const projectAccess = await verifyProjectDirectoryAccess();
+  const projectAccess = nativeMaintenanceOnly
+    ? null
+    : await verifyProjectDirectoryAccess();
   const qwen = await verifyQwenJobs({
     command,
     launch,
@@ -195,30 +203,36 @@ try {
     launch,
     signal: controller.signal,
     password,
+    nativeMaintenanceOnly,
   });
-  assert.equal(managedRuntime.resumedThreadAfterRestart, true);
-  const projectAccessPersistence = await projectAccess.verifyPersistence();
-  process.stdout.write(
-    JSON.stringify({
-      projectAccess: {
-        ...projectAccess.verification,
-        ...projectAccessPersistence,
-        projectAclStateSurvivesServerRestart: true,
-      },
-      deployedServer: true,
-      nativeUi: true,
-      sqlite: true,
-      cli: true,
-      anonymousDenied: true,
-      assetsProtected: true,
-      logoutClosesSocket: true,
-      restartRevokesSessions: true,
-      users,
-      qwen,
-      managedRuntime,
-      scriptRuntime,
-    }) + "\n",
-  );
+  if (nativeMaintenanceOnly) {
+    console.log(JSON.stringify({ nativeMaintenance: managedRuntime }));
+  } else {
+    assert.ok(projectAccess);
+    assert.equal(managedRuntime.resumedThreadAfterRestart, true);
+    const projectAccessPersistence = await projectAccess.verifyPersistence();
+    process.stdout.write(
+      JSON.stringify({
+        projectAccess: {
+          ...projectAccess.verification,
+          ...projectAccessPersistence,
+          projectAclStateSurvivesServerRestart: true,
+        },
+        deployedServer: true,
+        nativeUi: true,
+        sqlite: true,
+        cli: true,
+        anonymousDenied: true,
+        assetsProtected: true,
+        logoutClosesSocket: true,
+        restartRevokesSessions: true,
+        users,
+        qwen,
+        managedRuntime,
+        scriptRuntime,
+      }) + "\n",
+    );
+  }
 } finally {
   clearTimeout(deadline);
   for (const child of children) child.kill("SIGKILL");
