@@ -1,3 +1,4 @@
+import { verifyMaintenanceQueue } from "./check-control-plane-maintenance-queue.mjs";
 import { createProjectMcpFixture } from "./check-control-plane-project-mcp.mjs";
 import { createProviderLifecycleFixture } from "./check-control-plane-provider-lifecycle.mjs";
 import { createWorkspaceFixture } from "./check-control-plane-workspace.mjs";
@@ -48,6 +49,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   let daemonRequestVerification;
   let personalVerification, personalRestartVerification;
   let approvalVerification;
+  let maintenanceQueueVerification;
   let workspaceVerification, workspaceRestartVerification;
   let providerVerification, providerRestartVerification;
   let mcpVerification,
@@ -534,6 +536,14 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       assert.equal(released.status, 200, JSON.stringify(released.body));
     }
     stage("idle-fixture-runtimes-released");
+    maintenanceQueueVerification = await verifyMaintenanceQueue({
+      db,
+      created,
+      send,
+      token,
+      wait,
+    });
+    stage("maintenance-queue-complete");
 
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
@@ -955,6 +965,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       ...workspaceVerification,
       ...workspaceRestartVerification,
       ...daemonRequestVerification,
+      ...maintenanceQueueVerification,
       ...messageSourceVerification,
       ...messageSourceRestartVerification,
       managedDaemonShutdownRefusesToolsAndApprovals: true,

@@ -110,6 +110,10 @@ try {
     join(directory, "check-control-plane-project-access.mjs"),
   );
   await cp(
+    join(repo, "scripts/check-control-plane-maintenance-queue.mjs"),
+    join(directory, "check-control-plane-maintenance-queue.mjs"),
+  );
+  await cp(
     join(repo, "scripts/check-control-plane-project-maintenance.mjs"),
     join(directory, "check-control-plane-project-maintenance.mjs"),
   );

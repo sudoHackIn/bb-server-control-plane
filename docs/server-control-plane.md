@@ -31,6 +31,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Persist generation-bound root UID launch barriers with typed server begin/status/finish, queued-launch refusal, quiescent/policy-ready release and restart checks. Durable service reconciliation and administrative role surfaces remain pending.
 - [x] Persist per-UID server maintenance intent, enforce non-idle admission in core thread/background/workspace paths, and seal every managed launch with its captured generation. Verify DB/root restart, exact-revision rebase and post-release stale-command refusal. Multi-UID role reconciliation and public administrative surfaces remain pending.
 - [x] Add private durable project-participant reconciliation: atomic cohort reservation, former-writer recovery, confirmed job draining, exact ACL acknowledgement and all-participant DB release after root completion. Verify interrupted release and dead-worker recovery in Docker. Atomic administrative role mutation, startup sweep, queue retention and shared native execution remain pending.
+- [x] Preserve queued input, source identity and retry budgets when the mandatory execution guard observes UID maintenance; verify repeated explicit sends, retry sweeps and late failure handling, plus one native Qwen delivery after release under the advanced generation. Native maintenance draining and accepted-turn settlement remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3219,3 +3220,29 @@ ordinary native Qwen/MCP, workspace/Git, workflows, automations, scripts, restar
 and crash recovery. Eleven host/image artifacts match. The earlier concurrent
 full-deployment attempt hit its existing global deadline and is recorded as failed.
 See [the verification record](control-plane-phase-70-verification.json).
+
+
+## Seventy-first increment: preserve queues during UID maintenance
+
+Internal thread/background authority errors distinguish a temporary maintenance
+refusal from ordinary authorization denial. Automatic and explicit queue dispatch
+release claims and retain the message without spending retry attempts. Captured
+maintenance failures are ignored even if the UID is already idle when handled;
+profile revocation still fails its ordinary authority check.
+
+The deployment scenario uses a real native thread, atomically saved DB intent and
+queue row, and root UID barrier. Repeated normal HTTP queue-send calls preserve
+input and retry state without accepted-turn events. After exact-policy application
+and release, the row executes once in the same native Qwen session with its new
+UID generation. Native pre-start/active/idle drain settlement, intentional pause
+retention, startup recovery and public role controls remain open. See [the queue
+contract](control-plane-project-access.md#queue-retention-during-uid-maintenance-increment-71).
+
+Verification passes 3833 server tests in 393 files and 689 database tests in 63
+files, plus 15 targeted server tests. Existing skips are unchanged. Seven
+typecheck tasks and strict lint/formatting of 12 code files pass. The final complete
+Docker deployment passes 63 tasks in 8m59.462s with unchanged budgets, including
+native Qwen/MCP, workspace/Git, workflows, automations, scripts, restart and crash
+recovery after the real user's generation advance. Eleven host/image artifacts
+and two compiled fixture hashes match the final image. The failed development
+attempts and their fixes are retained in [the verification record](control-plane-phase-71-verification.json).

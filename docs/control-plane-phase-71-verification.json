@@ -1,0 +1,130 @@
+{
+  "scope": "Preserve queued input and retry budgets on captured UID-maintenance refusal; resume the same native Qwen session after exact-policy release",
+  "previousStageCommit": "5d8d137d2",
+  "hostDaemonProtocol": 256,
+  "qwenServerPluginVersion": "0.1.1",
+  "pluginSdkVersion": "0.6.80",
+  "databaseSchemaChanged": false,
+  "publicRoleApiEnabled": false,
+  "contracts": {
+    "temporaryMaintenanceReasonRetainedByThreadAndBackgroundErrorClasses": true,
+    "existingAuthorizationErrorMessagesAndHttpMappingPreserved": true,
+    "projectIdentityAndProfileStillChecked": true,
+    "automaticAndExplicitQueueClaimsReleasedWithoutConsumingInput": true,
+    "failureBudgetAndRetryDeadlinePreserved": true,
+    "capturedMaintenanceRefusalIgnoredAfterUidRelease": true,
+    "currentAuthorityRecheckedOnNextDispatch": true,
+    "acceptedTurnsNotClaimedAsRetainedQueueRows": true
+  },
+  "verification": {
+    "server": {
+      "testsPassed": 3833,
+      "filesPassed": 393,
+      "filesSkipped": 3,
+      "testsSkipped": 1
+    },
+    "database": {
+      "testsPassed": 689,
+      "filesPassed": 63
+    },
+    "fullTurboTasks": 11,
+    "fullTestsDuration": "2m13.352s",
+    "targetedServer": {
+      "testsPassed": 15,
+      "filesPassed": 2,
+      "duration": "16.025s"
+    },
+    "newMaintenanceQueueTests": 5,
+    "typecheckTasks": 7,
+    "strictLintAndFormattingCodeFiles": 12,
+    "productionFrontendChanged": false,
+    "newSkips": 0,
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "519154d4aae64b4cb16f8917d545399503c4a98c4da87fdfc9f7135a7b51d609"
+      },
+      "apps/host-daemon/dist/start-host-daemon.js": {
+        "imagePath": "/opt/bb/apps/host-daemon/dist/start-host-daemon.js",
+        "sha256HostAndImage": "92e2f998162d1ae58250c3f2cb24588ac7658c43a6d6d37b2ba8640d7e958a41"
+      },
+      "deploy/control-plane/launcher/helper.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/helper.py",
+        "sha256HostAndImage": "67647d91b7ccb6b72305afb54e216a6091ad16472f78c6c9ce1f0f1b94d7b724"
+      },
+      "deploy/control-plane/launcher/project_access.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/project_access.py",
+        "sha256HostAndImage": "f915c2df41659e3493c9cdc29651195855e7a6cc65dcf0b0c7cda11206733291"
+      },
+      "deploy/control-plane/launcher/uid_maintenance.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/uid_maintenance.py",
+        "sha256HostAndImage": "95aee69fa67a308204bb5205919633040a74361e110bbc19b67587f414d27ca1"
+      },
+      "packages/db/drizzle/0161_control_plane_project_maintenance.sql": {
+        "imagePath": "/opt/bb/apps/server/dist/drizzle/0161_control_plane_project_maintenance.sql",
+        "sha256HostAndImage": "51cc1702dc5d192150f4ffea65401540aeec9c83dd89415105ac4bf83c857cd5"
+      },
+      "scripts/check-control-plane-maintenance-queue.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-maintenance-queue.mjs",
+        "sha256HostAndImage": "dc4a77d57b3fbe8cb5780d70a4da67387247bfa948c2687575a120fb41dabd94"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "8a189fd9f2cb9e92705d0fcf8c9c982b693c26cc52ef3b85273f2739c8de846d"
+      },
+      "packages/bundled-plugins/dist/provider-qwen-server/package.json": {
+        "imagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/package.json",
+        "sha256HostAndImage": "a6ba545bdc82d302881cc41c8be3892e4734f48731b17fb8e102073cb99eadfc"
+      },
+      "packages/bundled-plugins/dist/provider-qwen-server/dist/host.js": {
+        "imagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/dist/host.js",
+        "sha256HostAndImage": "962be12e8325536c812326279b5b3b57e843b52729c56ad61d01b64d27819261"
+      },
+      "scripts/check-control-plane-workflows.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-workflows.mjs",
+        "sha256HostAndImage": "5125a486be30c2e8da15610b2736cb803847288a5f3e2c8af878bcd99b0a53d1"
+      }
+    },
+    "compiledFixturesImageHashes": {
+      "nativeMaintenance": {
+        "imagePath": "/opt/bb/apps/server/dist/project-access-check.mjs",
+        "sha256": "564cac7cdac593eb611284515727603458d431b18b6740b2c26b286245af1e7a"
+      },
+      "inheritedSource": {
+        "imagePath": "/opt/bb/inherited-source-check.mjs",
+        "sha256": "5aa6ffc81ca6e68a627662e9b1c039d669614c40c2540910eafcd77e1b284f50"
+      }
+    },
+    "dockerDeployment": {
+      "passed": true,
+      "tasks": 63,
+      "duration": "8m59.462s",
+      "budgetsChanged": false,
+      "checks": {
+        "managedMaintenanceQueuedInputAndRetryBudgetPreserved": true,
+        "managedMaintenanceRepeatedExplicitSendDoesNotCreateEvents": true,
+        "managedMaintenanceQueueDeliversOnceAfterRelease": true,
+        "managedMaintenanceQueueResumesSameNativeQwenSession": true,
+        "managedMaintenanceQueueUsesAdvancedUidGeneration": true
+      },
+      "ordinaryNativeQwenMcpAndWorkspaceGit": true,
+      "workflowsAndAutomationsAfterNativeUidGenerationAdvance": true,
+      "serverRestart": true,
+      "crashRecovery": true,
+      "projectParticipantRecoveryRegression": true
+    },
+    "allRecordedArtifactHashesRecheckedAfterFinalDeployment": true
+  },
+  "developmentFixes": [
+    "An existing inherited-source fixture hit SQLITE_BUSY_SNAPSHOT before the new queue scenario; its outer write transaction now reserves immediate before reading.",
+    "The new scenario initially tried ACL application while other native Qwen sessions of the same UID remained loaded. The final scenario stops every owned native thread through the normal HTTP route and requires an empty root job list before applying the policy.",
+    "A raw workflow-isolation fixture omitted the captured UID generation. After the new native-user maintenance probe advanced it, the old default-zero launch correctly failed. Its positive and hostile-cwd/argument probes now capture the current idle DB generation and pass the seal explicitly."
+  ],
+  "limitations": [
+    "Native pre-start/active/idle maintenance settlement and preserving intentional queue pauses still need a production drain adapter.",
+    "An already accepted turn is stored as a durable turn request; its interruption/recovery is separate from retaining an unconsumed queue row.",
+    "Automatic startup reconciliation and atomic administrative grant mutation remain pending.",
+    "Public administrative role API/SDK/CLI/UI and shared native project execution remain closed.",
+    "The Docker scenario uses the normal explicit send route after release; automatic post-maintenance wake with pause preservation belongs to the drain adapter acceptance checks."
+  ]
+}

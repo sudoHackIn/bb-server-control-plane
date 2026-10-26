@@ -366,3 +366,36 @@ native Qwen launch remain subsequent work. A maintenance operation with live
 Qwen/workflow queues still needs its own lifecycle adapter and integration check;
 the Docker cohort scenario uses real script jobs and an empty BB-thread registry. Existing ordinary native runtime deployment checks remain separate.
 Host protocol 256, Qwen Server plugin 0.1.1 and SDK 0.6.80 are unchanged.
+
+## Queue retention during UID maintenance (increment 71)
+
+Thread and background authority errors retain a private `maintenance` reason.
+The ordinary error classes, messages and HTTP authorization mapping stay intact;
+project, identity and profile checks still reject invalid authority before the
+thread guard classifies an otherwise valid request as temporarily blocked.
+Background authority preserves that reason through its existing conversion.
+
+Both automatic queue drain and explicit send release their claims and keep input,
+source identity, waits, scheduled time and retry metadata when the mandatory
+execution guard observes maintenance. A maintenance refusal is not recorded as a
+failed attempt, including when the UID has already been released by the time the
+failure handler runs. After release, dispatch performs the ordinary current-grant
+and source checks again. This does not exempt revoked grants from authorization.
+
+The Docker check reserves a real native user's DB intent and an existing queue
+row atomically, activates its root barrier, and repeatedly invokes the normal BB
+queue-send HTTP route. It checks unchanged input/retry metadata, no accepted-turn
+events and cleared claims. It stops every owned native thread through the normal
+HTTP route and requires no remaining root launcher jobs before applying and
+acknowledging the pinned project policy and finishing maintenance. That same queue
+row runs once through the actual Qwen provider in its existing session under the
+advanced UID generation. Later workflow, automation, restart and crash checks use
+that generation too.
+
+This covers refusals observed by queue admission. An already accepted turn is a
+durable turn request, not a retained queue row; its interruption and recovery still
+need the native maintenance drain integration. Confirming pre-start/active/idle
+runtime settlement, preserving intentional queue pauses and wiring automatic
+startup reconciliation remain pending. Public role mutation and shared native
+execution remain closed. No database schema, host wire contract, SDK API or
+production frontend changes are introduced by this increment.

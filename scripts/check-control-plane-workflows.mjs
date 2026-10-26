@@ -1123,6 +1123,7 @@ export async function verifyNativeWorkflows({
   );
   const evaluatorProof = JSON.parse(evaluatorOutput);
   const processProof = await verifyEvaluatorProcesses({
+    db,
     launch,
     signal,
     wait,
@@ -1504,7 +1505,24 @@ export async function verifyNativeWorkflows({
   };
 }
 
-async function verifyEvaluatorProcesses({ launch, signal, wait, subjects }) {
+async function verifyEvaluatorProcesses({
+  db,
+  launch,
+  signal,
+  wait,
+  subjects,
+}) {
+  const generations = new Map(
+    subjects.map((subject) => {
+      const state = db
+        .prepare(
+          "SELECT generation,phase FROM control_plane_uid_maintenance WHERE user_id=?",
+        )
+        .get(subject.user.id);
+      assert.ok(state === undefined || state.phase === "idle");
+      return [subject.user.id, state?.generation ?? 0];
+    }),
+  );
   const helper = "/opt/bb-control-plane/launcher/helper.py";
   async function invoke(args) {
     const child = launch(["-n", "--", helper, ...args], {
@@ -1529,6 +1547,7 @@ async function verifyEvaluatorProcesses({ launch, signal, wait, subjects }) {
           "launch-workflow",
           subject.user.id,
           String(subject.user.uid),
+          `--uid-generation=${generations.get(subject.user.id)}`,
           jobId,
           subject.project.cwd,
         ],
@@ -1636,6 +1655,7 @@ async function verifyEvaluatorProcesses({ launch, signal, wait, subjects }) {
       "launch-workflow",
       alice.subject.user.id,
       String(alice.subject.user.uid),
+      `--uid-generation=${generations.get(alice.subject.user.id)}`,
       randomUUID(),
       alice.subject.project.cwd,
       "--",
@@ -1648,6 +1668,7 @@ async function verifyEvaluatorProcesses({ launch, signal, wait, subjects }) {
       "launch-workflow",
       alice.subject.user.id,
       String(alice.subject.user.uid),
+      `--uid-generation=${generations.get(alice.subject.user.id)}`,
       randomUUID(),
       bob.subject.project.cwd,
     ]);

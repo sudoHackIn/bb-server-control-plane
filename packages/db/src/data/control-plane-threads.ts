@@ -25,7 +25,9 @@ import {
 import { getControlPlaneProfile } from "./control-plane-profiles.js";
 
 export class ControlPlaneThreadError extends Error {
-  constructor() {
+  constructor(
+    readonly reason: "unauthorized" | "maintenance" = "unauthorized",
+  ) {
     super("Thread execution is not authorized");
     this.name = "ControlPlaneThreadError";
   }
@@ -90,7 +92,6 @@ export function requireControlPlaneThreadOwner(
     project.ownerUserId !== input.ownerUserId ||
     !["owner", "runner"].includes(project.role) ||
     !user?.enabled ||
-    (maintenance !== undefined && maintenance.phase !== "idle") ||
     user.environmentStatus !== "ready"
   )
     throw new ControlPlaneThreadError();
@@ -129,6 +130,8 @@ export function requireControlPlaneThreadOwner(
     : null;
   if (!profile || profile.version.definition.providerId !== input.providerId)
     throw new ControlPlaneThreadError();
+  if (maintenance !== undefined && maintenance.phase !== "idle")
+    throw new ControlPlaneThreadError("maintenance");
   if (
     input.jobBindingId !== undefined ||
     input.originPluginId === CONTROL_PLANE_WORKFLOWS_PLUGIN_ID ||
@@ -151,7 +154,7 @@ export function requireControlPlaneThreadOwner(
         throw new ControlPlaneThreadError();
     } catch (error) {
       if (error instanceof ControlPlaneJobError)
-        throw new ControlPlaneThreadError();
+        throw new ControlPlaneThreadError(error.reason);
       throw error;
     }
   }

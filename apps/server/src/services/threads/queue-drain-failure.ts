@@ -1,3 +1,4 @@
+import { isControlPlaneMaintenanceError } from "../../control-plane/maintenance-errors.js";
 import { isExecutionStoppingError } from "../system/execution-admission.js";
 import {
   setQueuedThreadMessageFailureReason,
@@ -39,7 +40,11 @@ export function recordQueuedMessageDrainFailure(
     thread: Thread;
   },
 ): void {
-  if (isExecutionStoppingError(args.error)) return;
+  if (
+    isExecutionStoppingError(args.error) ||
+    isControlPlaneMaintenanceError(args.error)
+  )
+    return;
   const { host } = dispatchEnvironmentAndHost(deps, args.thread.environmentId);
   if (host !== null && !deps.hub.hasDaemonForHost(host.id)) {
     setQueuedThreadMessageWaitingOn(deps.db, deps.hub, {

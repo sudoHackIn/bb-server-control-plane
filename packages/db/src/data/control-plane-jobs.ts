@@ -20,7 +20,9 @@ import {
 
 type Job = typeof controlPlaneJobBindings.$inferSelect;
 export class ControlPlaneJobError extends Error {
-  constructor() {
+  constructor(
+    readonly reason: "unauthorized" | "maintenance" = "unauthorized",
+  ) {
     super("Background execution is not authorized");
     this.name = "ControlPlaneJobError";
   }
@@ -56,7 +58,7 @@ function authority(db: DbQueryConnection, job: Job, allowDisabled = false) {
     return context;
   } catch (error) {
     if (error instanceof ControlPlaneThreadError)
-      throw new ControlPlaneJobError();
+      throw new ControlPlaneJobError(error.reason);
     throw error;
   }
 }

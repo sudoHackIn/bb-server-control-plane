@@ -5,6 +5,10 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
   createConnection,
+  threads,
+  createQueuedThreadMessage,
+  requireControlPlaneThreadDispatch,
+  reserveControlPlaneUidMaintenance,
   controlPlaneThreads,
   getControlPlaneProjectMaintenance,
   reserveControlPlaneProjectMaintenance,
@@ -34,6 +38,14 @@ import {
 const input = z
   .discriminatedUnion("mode", [
     z.object({ mode: z.literal("seed") }).strict(),
+    z
+      .object({
+        mode: z.literal("native-maintenance"),
+        action: z.enum(["begin", "finish"]),
+        threadId: z.string(),
+        operationId: z.string().uuid(),
+      })
+      .strict(),
     z
       .object({
         mode: z.enum(["group", "group-cut-release"]),
@@ -119,9 +131,108 @@ const input = z
       .strict(),
   ])
   .parse(JSON.parse(process.argv[2] ?? "null"));
-const db = createConnection("/srv/bb/acl-check.db");
+const db = createConnection(
+  input.mode === "native-maintenance"
+    ? "/srv/bb/bb.db"
+    : "/srv/bb/acl-check.db",
+);
 try {
-  if (input.mode === "seed") {
+  if (input.mode === "native-maintenance") {
+    const binding = db
+      .select({ thread: threads, owner: controlPlaneUsers })
+      .from(controlPlaneThreads)
+      .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
+      .innerJoin(
+        controlPlaneUsers,
+        eq(controlPlaneUsers.id, controlPlaneThreads.ownerUserId),
+      )
+      .where(eq(threads.id, input.threadId))
+      .get();
+    if (!binding) throw new Error("Missing native thread");
+    const projectId = binding.thread.projectId;
+    const coordinator = createControlPlaneUidMaintenanceCoordinator(db);
+    if (input.action === "begin") {
+      const context = requireControlPlaneThreadDispatch(db, input.threadId);
+      if (!context) throw new Error("Missing native context");
+      const root = await controlPlaneUidMaintenance(binding.owner, {
+        action: "status",
+      });
+      const queued = db.transaction(
+        () => {
+          const intent = reserveControlPlaneUidMaintenance(db, {
+            userId: binding.owner.id,
+            projectId,
+            operationId: input.operationId,
+            rootGeneration: root.generation,
+          });
+          const row = createQueuedThreadMessage(db, noopNotifier, {
+            threadId: input.threadId,
+            content: [
+              {
+                type: "text",
+                text: "BB_MANAGED_ALICE maintenance preserved queue",
+                mentions: [],
+              },
+            ],
+            model: context.profileVersion.definition.model,
+            reasoningLevel: context.profileVersion.definition.reasoningLevel,
+            permissionMode: "full",
+            serviceTier: "default",
+            senderThreadId: input.threadId,
+            waitingOn: { kind: "thread-busy" },
+            sendAt: null,
+            payload: { kind: "inline" },
+            systemNotice: null,
+          });
+          return { intent, row };
+        },
+        { behavior: "immediate" },
+      );
+      const intent = await coordinator.begin({
+        userId: binding.owner.id,
+        projectId,
+        operationId: input.operationId,
+      });
+      process.stdout.write(JSON.stringify({ intent, queuedId: queued.row.id }));
+    } else {
+      const intent = coordinator.status(binding.owner.id);
+      const policy = getControlPlaneProjectAccessPolicy(db, projectId);
+      if (!intent || intent.operationId !== input.operationId || !policy)
+        throw new Error("Missing native intent");
+      const pendingJobs = await listUidMaintenanceJobs(
+        binding.owner,
+        intent.generation,
+      );
+      if (pendingJobs.length)
+        throw new Error(
+          `Native UID still has ${pendingJobs.length} launcher jobs`,
+        );
+      await prepareProjectAccess({
+        owner: policy.owner,
+        projectId,
+        slug: policy.project.slug,
+        revision: policy.revision,
+        members: policy.members,
+      });
+      if (
+        !acknowledgeControlPlaneProjectAccessPolicy(
+          db,
+          projectId,
+          policy.revision,
+        )
+      )
+        throw new Error("Policy changed");
+      process.stdout.write(
+        JSON.stringify(
+          await coordinator.finish({
+            userId: binding.owner.id,
+            operationId: intent.operationId,
+            generation: intent.generation,
+          }),
+        ),
+      );
+    }
+  } else if (input.mode === "seed") {
     migrate(db);
     const registry = new ControlPlaneRegistry(db, {
       usersRoot: "/srv/agent-users",

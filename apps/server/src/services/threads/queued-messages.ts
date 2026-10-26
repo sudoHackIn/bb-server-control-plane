@@ -1,3 +1,4 @@
+import { isControlPlaneMaintenanceError } from "../../control-plane/maintenance-errors.js";
 import { resolveDispatchAuthor } from "./dispatch-author.js";
 import { assertControlPlaneMessageSources } from "../../control-plane/message-source-authority.js";
 import { assertExecutionAdmission } from "../system/execution-admission.js";
@@ -816,6 +817,7 @@ export async function sendQueuedMessage(
   } catch (error) {
     releaseQueuedMessageClaims(deps, queuedMessages);
     if (
+      isControlPlaneMaintenanceError(error) ||
       isQueuedMessageAutoSendPausedError(error) ||
       error instanceof ThreadContextClearInProgressError
     ) {
@@ -900,6 +902,7 @@ export async function sendNextQueuedMessageIfPresent(
     releaseQueuedMessageClaims(deps, nextQueuedMessages);
     if (
       isQueuedMessageClaimLostError(error) ||
+      isControlPlaneMaintenanceError(error) ||
       isQueuedMessageAutoSendPausedError(error) ||
       error instanceof ThreadContextClearInProgressError
     ) {
