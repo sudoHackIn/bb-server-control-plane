@@ -39,7 +39,6 @@ export function dispatchControlPlaneEnvironmentRead(
   const project = getControlPlaneProject(scope.db, userId, scope.projectId);
   if (
     !project ||
-    project.ownerUserId !== userId ||
     !["owner", "runner"].includes(project.role) ||
     project.hostId !== scope.hostId ||
     project.cwd !== scope.cwd

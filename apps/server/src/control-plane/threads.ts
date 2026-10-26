@@ -179,11 +179,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       )
         throw new ControlPlaneThreadError();
       const project = getControlPlaneProject(deps.db, userId, input.projectId);
-      if (
-        !project ||
-        project.ownerUserId !== userId ||
-        !["owner", "runner"].includes(project.role)
-      )
+      if (!project || !["owner", "runner"].includes(project.role))
         throw new ApiError(404, "project_not_found", "Project not found");
       const version = deps.db
         .select()

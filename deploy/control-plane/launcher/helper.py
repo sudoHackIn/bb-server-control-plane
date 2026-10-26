@@ -148,26 +148,61 @@ def main():
         session_id, cwd, _, *cli_args = args
         if len(cli_args) > 128 or sum(map(len, cli_args)) > 131072:
             raise ValueError('Too many CLI arguments')
-        relative = os.path.relpath(cwd, projects)
-        if relative.startswith('.') or os.path.isabs(relative):
-            raise ValueError('Workspace must be below projectsRoot')
+        if not os.path.isabs(cwd) or os.path.normpath(cwd) != cwd:
+            raise ValueError('Invalid workspace path')
+        relative = os.path.relpath(cwd, root)
+        parts = relative.split(os.sep)
+        if len(parts) < 3 or not re.fullmatch(r'[0-9a-f-]{36}', parts[0]) or parts[1] != 'projects' or any(part in ('', '.', '..') for part in parts):
+            raise ValueError('Workspace must be below a registered projectsRoot')
+        owner_id, _, slug, *subdirs = parts
+        if str(uuid.UUID(owner_id)) != owner_id or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', slug):
+            raise ValueError('Invalid project workspace')
         base_fd = os.open(user_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
         home_fd = os.open('home', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=base_fd)
         info = os.fstat(home_fd)
         if info.st_uid != uid or info.st_gid != uid or stat.S_IMODE(info.st_mode) != 0o700:
             raise ValueError('Invalid HOME ownership or mode')
+        os.close(home_fd)
         if launch_policy is not None:
             runtime_fd = directory(base_fd, 'runtime', 0, 0, 0o711)
             os.close(runtime_fd)
-        fd = os.open('projects', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=base_fd)
-        for part in relative.split('/'):
-            if part in ('', '.', '..'):
-                raise ValueError('Invalid project component')
+        os.close(base_fd)
+        owner_fd = os.open(owner_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
+        fd = os.open('projects', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=owner_fd)
+        os.close(owner_fd)
+        for part in [slug, *subdirs]:
             next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
             os.close(fd)
             fd = next_fd
-        if os.fstat(fd).st_uid != uid:
-            raise ValueError('Project belongs to another identity')
+            if part == slug:
+                project_owner_uid = os.fstat(fd).st_uid
+        if owner_id == user_id:
+            if os.fstat(fd).st_uid != uid:
+                raise ValueError('Project belongs to another identity')
+        else:
+            access_file = '/opt/bb-control-plane/launcher/project_access.py'
+            trusted_file(access_file)
+            access = runpy.run_path(access_file)
+            state = access['STATE']
+            state_fd = access['read_json']
+            directory_fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                info = os.fstat(directory_fd)
+                if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o700:
+                    raise ValueError('Untrusted project access state')
+                matches = [state_fd(directory_fd, name) for name in os.listdir(directory_fd) if name.endswith('.json')]
+            finally:
+                os.close(directory_fd)
+            matches = [record for record in matches if isinstance(record, dict) and record.get('ownerId') == owner_id and record.get('slug') == slug]
+            if len(matches) != 1 or matches[0].get('phase') != 'ready' or {'userId': user_id, 'uid': uid} not in matches[0].get('activeMembers', []):
+                raise ValueError('Project access is not active for this identity')
+            registry_fd = os.open('/var/lib/bb-agent-launcher', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                owner = access['read_json'](registry_fd, owner_id + '.json')
+            finally:
+                os.close(registry_fd)
+            if owner != {'userId': owner_id, 'uid': matches[0].get('ownerUid'), 'gid': matches[0].get('ownerUid')} or project_owner_uid != owner['uid']:
+                raise ValueError('Project owner binding changed')
         os.fchdir(fd)
         return jobs['launch_job'](policy, user_id, uid, home, cwd, session_id, cli_args, lock, launch_policy, {'launch-workflow': 'workflow', 'launch-script': 'script', 'launch-workspace': 'workspace'}.get(operation, 'qwen'), maintenance_generation)
     if operation == 'provision' and not args:

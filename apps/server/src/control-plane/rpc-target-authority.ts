@@ -100,6 +100,10 @@ export function assertControlPlaneRpcTarget(
     command.type === "thread.plan.cancel" ||
     command.type === "thread.rewind.discard" ||
     command.type === "thread.archive";
+  const threadProject =
+    owner && project
+      ? getControlPlaneProject(db, owner.ownerUserId, project.projectId)
+      : null;
   if (
     !thread ||
     !owner ||
@@ -107,7 +111,8 @@ export function assertControlPlaneRpcTarget(
     !project ||
     thread.environmentId !== environment.id ||
     thread.projectId !== project.projectId ||
-    owner.ownerUserId !== project.ownerUserId ||
+    (!cleanup &&
+      (!threadProject || !["owner", "runner"].includes(threadProject.role))) ||
     thread.providerId !== "qwen-server" ||
     environment.hostId !== hostId ||
     project.hostId !== hostId ||

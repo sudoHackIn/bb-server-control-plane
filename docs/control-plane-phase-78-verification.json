@@ -1,0 +1,78 @@
+{
+  "scope": "Runner-owned native Qwen execution in another user's ready shared project",
+  "previousStageCommit": "dbe5d7db6",
+  "contracts": {
+    "runnerCanStartInGrantedForeignProject": true,
+    "viewerDowngradePreventsFurtherTurns": true,
+    "threadAndTimelineRemainPrivateToRunner": true,
+    "qwenUsesRunnerUidAndHomeWithSharedProjectCwd": true,
+    "qwenCannotListProjectOwnersHome": true,
+    "sameQwenSessionContinuesOnSend": true,
+    "directLauncherStillDeniesUngrantedForeignCwd": true,
+    "cleanupRemainsAvailableAfterRevocation": true
+  },
+  "verification": {
+    "focusedDbAndServerTests": {
+      "testsPassed": 19,
+      "filesPassed": 2
+    },
+    "fullDbTests": {
+      "testsPassed": 696,
+      "filesPassed": 63
+    },
+    "fullServerTests": {
+      "testsPassed": 3844,
+      "testsFailed": 3,
+      "testsSkipped": 1,
+      "filesPassed": 393,
+      "filesFailed": 2,
+      "filesSkipped": 3,
+      "passed": false,
+      "failedAreas": [
+        "Existing machine installer daemon-port ownership fixture",
+        "Two existing builtin-plugin source-layout hot-reload/build-status expectations"
+      ],
+      "threeFailuresReproducedInIsolation": true,
+      "initialSandboxRun": {
+        "testsPassed": 3818,
+        "testsFailed": 29,
+        "shortTempPathAndWritableNpmCacheRemoved26Failures": true
+      }
+    },
+    "typecheckTasks": 7,
+    "strictLintAndPrettier": true,
+    "pythonCompileAndDiffCheck": true,
+    "dockerProjectAccess": {
+      "passed": true,
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "20.42s"
+    },
+    "dockerDeployment": {
+      "nativeMaintenanceSuite": {
+        "passed": true,
+        "durationMs": 125122
+      },
+      "compositeSuite": {
+        "passed": true,
+        "durationMs": 583486,
+        "restartAndCrashRecovery": true
+      },
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "11m56.26s",
+      "firstCompositeAttemptFailedAtExistingBobWorkflowWaitUnderParallelFullServerTestLoad": true
+    },
+    "imageArtifacts": {
+      "launcherHelperSha256": "5a9510d5a7c83b611fae43ae4d59d0a8fbf2fd4d471e98b215dc0fe0e3401675",
+      "managedRuntimeCheckSha256": "1191f05db5073279f481be6005ff5e43cc7fe009e64b5ca17a1e281577d1f6d4",
+      "projectAccessCheckSha256": "23e128840a511f26f4fd53ec711f558b0fc036d6d951051bf45468790fb6ad71",
+      "userThreadCheckSha256": "af1ae763ebe2587bfb5f5ddd134397591117273aaa23b198183991be48cac032"
+    }
+  },
+  "limitations": [
+    "The full server test suite is not green; the three remaining failures were reproduced in two files outside the changed stage paths.",
+    "Shared-project workflow, automation and schedule execution remain separate requirements.",
+    "The launcher authorizes foreign project cwd from a root-owned ready ACL record; execution still depends on the current service admission and filesystem ACLs."
+  ]
+}

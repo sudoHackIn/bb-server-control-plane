@@ -1,7 +1,9 @@
 import { expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   controlPlaneThreads,
+  controlPlaneProjectAccess,
+  createThread,
   getStoredTurnRequestEventByRequestId,
   listEvents,
   environments,
@@ -23,6 +25,10 @@ type Command<T extends HostDaemonRpcCommand["type"]> = Extract<
 >;
 import { assertControlPlaneRpcTarget } from "../../src/control-plane/rpc-target-authority.js";
 import { controlPlaneThreadOwnerForCreate } from "../../src/control-plane/thread-authority.js";
+import {
+  dispatchControlPlaneEnvironmentRead,
+  withControlPlaneEnvironmentRead,
+} from "../../src/control-plane/sdk-environment-read.js";
 import { withControlPlaneUser } from "../../src/control-plane/access.js";
 import { callHostOnlineRpc } from "../../src/services/hosts/online-rpc.js";
 import { appendClientTurnEventInTransaction } from "../../src/services/threads/thread-events.js";
@@ -110,6 +116,84 @@ it("binds both users' commands to the saved environment, host, project, provider
         environmentId: bob.environment.id,
         projectId: bob.project.id,
         workspaceContext: { workspacePath: bob.environment.path! },
+      }),
+    ).not.toThrow();
+  });
+});
+
+it("accepts a runner-owned native thread in the shared project and fences revocation", async () => {
+  await withTestHarness(async (harness) => {
+    const { alice, bob, command } = fixture(harness);
+    harness.db
+      .insert(controlPlaneProjectAccess)
+      .values({
+        projectId: alice.project.id,
+        userId: bob.user.id,
+        role: "runner",
+      })
+      .run();
+    expect(
+      withControlPlaneUser(bob.user.id, () =>
+        controlPlaneThreadOwnerForCreate(harness.db, {
+          projectId: alice.project.id,
+          providerId: "qwen-server",
+          controlPlaneProfileVersionId: bob.profile.versionId,
+          environment: {
+            type: "reuse",
+            environmentId: alice.environment.id,
+          },
+        }),
+      ),
+    ).toBe(bob.user.id);
+    expect(
+      withControlPlaneEnvironmentRead(
+        {
+          db: harness.db,
+          userId: bob.user.id,
+          projectId: alice.project.id,
+          hostId: alice.environment.hostId,
+          cwd: alice.environment.path!,
+        },
+        () =>
+          dispatchControlPlaneEnvironmentRead(
+            bob.user.id,
+            new Request(
+              `https://bb.example/api/v1/environments?${new URLSearchParams({ hostId: alice.environment.hostId, path: alice.environment.path! })}`,
+            ),
+          ),
+      )?.status,
+    ).toBe(200);
+    const shared = createThread(harness.db, harness.hub, {
+      projectId: alice.project.id,
+      environmentId: alice.environment.id,
+      providerId: "qwen-server",
+      controlPlaneOwnerUserId: bob.user.id,
+      controlPlaneProfileVersionId: bob.profile.versionId,
+      status: "starting",
+    });
+    const target = { ...command, threadId: shared.id };
+    expect(() =>
+      assertControlPlaneRpcTarget(harness.db, alice.environment.hostId, target),
+    ).not.toThrow();
+    harness.db
+      .update(controlPlaneProjectAccess)
+      .set({ role: "viewer" })
+      .where(
+        and(
+          eq(controlPlaneProjectAccess.projectId, alice.project.id),
+          eq(controlPlaneProjectAccess.userId, bob.user.id),
+        ),
+      )
+      .run();
+    expect(() =>
+      assertControlPlaneRpcTarget(harness.db, alice.environment.hostId, target),
+    ).toThrow();
+    expect(() =>
+      assertControlPlaneRpcTarget(harness.db, alice.environment.hostId, {
+        type: "thread.stop",
+        threadId: shared.id,
+        environmentId: alice.environment.id,
+        intent: "release",
       }),
     ).not.toThrow();
   });

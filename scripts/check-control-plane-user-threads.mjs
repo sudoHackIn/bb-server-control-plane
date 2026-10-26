@@ -71,7 +71,12 @@ export function createUserThreadFixture({ db, users }) {
       );
     const first = !calls.has(marker);
     calls.add(marker);
-    const code = `const fs=require("node:fs");fs.writeFileSync(process.env.HOME+"/bb-personal-${marker}.json",JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()}))${marker.startsWith("worker-hang-") ? ";setInterval(()=>{},1000)" : ""}`;
+    const foreignHome = users.find((user) => user.login === "bob")?.home;
+    const sharedProbe =
+      marker === "shared-alice" && foreignHome
+        ? `,foreignHomeReadable:(()=>{try{fs.readdirSync(${JSON.stringify(foreignHome)});return true}catch{return false}})()`
+        : "";
+    const code = `const fs=require("node:fs");fs.writeFileSync(process.env.HOME+"/bb-personal-${marker}.json",JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()${sharedProbe}}))${marker.startsWith("worker-hang-") ? ";setInterval(()=>{},1000)" : ""}`;
     const delta = first
       ? {
           role: "assistant",

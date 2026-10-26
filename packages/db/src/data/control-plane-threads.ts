@@ -89,7 +89,6 @@ export function requireControlPlaneThreadOwner(
     .get();
   if (
     !project ||
-    project.ownerUserId !== input.ownerUserId ||
     !["owner", "runner"].includes(project.role) ||
     !user?.enabled ||
     user.environmentStatus !== "ready"

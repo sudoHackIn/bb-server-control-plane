@@ -180,7 +180,7 @@ export async function verifyProjectDirectoryAccess() {
       bob.id,
       String(bob.uid),
       randomUUID(),
-      shared.cwd,
+      privateProject.cwd,
       "--",
       "--version",
     ],
@@ -189,7 +189,7 @@ export async function verifyProjectDirectoryAccess() {
     () => false,
     () => true,
   );
-  assert.equal(direct, true, "Legacy launch accepted a foreign cwd");
+  assert.equal(direct, true, "Legacy launch accepted an ungranted foreign cwd");
   await as(
     alice,
     `require("node:fs").writeFileSync(${JSON.stringify(secondary.cwd + "/allowed.txt")},"secondary")`,

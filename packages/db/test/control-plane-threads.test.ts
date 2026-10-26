@@ -394,6 +394,56 @@ it("rechecks grants, user status and workspace bindings on every dispatch and Qw
   }
 });
 
+it("runs a shared project thread as its runner while keeping owner conversations private", () => {
+  const { db, alice, bob, start } = fixture();
+  try {
+    const ownerThread = start();
+    db.insert(controlPlaneProjectAccess)
+      .values({
+        projectId: alice.project.id,
+        userId: bob.user.id,
+        role: "runner",
+      })
+      .run();
+    const sharedThread = start(alice, {
+      controlPlaneOwnerUserId: bob.user.id,
+      controlPlaneProfileVersionId: bob.profile.versionId,
+    });
+    const dispatched = requireControlPlaneThreadDispatch(db, sharedThread.id);
+    expect(dispatched?.user.id).toBe(bob.user.id);
+    expect(dispatched?.project.ownerUserId).toBe(alice.user.id);
+    expect(dispatched?.project.cwd).toBe(alice.cwd);
+    expect(getControlPlaneThread(db, bob.user.id, sharedThread.id)?.id).toBe(
+      sharedThread.id,
+    );
+    expect(
+      getControlPlaneThread(db, alice.user.id, sharedThread.id),
+    ).toBeNull();
+    expect(getControlPlaneThread(db, bob.user.id, ownerThread.id)).toBeNull();
+    expect(() =>
+      start(alice, {
+        controlPlaneOwnerUserId: bob.user.id,
+        controlPlaneProfileVersionId: bob.profile.versionId,
+        parentThreadId: ownerThread.id,
+      }),
+    ).toThrow(ControlPlaneThreadError);
+    db.update(controlPlaneProjectAccess)
+      .set({ role: "viewer" })
+      .where(
+        and(
+          eq(controlPlaneProjectAccess.projectId, alice.project.id),
+          eq(controlPlaneProjectAccess.userId, bob.user.id),
+        ),
+      )
+      .run();
+    expect(() =>
+      requireControlPlaneThreadDispatch(db, sharedThread.id),
+    ).toThrow(ControlPlaneThreadError);
+  } finally {
+    db.$client.close();
+  }
+});
+
 it("lists and reads only owned threads under current project grants without duplicate shared-project rows", () => {
   const { db, alice, bob, start } = fixture();
   try {

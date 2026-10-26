@@ -6,6 +6,7 @@ import { createWorkspaceFixture } from "./check-control-plane-workspace.mjs";
 import { createMessageSourceFixture } from "./check-control-plane-message-sources.mjs";
 import { createDaemonRequestFixture } from "./check-control-plane-daemon-requests.mjs";
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { createUserThreadFixture } from "./check-control-plane-user-threads.mjs";
 import { createApprovalFixture } from "./check-control-plane-approvals.mjs";
 import { createServer } from "node:http";
@@ -676,6 +677,107 @@ export async function verifyManagedRuntime({
       );
       assert.equal(inspected.phase, "complete");
       await command([...cli, "logout"], "", { env: cliEnv });
+      const alice = users.find((user) => user.id === aliceUserId);
+      const bob = users.find((user) => user.login === "bob");
+      const sharedProject = db
+        .prepare("SELECT cwd FROM control_plane_projects WHERE project_id = ?")
+        .get(bobProjectId);
+      if (!alice || !bob || !created[0]?.profileVersionId || !sharedProject)
+        throw new Error("Missing shared Qwen fixture identity or profile");
+      const aliceToken = `agt_${randomBytes(32).toString("base64url")}`;
+      const bobToken = `agt_${randomBytes(32).toString("base64url")}`;
+      const sessionDb = new Database("/srv/bb/bb.db");
+      try {
+        sessionDb.pragma("busy_timeout = 5000");
+        const insert = sessionDb.prepare(
+          "INSERT INTO control_plane_user_sessions (digest,user_id,expires_at) VALUES (?,?,?)",
+        );
+        insert.run(
+          createHash("sha256").update(aliceToken).digest("hex"),
+          alice.id,
+          Date.now() + 300000,
+        );
+        insert.run(
+          createHash("sha256").update(bobToken).digest("hex"),
+          bob.id,
+          Date.now() + 300000,
+        );
+      } finally {
+        sessionDb.close();
+      }
+      const sharedStart = await send(
+        "/control-plane/user/threads",
+        {
+          projectId: bobProjectId,
+          profileVersionId: created[0].profileVersionId,
+          message: "BB_PERSONAL_shared-alice first",
+        },
+        aliceToken,
+      );
+      assert.equal(sharedStart.status, 201, JSON.stringify(sharedStart.body));
+      const sharedThreadId = sharedStart.body.id;
+      await wait(() => {
+        const status = db
+          .prepare("SELECT status FROM threads WHERE id = ?")
+          .get(sharedThreadId)?.status;
+        if (status === "error")
+          throw new Error(
+            `Shared runner thread failed: ${JSON.stringify(db.prepare("SELECT type,data FROM events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 8").all(sharedThreadId))}`,
+          );
+        return status === "idle";
+      }, "shared runner Qwen turn");
+      const sharedOwner = db
+        .prepare("SELECT * FROM control_plane_threads WHERE thread_id = ?")
+        .get(sharedThreadId);
+      assert.equal(sharedOwner.owner_user_id, alice.id);
+      assert.match(sharedOwner.qwen_session_id, /^[0-9a-f-]{36}$/u);
+      assert.deepEqual(
+        JSON.parse(
+          await readFile(`${alice.home}/bb-personal-shared-alice.json`, "utf8"),
+        ),
+        {
+          uid: alice.uid,
+          home: alice.home,
+          cwd: sharedProject.cwd,
+          foreignHomeReadable: false,
+        },
+      );
+      assert.equal(
+        (
+          await send(
+            `/control-plane/user/threads/${sharedThreadId}`,
+            undefined,
+            bobToken,
+          )
+        ).status,
+        404,
+      );
+      const beforeContinuation = db
+        .prepare("SELECT count(*) AS value FROM events WHERE thread_id = ?")
+        .get(sharedThreadId).value;
+      const continued = await send(
+        `/control-plane/user/threads/${sharedThreadId}/send`,
+        { message: "BB_PERSONAL_shared-alice continue" },
+        aliceToken,
+      );
+      assert.equal(continued.status, 200, JSON.stringify(continued.body));
+      await wait(() => {
+        const status = db
+          .prepare("SELECT status FROM threads WHERE id = ?")
+          .get(sharedThreadId)?.status;
+        const count = db
+          .prepare("SELECT count(*) AS value FROM events WHERE thread_id = ?")
+          .get(sharedThreadId).value;
+        return status === "idle" && count >= beforeContinuation + 2;
+      }, "shared runner Qwen continuation");
+      assert.equal(
+        db
+          .prepare(
+            "SELECT qwen_session_id FROM control_plane_threads WHERE thread_id = ?",
+          )
+          .get(sharedThreadId)?.qwen_session_id,
+        sharedOwner.qwen_session_id,
+      );
       stage("admin-role-maintenance-complete");
       verified = true;
       return {
@@ -683,6 +785,7 @@ export async function verifyManagedRuntime({
         adminRoleApiRequiresAuthenticationAndReconcilesRunnerGrant: true,
         adminRoleSdkAndCliReadSetAndInspectSavedOperation: true,
         adminUserDirectoryCliSearchReturnsOnlyMatchingIdentity: true,
+        sharedProjectQwenRunsAsRunnerUidHomeAndResumesPrivateSession: true,
       };
     }
 
