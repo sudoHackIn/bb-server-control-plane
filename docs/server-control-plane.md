@@ -26,6 +26,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [x] Add an internal revision-fenced project ACL primitive and three-UID Docker checks, preserving separate HOME and legacy owner-only launch. Central role integration, concurrent-filesystem safety and shared execution remain pending. See [directory access](control-plane-project-access.md).
+- [x] Persist database-derived desired/applied project ACL revisions, invalidate them transactionally on grants and source/identity changes, and fence stale helper acknowledgements. Verify runner/viewer/removal and restart through the real helper in Docker. Public reconciliation and shared execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3023,3 +3024,38 @@ on recheck without changing code or deadlines. Five host/image artifacts match.
 Browser production code is unchanged. See [the verification
 record](control-plane-phase-65-verification.json). The shared execution feature
 and broader unchecked acceptance requirements remain open.
+
+
+## Sixty-sixth increment: database authority for project ACL policy
+
+Migration 0159 adds per-project desired/applied revisions, backfills existing
+projects and uses SQLite triggers to invalidate policy on grants, identity and
+readiness, owner binding, project/source and host authority changes. Updates and
+rollbacks are atomic, including direct SQL. Safe-integer overflow refuses the
+authority mutation. No-op grants and unrelated display/user changes preserve
+revisions.
+
+A transactional registry snapshot derives enabled, ready runners and excludes
+viewers, forged nonowner owner roles and inactive/inconsistent project sources.
+The trusted receipt writer acknowledges only the exact current revision; changes
+during helper application leave the new policy pending. The Docker fixture uses
+this snapshot for actual helper application, proves runner writes, viewer/removal
+revocation and regrant, then checks persisted policy and stale database/helper
+receipts after BB restart. The helper's immutable root ledger remains a separate
+applied mirror.
+
+This does not expose role mutation or automatic reconciliation. Concurrent
+filesystem safety, active-process coordination and actual shared Qwen admission
+remain open; desired/applied bookkeeping alone does not solve them. See
+[database policy behavior](control-plane-project-access.md#database-policy-revisions-increment-66).
+
+Verification passes all 675 database tests in 61 files, including 16 new policy
+cases, and all 3825 server tests in 391 passed files with unchanged existing skips.
+Six typecheck tasks and strict lint/formatting for seven code files pass. The
+focused Docker task passes 63 tasks in 13.448s; the full rebuilt deployment passes
+63 tasks in 8m29.907s with unchanged budgets, including native Qwen/MCP, shutdown,
+restart and crash recovery. Post-restart helper application preserves the database
+revision and rejects old receipts and grants. Three source/image hashes match,
+including the actual migration; the compiled fixture is also fingerprinted.
+No production frontend changes require a new browser baseline. See
+[the verification record](control-plane-phase-66-verification.json).

@@ -263,6 +263,29 @@ export const controlPlaneProjectAccess = sqliteTable(
   ],
 );
 
+export const controlPlaneProjectPolicies = sqliteTable(
+  "control_plane_project_policies",
+  {
+    projectId: text("project_id")
+      .primaryKey()
+      .references(() => controlPlaneProjects.projectId, {
+        onDelete: "cascade",
+      }),
+    revision: integer("revision").notNull().default(1),
+    appliedRevision: integer("applied_revision"),
+  },
+  (table) => [
+    check(
+      "control_plane_project_policy_revision",
+      sql`${table.revision} >= 1 AND ${table.revision} <= 9007199254740991`,
+    ),
+    check(
+      "control_plane_project_policy_applied",
+      sql`${table.appliedRevision} IS NULL OR (${table.appliedRevision} >= 1 AND ${table.appliedRevision} <= ${table.revision})`,
+    ),
+  ],
+);
+
 export const controlPlaneMcpConnectors = sqliteTable(
   "control_plane_mcp_connectors",
   {

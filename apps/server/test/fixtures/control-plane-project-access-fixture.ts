@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   createConnection,
   migrate,
@@ -7,6 +7,9 @@ import {
   createControlPlaneProject,
   controlPlaneUsers,
   controlPlaneProjects,
+  controlPlaneProjectAccess,
+  getControlPlaneProjectAccessPolicy,
+  acknowledgeControlPlaneProjectAccessPolicy,
   noopNotifier,
   upsertHost,
 } from "@bb/db";
@@ -19,6 +22,24 @@ import {
 const input = z
   .discriminatedUnion("mode", [
     z.object({ mode: z.literal("seed") }).strict(),
+    z
+      .object({
+        mode: z.literal("policy-grant"),
+        projectId: z.string(),
+        userId: z.string().uuid(),
+        role: z.enum(["runner", "viewer"]).nullable(),
+      })
+      .strict(),
+    z
+      .object({ mode: z.literal("policy-apply"), projectId: z.string() })
+      .strict(),
+    z
+      .object({
+        mode: z.literal("policy-receipt"),
+        projectId: z.string(),
+        revision: z.number().int().positive(),
+      })
+      .strict(),
     z
       .object({
         mode: z.literal("sync"),
@@ -50,7 +71,7 @@ try {
     const owner = users[0];
     if (!owner) throw new Error("Missing owner");
     const projects = [];
-    for (const slug of ["shared", "private", "secondary"]) {
+    for (const slug of ["shared", "private", "secondary", "policy"]) {
       await prepareUserProject(owner, slug);
       const result = createControlPlaneProject(db, noopNotifier, {
         userId: owner.id,
@@ -67,6 +88,69 @@ try {
       projects.push(row);
     }
     process.stdout.write(JSON.stringify({ users, projects }));
+  } else if (input.mode === "policy-grant") {
+    if (input.role === null)
+      db.delete(controlPlaneProjectAccess)
+        .where(
+          and(
+            eq(controlPlaneProjectAccess.projectId, input.projectId),
+            eq(controlPlaneProjectAccess.userId, input.userId),
+          ),
+        )
+        .run();
+    else
+      db.insert(controlPlaneProjectAccess)
+        .values({
+          projectId: input.projectId,
+          userId: input.userId,
+          role: input.role,
+        })
+        .onConflictDoUpdate({
+          target: [
+            controlPlaneProjectAccess.projectId,
+            controlPlaneProjectAccess.userId,
+          ],
+          set: { role: input.role },
+        })
+        .run();
+    const policy = getControlPlaneProjectAccessPolicy(db, input.projectId);
+    if (!policy) throw new Error("Missing saved policy");
+    process.stdout.write(
+      JSON.stringify({
+        revision: policy.revision,
+        appliedRevision: policy.appliedRevision,
+        memberIds: policy.members.map((user) => user.id),
+      }),
+    );
+  } else if (input.mode === "policy-apply") {
+    const policy = getControlPlaneProjectAccessPolicy(db, input.projectId);
+    if (!policy) throw new Error("Missing saved policy");
+    const result = await prepareProjectAccess({
+      owner: policy.owner,
+      projectId: policy.project.projectId,
+      slug: policy.project.slug,
+      revision: policy.revision,
+      members: policy.members,
+    });
+    if (
+      !acknowledgeControlPlaneProjectAccessPolicy(
+        db,
+        input.projectId,
+        result.revision,
+      )
+    )
+      throw new Error("Policy changed during application");
+    process.stdout.write(JSON.stringify(result));
+  } else if (input.mode === "policy-receipt") {
+    process.stdout.write(
+      JSON.stringify({
+        accepted: acknowledgeControlPlaneProjectAccessPolicy(
+          db,
+          input.projectId,
+          input.revision,
+        ),
+      }),
+    );
   } else {
     const project = db
       .select()

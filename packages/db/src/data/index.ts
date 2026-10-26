@@ -554,3 +554,5 @@ export {
 } from "./control-plane-thread-relations.js";
 
 export * from "./control-plane-mcp.js";
+
+export * from "./control-plane-project-policy.js";

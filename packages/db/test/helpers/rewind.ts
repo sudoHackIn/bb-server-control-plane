@@ -1,6 +1,18 @@
 import type { DbConnection } from "../../src/index.js";
 
+export function dropProjectPolicySchemaForRewind(db: DbConnection): void {
+  const triggers = db.$client
+    .prepare<[], { name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'cp_project_policy_%'",
+    )
+    .all();
+  for (const trigger of triggers)
+    db.$client.exec(`DROP TRIGGER "${trigger.name.replaceAll('"', '""')}"`);
+  db.$client.exec("DROP TABLE IF EXISTS control_plane_project_policies");
+}
+
 export function dropProjectMcpSchemaForRewind(db: DbConnection): void {
+  dropProjectPolicySchemaForRewind(db);
   db.$client.exec(`
     DROP TABLE IF EXISTS control_plane_mcp_tool_bindings;
     DROP TABLE IF EXISTS control_plane_mcp_connections;

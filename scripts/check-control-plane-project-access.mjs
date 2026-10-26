@@ -312,8 +312,54 @@ export async function verifyProjectDirectoryAccess() {
   assert.equal(record.revision, 5);
   assert.equal(record.phase, "ready");
   assert.deepEqual(record.members, []);
+  const policyProject = seed.projects.find((row) => row.slug === "policy");
+  await as(
+    alice,
+    `require("node:fs").writeFileSync(${JSON.stringify(policyProject.cwd + "/policy.txt")},"saved-policy")`,
+  );
+  const changePolicy = (role) =>
+    service({
+      mode: "policy-grant",
+      projectId: policyProject.projectId,
+      userId: bob.id,
+      role,
+    });
+  const applyPolicy = () =>
+    service({ mode: "policy-apply", projectId: policyProject.projectId });
+  const runner = await changePolicy("runner");
+  assert.deepEqual(runner.memberIds, [bob.id]);
+  assert.notEqual(runner.revision, runner.appliedRevision);
+  assert.equal((await applyPolicy()).revision, runner.revision);
+  await as(
+    bob,
+    `require("node:fs").appendFileSync(${JSON.stringify(policyProject.cwd + "/policy.txt")},"-bob")`,
+  );
+  const viewer = await changePolicy("viewer");
+  assert.ok(viewer.revision > runner.revision);
+  assert.deepEqual(viewer.memberIds, []);
+  assert.deepEqual(
+    await service({
+      mode: "policy-receipt",
+      projectId: policyProject.projectId,
+      revision: runner.revision,
+    }),
+    { accepted: false },
+  );
+  await applyPolicy();
+  await denied(bob, policyProject.cwd + "/policy.txt");
+  await changePolicy("runner");
+  await applyPolicy();
+  await as(
+    bob,
+    `require("node:fs").readFileSync(${JSON.stringify(policyProject.cwd + "/policy.txt")})`,
+  );
+  const removed = await changePolicy(null);
+  await applyPolicy();
+  await denied(bob, policyProject.cwd + "/policy.txt");
   return {
     verification: {
+      projectAclDatabaseRunnerGrantAndViewerDowngrade: true,
+      projectAclDatabaseRemovedGrantRevokesAndStaleReceiptDenied: true,
       projectAclRealMigratedRegistryAndNumericUsers: true,
       projectAclExistingAndInheritedFilesShared: true,
       projectAclHomesAndOtherProjectsUnchanged: true,
@@ -329,6 +375,27 @@ export async function verifyProjectDirectoryAccess() {
       projectAclLargeTreeEntries: 2048,
     },
     async verifyPersistence() {
+      assert.equal((await applyPolicy()).revision, removed.revision);
+      await denied(bob, policyProject.cwd + "/policy.txt");
+      assert.deepEqual(
+        await service({
+          mode: "policy-receipt",
+          projectId: policyProject.projectId,
+          revision: runner.revision,
+        }),
+        { accepted: false },
+      );
+      assert.notEqual(
+        (
+          await raw({
+            projectId: policyProject.projectId,
+            slug: policyProject.slug,
+            revision: runner.revision,
+            members: [{ userId: bob.id, uid: bob.uid }],
+          })
+        ).code,
+        0,
+      );
       await sync(5, []);
       assert.notEqual(
         (
@@ -342,6 +409,7 @@ export async function verifyProjectDirectoryAccess() {
       await denied(bob, shared.cwd + "/existing.txt");
       return {
         projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant: true,
+        projectAclDatabasePolicyPersistsAndStaleReceiptDenied: true,
       };
     },
   };

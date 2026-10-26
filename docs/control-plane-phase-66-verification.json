@@ -1,0 +1,96 @@
+{
+  "scope": "Database-derived desired/applied project ACL policy and exact-revision receipt fencing; production shared execution remains closed",
+  "previousStageCommit": "e398fdedb",
+  "hostDaemonProtocol": 255,
+  "pluginSdkVersion": "0.6.80",
+  "databaseMigrations": ["0159_misty_veda"],
+  "publicContractsChanged": false,
+  "contracts": {
+    "sqliteAuthorityTriggers": 11,
+    "existingProjectsBackfilledUnacknowledged": true,
+    "newProjectPolicyCreatedTransactionally": true,
+    "enabledReadyRunnersOnly": true,
+    "viewersAndForgedNonownerOwnerRolesExcluded": true,
+    "ownerSourceHostAndCanonicalBindingChecked": true,
+    "rawSqlAuthorityChangesInvalidateRevision": true,
+    "grantMoveInvalidatesBothProjects": true,
+    "rollbackPreservesRevisionAndAuthority": true,
+    "overflowRefusesAuthorityMutation": true,
+    "unrelatedAndNoopChangesPreserveRevision": true,
+    "staleAcknowledgementCannotAdvanceAppliedRevision": true,
+    "helperStillValidatesRootIdentityManifest": true
+  },
+  "verification": {
+    "databaseTests": 675,
+    "databaseTestFiles": 61,
+    "newDatabasePolicyTests": 16,
+    "databaseTurboTasks": 3,
+    "databaseDuration": "8.981s",
+    "serverTests": 3825,
+    "serverPassedFiles": 391,
+    "serverSkippedFiles": 3,
+    "serverSkippedTests": 1,
+    "newSkips": 0,
+    "serverTurboTasks": 10,
+    "serverDuration": "2m15.19s",
+    "typecheckTasks": 6,
+    "strictLintAndFormattingCodeFiles": 7,
+    "focusedDockerTurboTasks": 63,
+    "focusedDockerDuration": "13.448s",
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "7d69cb03bb08b7e52ce89af9f4822f8998cfde241aa6d32653ff496c609d4166"
+      },
+      "packages/db/drizzle/0159_misty_veda.sql": {
+        "imagePath": "/opt/bb/apps/server/dist/drizzle/0159_misty_veda.sql",
+        "sha256HostAndImage": "1610a66398eb687c3a7d979fb05fa181edeb4748f8680fd4913470ea209bf4b2"
+      },
+      "scripts/check-control-plane-project-access.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-access.mjs",
+        "sha256HostAndImage": "0ae365bd87a37213e9d486490653130feb71c7604f2534fe178dd36f8bf14d82"
+      }
+    },
+    "compiledFixtureImageSha256": "852f5ad36c78572cf1dfc5f2ee1787e8531f26d18b1511ed92e83a0f587fefd8",
+    "browserBaselineIncrement": 63,
+    "productionFrontendChanged": false,
+    "dockerDeployment": {
+      "passed": true,
+      "tasks": 63,
+      "duration": "8m29.907s",
+      "budgetsChanged": false,
+      "projectAccess": {
+        "projectAclDatabaseRunnerGrantAndViewerDowngrade": true,
+        "projectAclDatabaseRemovedGrantRevokesAndStaleReceiptDenied": true,
+        "projectAclRealMigratedRegistryAndNumericUsers": true,
+        "projectAclExistingAndInheritedFilesShared": true,
+        "projectAclHomesAndOtherProjectsUnchanged": true,
+        "projectAclRevisionConflictAndIdentityRebindDenied": true,
+        "projectAclRevocationAndStaleGrantDenied": true,
+        "projectAclHardlinkAndSymlinkTargetsUntouched": true,
+        "projectAclFailureAndSameRevisionRecovery": true,
+        "projectAclRetainedMemberSurvivesFailedNewGrant": true,
+        "projectAclSiblingGrantTraversalPreserved": true,
+        "projectAclFifoRejectedWithoutBlocking": true,
+        "projectAclAgentCannotInvokeHelper": true,
+        "projectAclLegacyForeignLaunchStillDenied": true,
+        "projectAclLargeTreeEntries": 2048,
+        "projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant": true,
+        "projectAclDatabasePolicyPersistsAndStaleReceiptDenied": true,
+        "projectAclStateSurvivesServerRestart": true
+      },
+      "serverRestart": true,
+      "crashRecovery": true,
+      "nativeDaemonDispatch": true,
+      "nativeMcpRoundTrip": true,
+      "driverLogContainsRemoteFixturePat": false
+    }
+  },
+  "limitations": [
+    "No public role mutation or automatic production policy reconciliation is enabled.",
+    "A database acknowledgement is a trusted-service operation; its caller must verify the actual helper receipt.",
+    "Desired/applied revisions do not freeze filesystem mutations, stop jobs or revoke open descriptors.",
+    "Launcher lifetime leases and acknowledged process quiescence remain prerequisites for public grants and actual shared Qwen execution.",
+    "SQLite migration and helper manifest volumes must be restored consistently; stale revisions never trigger an automatic rollback of the root ledger."
+  ]
+}
