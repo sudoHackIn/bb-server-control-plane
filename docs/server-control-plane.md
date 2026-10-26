@@ -16,7 +16,7 @@ remains the implementation history and backlog.
 - [x] Personal automation creation from a conversation, manual execution, history and result UI exist.
 - [x] Verify the complete path as one production-browser flow starting at login: choose a project and ready agent, exchange messages, create an automation using the same pinned agent version, run it and inspect its result. The Docker browser scenario also denies Bob direct access to Alice's project, agent and automation worker thread.
 - [x] In that flow, verify Alice/Bob isolation for project and agent catalogs, conversation, automation definition, run and result through the UI and limited API/CLI, including direct foreign-ID requests. The browser scenario checks native navigation and foreign URLs, limited API reads and writes, and the authorized per-user CLI against both users' objects.
-- [ ] Verify that the saved agent version and user authority are used at automation execution after a restart, and that loss of project/profile access prevents another run without revealing prior private results.
+- [x] Verify that the saved agent version and user authority are used at automation execution after a restart, and that loss of project/profile access prevents another run without revealing prior private results.
 
 Each completed implementation slice needs focused tests, a real Docker
 deployment check and its own commit. Do not mark the journey complete from
@@ -36,7 +36,12 @@ surfaces, opens foreign conversation, automation and result URLs in the native
 UI, and verifies their private content stays hidden. It tests CLI authorization
 with each user's saved token under the token file's UID. See
 [phase 81 verification](control-plane-phase-81-verification.json). The
-post-restart profile and grant-revocation case remains open.
+post-restart profile and grant-revocation case is verified. After a server
+restart, a manual run uses the saved agent version. Revoking its profile grant
+rejects another run before dispatch while the owner can still read the earlier
+result. A separate shared-project case revokes the runner role and confirms no
+new run starts and another user cannot read the earlier result. See
+[phase 82 verification](control-plane-phase-82-verification.json).
 
 ## Feature sequence
 

@@ -891,8 +891,100 @@ export async function verifyNativeAutomations({
         );
         const scriptRestartProof =
           await scriptAutomation.afterRestart(offlineScript);
+        const restartSource = owned.find(
+          (item) => item.subject.user.id === alice.user.id,
+        );
+        assert.ok(restartSource);
+        const restartRun = await command(
+          alice,
+          "run",
+          restartSource.saved.id,
+          "--idempotency-key",
+          "profile-pin-after-restart",
+        );
+        await completed(restartRun.id);
+        const restartWorker = storage
+          .prepare(
+            "SELECT thread_id AS threadId FROM automation_runs WHERE id=?",
+          )
+          .get(restartRun.id);
+        assert.ok(restartWorker?.threadId);
+        const pinned = db
+          .prepare(
+            "SELECT owner_user_id AS ownerUserId,profile_version_id AS profileVersionId FROM control_plane_threads WHERE thread_id=?",
+          )
+          .get(restartWorker.threadId);
+        assert.equal(pinned.ownerUserId, alice.user.id);
+        assert.equal(pinned.profileVersionId, alice.profile.body.version.id);
+        const priorResult = await userCommand(alice.user.login, [
+          "threads",
+          "result",
+          restartWorker.threadId,
+          "--json",
+        ]);
+        assert.equal(priorResult.thread.id, restartWorker.threadId);
+        const profileId = alice.profile.body.profile.id;
+        await cli([
+          "server",
+          "access",
+          "profiles",
+          "revoke",
+          profileId,
+          alice.user.id,
+          "--json",
+        ]);
+        try {
+          const before = storage
+            .prepare(
+              "SELECT count(*) AS value FROM automation_runs WHERE automation_id=?",
+            )
+            .get(restartSource.saved.id).value;
+          const denied = await userRequest(
+            alice.user.login,
+            `/control-plane/user/automations/${restartSource.saved.id}/run`,
+            { method: "POST", body: {} },
+          );
+          assert.equal(denied.status, 403, JSON.stringify(denied.body));
+          assert.equal(denied.body.code, "job_not_authorized");
+          assert.equal(
+            JSON.stringify(denied.body).includes(
+              "BB_PERSONAL_automation-agent-alice",
+            ),
+            false,
+          );
+          assert.equal(
+            storage
+              .prepare(
+                "SELECT count(*) AS value FROM automation_runs WHERE automation_id=?",
+              )
+              .get(restartSource.saved.id).value,
+            before,
+          );
+          assert.equal(
+            (
+              await userCommand(alice.user.login, [
+                "threads",
+                "result",
+                restartWorker.threadId,
+                "--json",
+              ])
+            ).thread.id,
+            restartWorker.threadId,
+          );
+        } finally {
+          await cli([
+            "server",
+            "access",
+            "profiles",
+            "grant",
+            profileId,
+            alice.user.id,
+            "--json",
+          ]);
+        }
         storage.close();
         return {
+          restartedAutomationUsesSavedProfileVersionAndCurrentGrant: true,
           ...scriptRestartProof,
           personalAutomationActiveOwnerReadsAfterRestart: true,
           personalAutomationLoggedOutOwnerDeniedAfterRestart: true,

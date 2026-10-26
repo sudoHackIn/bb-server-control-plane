@@ -102,7 +102,7 @@ try {
       () => {
         void docker(["rm", "--force", name]);
       },
-      nativeMaintenanceOnly ? 180000 : 960000,
+      nativeMaintenanceOnly ? 330000 : 960000,
     );
     try {
       const code = await docker([

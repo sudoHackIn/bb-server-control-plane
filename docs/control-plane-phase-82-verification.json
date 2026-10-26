@@ -1,0 +1,30 @@
+{
+  "scope": "Pinned agent version and current user authority for automation execution after restart and access revocation",
+  "previousStageCommit": "451e0a111",
+  "contracts": {
+    "restartedAutomationUsesSavedProfileVersionAndCurrentGrant": true,
+    "revokedProfileRejectsNewRunBeforeDispatch": true,
+    "priorResultRemainsAvailableToItsOwnerAfterProfileRevocation": true,
+    "sharedAutomationStopsAfterRunnerRoleRemovalWithoutLeakingResult": true,
+    "foreignUserCannotReadPreviousSharedAutomationResult": true
+  },
+  "verification": {
+    "deploymentCommand": "pnpm exec turbo run test:control-plane-browser --filter=@bb/server",
+    "nativeMaintenanceSuite": {
+      "passed": true,
+      "durationMs": 109724
+    },
+    "compositeSuite": {
+      "passed": true,
+      "durationMs": 664674,
+      "browserJourney": true,
+      "restartAndCrashRecovery": true
+    },
+    "turboTasksPassed": 63,
+    "turboTasksTotal": 63,
+    "turboDuration": "13m0.474s"
+  },
+  "limitations": [
+    "Docker uses deterministic model and integration fixtures; corporate Qwen authentication is outside this test."
+  ]
+}

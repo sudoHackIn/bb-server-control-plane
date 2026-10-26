@@ -17,7 +17,7 @@ const nativeMaintenanceOnly =
 const controller = new AbortController();
 const deadline = setTimeout(
   () => controller.abort(),
-  nativeMaintenanceOnly ? 150000 : 900000,
+  nativeMaintenanceOnly ? 300000 : 900000,
 );
 const children = new Set();
 const status = await readFile("/proc/self/status", "utf8");

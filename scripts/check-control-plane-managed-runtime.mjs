@@ -676,6 +676,24 @@ export async function verifyManagedRuntime({
         ),
       );
       assert.equal(inspected.phase, "complete");
+      await command(
+        ["apps/cli/dist/index.js", "plugin", "enable", "automations", "--json"],
+        "",
+        { env: cliEnv },
+      );
+      await wait(async () => {
+        const listed = JSON.parse(
+          await command(
+            ["apps/cli/dist/index.js", "plugin", "list", "--json"],
+            "",
+            { env: cliEnv },
+          ),
+        );
+        return listed.plugins.some(
+          (plugin) =>
+            plugin.id === "automations" && plugin.status === "running",
+        );
+      }, "native shared-project Automations plugin starts");
       await command([...cli, "logout"], "", { env: cliEnv });
       const alice = users.find((user) => user.id === aliceUserId);
       const bob = users.find((user) => user.login === "bob");
@@ -783,6 +801,102 @@ export async function verifyManagedRuntime({
         wait,
         projectId: bobProjectId,
       });
+      const sharedAutomation = await send(
+        "/control-plane/user/automations",
+        {
+          originThreadId: sharedThreadId,
+          name: "Shared runner automation",
+          prompt: "BB_PERSONAL_shared-alice automation",
+          trigger: { triggerType: "once", runAt: Date.now() + 3600000 },
+        },
+        aliceToken,
+      );
+      assert.equal(
+        sharedAutomation.status,
+        201,
+        JSON.stringify(sharedAutomation.body),
+      );
+      const automationId = sharedAutomation.body.id;
+      const firstRun = await send(
+        `/control-plane/user/automations/${automationId}/run`,
+        {},
+        aliceToken,
+      );
+      assert.equal(firstRun.status, 201, JSON.stringify(firstRun.body));
+      const automationStorage = new Database(
+        "/srv/bb/plugins/automations/data.db",
+        {
+          readonly: true,
+        },
+      );
+      const completedRun = await wait(
+        () => {
+          const row = automationStorage
+            .prepare(
+              "SELECT status,thread_id AS threadId,error FROM automation_runs WHERE id=?",
+            )
+            .get(firstRun.body.id);
+          if (row?.status === "failed") throw new Error(row.error);
+          return row?.status === "succeeded" && row.threadId ? row : null;
+        },
+        "shared runner automation completes",
+        90000,
+      );
+      assert.equal(
+        (
+          await send(
+            `/control-plane/user/threads/${completedRun.threadId}/result`,
+            undefined,
+            bobToken,
+          )
+        ).status,
+        404,
+      );
+      const runCount = automationStorage
+        .prepare(
+          "SELECT count(*) AS value FROM automation_runs WHERE automation_id=?",
+        )
+        .get(automationId).value;
+      const removedRole = await send(
+        `${rolePath}/${aliceUserId}`,
+        { role: null, expectedRevision: afterRole.body.revision },
+        token,
+        "PUT",
+      );
+      assert.ok([200, 202].includes(removedRole.status));
+      await wait(async () => {
+        const status = await send(
+          `${rolePath}/maintenance/${removedRole.body.operationId}`,
+          undefined,
+          token,
+        );
+        return status.status === 200 && status.body.phase === "complete";
+      }, "shared runner role removal completes");
+      const deniedAutomation = await send(
+        `/control-plane/user/automations/${automationId}/run`,
+        {},
+        aliceToken,
+      );
+      assert.equal(deniedAutomation.status, 404);
+      assert.equal(
+        automationStorage
+          .prepare(
+            "SELECT count(*) AS value FROM automation_runs WHERE automation_id=?",
+          )
+          .get(automationId).value,
+        runCount,
+      );
+      assert.equal(
+        (
+          await send(
+            `/control-plane/user/threads/${completedRun.threadId}/result`,
+            undefined,
+            bobToken,
+          )
+        ).status,
+        404,
+      );
+      automationStorage.close();
       stage("admin-role-maintenance-complete");
       verified = true;
       return {
@@ -791,6 +905,7 @@ export async function verifyManagedRuntime({
         adminRoleSdkAndCliReadSetAndInspectSavedOperation: true,
         adminUserDirectoryCliSearchReturnsOnlyMatchingIdentity: true,
         sharedProjectQwenRunsAsRunnerUidHomeAndResumesPrivateSession: true,
+        sharedAutomationStopsAfterRunnerRoleRemovalWithoutLeakingResult: true,
         ...sharedMcpVerification,
       };
     }

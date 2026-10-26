@@ -25,6 +25,7 @@ import { ApiError } from "../errors.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { BUILTIN_AUTOMATIONS_PLUGIN_ID } from "../services/plugins/builtin-registry.js";
 import { withControlPlaneUser } from "./access.js";
+import { withControlPlaneJobAuthority } from "./job-authority.js";
 
 type Operation =
   | "controlPlaneAutomationResult"
@@ -338,6 +339,9 @@ export function createControlPlaneAutomationService(
     },
     async run(userId: string, id: string, input: { idempotencyKey?: string }) {
       const row = await get(userId, id);
+      const saved = binding(userId, id);
+      if (row.enabled)
+        withControlPlaneJobAuthority(db, saved.id, () => undefined);
       const result = z
         .object({ run: controlPlaneAutomationRunSchema.strip() })
         .strict()
