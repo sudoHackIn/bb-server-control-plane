@@ -46,6 +46,10 @@ try {
     ["apps/host-daemon/dist/workspace-worker.mjs", "workspace-worker.mjs"],
     ["scripts/check-control-plane-deployment.mjs", "deployment-check.mjs"],
     [
+      "scripts/check-control-plane-provider-lifecycle.mjs",
+      "check-control-plane-provider-lifecycle.mjs",
+    ],
+    [
       "scripts/check-control-plane-workspace.mjs",
       "check-control-plane-workspace.mjs",
     ],

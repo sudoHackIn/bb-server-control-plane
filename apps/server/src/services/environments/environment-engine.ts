@@ -1,3 +1,7 @@
+import {
+  assertControlPlaneEnvironmentProviderAllowed,
+  controlPlaneEnvironmentProviderRefusal,
+} from "../../control-plane/environment-provider-authority.js";
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { findHostDataDir } from "../lib/entity-lookup.js";
@@ -318,15 +322,72 @@ const PROVIDER_LIFECYCLE_SWEEP_YIELD_INTERVAL = 25;
 
 const RETIRED_CREATE_CONTEXT_FIELDS = { rebuild: false, previous: null };
 
+function assertProviderEnvironmentExecution(
+  deps: Pick<Deps, "db">,
+  environmentId: string,
+  paths: readonly (string | null)[] = [],
+): void {
+  const row = getEnvironment(deps.db, environmentId);
+  if (row === null)
+    throw new ApiError(409, "invalid_request", "Environment no longer exists");
+  assertControlPlaneEnvironmentProviderAllowed(deps.db, row.projectId, [
+    row.path,
+    row.claimPath,
+    ...paths,
+  ]);
+}
+
+function quarantineManagedProviderEnvironment(
+  deps: Pick<Deps, "db" | "hub">,
+  row: EnvironmentRow,
+  removal: boolean,
+): boolean {
+  const refusal = controlPlaneEnvironmentProviderRefusal(
+    deps.db,
+    row.projectId,
+    [row.path, row.claimPath],
+  );
+  if (refusal === null) return false;
+  const message = `Needs operator review: ${refusal}. Provider metadata and files were retained.`;
+  if (removal) {
+    if (
+      row.teardownStatus !== "failed" ||
+      row.teardownMessage !== message ||
+      row.retireAt !== null ||
+      row.status === "creating"
+    )
+      writeEnvironment(deps, row.id, {
+        ...(row.status === "creating"
+          ? { status: "error" as const, statusMessage: message }
+          : {}),
+        teardownStatus: "failed",
+        teardownMessage: message,
+        retireAt: null,
+      });
+  } else if (row.status !== "error" || row.statusMessage !== message) {
+    writeEnvironment(deps, row.id, { status: "error", statusMessage: message });
+  }
+  return true;
+}
+
 async function invokeCreate(
+  deps: Deps,
+  environmentId: string,
   record: PluginEnvironmentProviderRecord,
   context: PluginEnvironmentProviderCreateContext,
 ): Promise<PluginEnvironmentProviderCreateResult> {
   const invocation = await invokeEnvironmentProvider(
     record,
     "environment create",
-    () =>
-      record.provider.create({ ...RETIRED_CREATE_CONTEXT_FIELDS, ...context }),
+    () => {
+      assertProviderEnvironmentExecution(deps, environmentId, [
+        context.projectCheckout?.path ?? null,
+      ]);
+      return record.provider.create({
+        ...RETIRED_CREATE_CONTEXT_FIELDS,
+        ...context,
+      });
+    },
   );
   if (!invocation.ok) throw new Error(invocation.error);
   if (invocation.value === null)
@@ -335,6 +396,8 @@ async function invokeCreate(
 }
 
 async function invokeRestore(
+  deps: Deps,
+  environmentId: string,
   record: PluginEnvironmentProviderRecord,
   context: PluginEnvironmentProviderRestoreContext,
 ): Promise<PluginEnvironmentProviderCreateResult> {
@@ -348,7 +411,13 @@ async function invokeRestore(
   const invocation = await invokeEnvironmentProvider(
     record,
     "environment restore",
-    () => restore(context),
+    () => {
+      assertProviderEnvironmentExecution(deps, environmentId, [
+        context.projectCheckout?.path ?? null,
+        context.previous.environment.path,
+      ]);
+      return restore(context);
+    },
   );
   if (!invocation.ok) throw new Error(invocation.error);
   if (invocation.value === null)
@@ -369,6 +438,9 @@ async function runCreate(
     row.hostId = context.host.id;
   });
   try {
+    assertProviderEnvironmentExecution(deps, provisioning.id, [
+      context.projectCheckout?.path ?? null,
+    ]);
     const previous =
       context.environment === null
         ? null
@@ -391,6 +463,9 @@ async function runCreate(
           .parse(value);
         if (signal.aborted) return false;
         const normalizedPath = canonicalizeHostPath(path);
+        assertProviderEnvironmentExecution(deps, provisioning.id, [
+          normalizedPath,
+        ]);
         if (
           findBlockingEnvironmentPathClaim(deps, {
             hostId: context.host.id,
@@ -414,7 +489,7 @@ async function runCreate(
             resource: provisioning.resource ?? undefined,
           }
         : previous?.status === "destroyed"
-          ? await invokeRestore(record, {
+          ? await invokeRestore(deps, provisioning.id, record, {
               ...operation,
               previous: {
                 environment: toEnvironmentResponse(deps.db, previous),
@@ -424,7 +499,7 @@ async function runCreate(
                     : previous.resource,
               },
             })
-          : await invokeCreate(record, {
+          : await invokeCreate(deps, provisioning.id, record, {
               ...operation,
               suggestedBranchName: context.suggestedBranchName,
             });
@@ -433,6 +508,9 @@ async function runCreate(
       let existingProviderOwnsLifecycle = false;
       try {
         const producedPath = canonicalizeHostPath(result.path);
+        assertProviderEnvironmentExecution(deps, provisioning.id, [
+          producedPath,
+        ]);
         await ensureHostSessionReadyForWork(deps, {
           hostId: context.host.id,
         });
@@ -443,6 +521,9 @@ async function runCreate(
         });
         deps.db.transaction(
           () => {
+            assertProviderEnvironmentExecution(deps, provisioning.id, [
+              producedPath,
+            ]);
             const refusal = foreignProjectOwnedPathRefusal(deps.db, {
               hostId: context.host.id,
               path: producedPath,
@@ -696,6 +777,7 @@ async function runRemove(
     row.teardownStatus !== "running"
   )
     return;
+  if (quarantineManagedProviderEnvironment(deps, row, true)) return;
   const record = getEnvironmentProvider(row.environmentProviderId);
   if (
     record === undefined ||
@@ -706,6 +788,7 @@ async function runRemove(
     );
   await withHostCleanup(deps, row.hostId, async () => {
     try {
+      assertProviderEnvironmentExecution(deps, environmentId);
       if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
         await runEnvironmentHook(deps, {
           projectId: row.projectId,
@@ -728,8 +811,9 @@ async function runRemove(
       const invocation = await invokeEnvironmentProvider(
         record,
         "environment remove",
-        () =>
-          record.provider.remove({
+        () => {
+          assertProviderEnvironmentExecution(deps, environmentId);
+          return record.provider.remove({
             environment:
               row.ownerThreadId !== null
                 ? null
@@ -741,7 +825,8 @@ async function runRemove(
             attempt,
             report: emptyReporter(),
             signal,
-          }),
+          });
+        },
       );
       if (!invocation.ok) throw new Error(invocation.error);
       if (invocation.value === null)
@@ -854,6 +939,7 @@ async function sweepProviderEnvironmentInSlot(
     row.teardownStatus === "removed"
   )
     return;
+  if (quarantineManagedProviderEnvironment(deps, row, true)) return;
   const environmentProviderId = row.environmentProviderId;
   const machineRemoving = getHost(deps.db, row.hostId)?.phase === "removing";
   const shared =
@@ -989,6 +1075,7 @@ export function cleanupEnvironment(deps: Deps, environmentId: string): boolean {
     environmentHasLiveThreads(deps.db, environmentId)
   )
     return false;
+  assertProviderEnvironmentExecution(deps, environmentId);
   if (row.teardownStatus === "removed") return true;
   if (row.teardownAttempt >= MAX_REMOVE_ATTEMPTS)
     throw new ApiError(
@@ -1034,6 +1121,7 @@ export async function recoverEnvironmentCleanup(
           "invalid_request",
           "Recovery requires a failed, unused provider-managed environment",
         );
+      assertProviderEnvironmentExecution(deps, environmentId);
       const workspacePath = row.providerOwnsPath ? row.path : null;
       await withEnvironmentCleanupSlot(deps.db, row.hostId, async () => {
         if (workspacePath !== null) {
@@ -2020,6 +2108,12 @@ export async function advanceEnvironmentProvisioning(
     return;
   }
   if (environment.status === "destroyed") return;
+  if (
+    environment.status === "creating" &&
+    environment.environmentProviderId !== null &&
+    quarantineManagedProviderEnvironment(deps, environment, false)
+  )
+    return;
   if (environment.status === "creating" && map.has(environment.id)) return;
   if (environment.status === "creating") {
     const owner =

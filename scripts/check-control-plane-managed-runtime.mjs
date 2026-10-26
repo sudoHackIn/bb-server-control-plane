@@ -1,3 +1,4 @@
+import { createProviderLifecycleFixture } from "./check-control-plane-provider-lifecycle.mjs";
 import { createWorkspaceFixture } from "./check-control-plane-workspace.mjs";
 import { createMessageSourceFixture } from "./check-control-plane-message-sources.mjs";
 import { createDaemonRequestFixture } from "./check-control-plane-daemon-requests.mjs";
@@ -36,6 +37,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     .prepare("SELECT * FROM control_plane_users ORDER BY uid")
     .all();
   const workspace = createWorkspaceFixture({ db, users });
+  const providers = createProviderLifecycleFixture({ db, users });
   const approvals = createApprovalFixture({ db, users });
   const personal = createUserThreadFixture({ db, users });
   const daemonRequests = createDaemonRequestFixture({ db });
@@ -45,6 +47,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
   let personalVerification, personalRestartVerification;
   let approvalVerification;
   let workspaceVerification, workspaceRestartVerification;
+  let providerVerification, providerRestartVerification;
   const toolCalls = new Map();
   const delegatedResults = new Set();
   let resumedWithHistory = false;
@@ -503,6 +506,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
     stage("native-dispatch-complete");
     workspaceVerification = await workspace.verify({ send, token, wait });
     stage("workspace-complete");
+    providerVerification = await providers.verify({ send, token, wait });
+    stage("provider-lifecycle-complete");
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
       launch,
@@ -714,6 +719,7 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       send,
       token,
     });
+    providerRestartVerification = await providers.afterRestart();
     personalRestartVerification = await personal.afterRestart();
     messageSourceRestartVerification = await messageSources.afterRestart(token);
     stage("message-sources-restart-complete");
@@ -907,6 +913,8 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       homeConfiguredBbMcpCannotOverrideBridge: true,
       nativeUidHomeTools: true,
       nativeTimeline: true,
+      ...providerVerification,
+      ...providerRestartVerification,
       ...workspaceVerification,
       ...workspaceRestartVerification,
       ...daemonRequestVerification,

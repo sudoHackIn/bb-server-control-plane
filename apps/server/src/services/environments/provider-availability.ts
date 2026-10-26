@@ -1,3 +1,7 @@
+import {
+  assertControlPlaneEnvironmentProviderAllowed,
+  controlPlaneEnvironmentProviderRefusal,
+} from "../../control-plane/environment-provider-authority.js";
 import { getProjectSourceByHost } from "@bb/db";
 import { isLocalPathProjectSource, PERSONAL_PROJECT_ID } from "@bb/domain";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -47,6 +51,8 @@ export function environmentProviderMatchesContext(
   record: PluginEnvironmentProviderRecord,
   query: { projectId: string; hostId?: string },
 ): boolean {
+  if (controlPlaneEnvironmentProviderRefusal(deps.db, query.projectId))
+    return false;
   const project = requirePublicProject(deps.db, query.projectId);
   const hosts =
     query.hostId === undefined
@@ -75,9 +81,13 @@ export function environmentProviderMatchesContext(
 }
 
 export async function resolvePluginEnvironmentProviderAvailability(
+  deps: WorkSessionDeps,
   record: PluginEnvironmentProviderRecord,
   context: PluginEnvironmentProviderAvailabilityContext,
 ): Promise<EnvironmentProviderAvailabilityResolution> {
+  assertControlPlaneEnvironmentProviderAllowed(deps.db, context.project.id, [
+    context.projectCheckout?.path ?? null,
+  ]);
   const availability = record.provider.availability;
   if (availability === null) {
     return { ok: true, availability: { status: "available" } };
@@ -86,10 +96,14 @@ export async function resolvePluginEnvironmentProviderAvailability(
     record,
     `"${record.provider.id}" environment provider availability`,
     () =>
-      decideWithinBox(
-        () => Promise.resolve(availability(context)),
-        environmentProviderDecisionTimeoutMs(),
-      ),
+      decideWithinBox(() => {
+        assertControlPlaneEnvironmentProviderAllowed(
+          deps.db,
+          context.project.id,
+          [context.projectCheckout?.path ?? null],
+        );
+        return Promise.resolve(availability(context));
+      }, environmentProviderDecisionTimeoutMs()),
   );
   return parseProviderAvailabilityInvocation(record.pluginId, invocation);
 }

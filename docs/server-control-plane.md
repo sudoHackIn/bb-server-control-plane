@@ -56,6 +56,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Enforce same-owner parent mutations and typed system-notice subjects at queue, canonical commit and transport; retain unknown legacy deferred input without execution in shared-server startup. See [system notices](control-plane-system-notices.md). Complete machine/action and composite background acceptance remain pending.
 - [x] Bind outgoing managed thread RPC targets to registered host/environment/project/cwd and native resume identity at every admission checkpoint; reject provider-owned reuse and service-account hooks in user HOME, recheck managed attachment reads, and refuse daemon-authored canonical input/operations. See [machine boundaries](control-plane-machine-boundaries.md). Native daemon workspace/Git execution is covered by increment 59 below; the complete machine/action audit remains open.
 - [x] Execute registered native HostWorkspace and project inspection/context commands under saved UID/HOME/cwd through a fixed immutable worker, with live grant checks, bounded IPC and acknowledged descendant cleanup. Verify two-user Git hooks, active revocation/regrant and restart in Docker. See [workspace execution](control-plane-workspace-execution.md); legacy provider callbacks and the complete machine/action audit remain pending.
+- [x] Refuse service-account environment provider callbacks for managed projects and registered namespaces at selection, actual invocation and legacy lifecycle recovery; retain resources in stable quarantine and deny explicit cleanup/recovery bypasses. Verify a real operator callback, two-user denial and restart in Docker. See [provider policy](control-plane-environment-provider-policy.md). The complete machine/action and composite background acceptance remain open.
 - [ ] Persist execution-context references for queues, retries, workflows and schedules; recheck permissions at actual execution and after restart. Do not persist browser access tokens for jobs.
 - [ ] Make execution admission mandatory even when a policy plugin is absent. Audit internal daemon RPC so a machine credential cannot impersonate a user or gain global access.
 - [x] Add certificate browser sessions, Origin checks for cookie writes, browser role-switch revocation and personal source-filtered bootstrap pages through SDK/CLI. Native UI access and actual client cache isolation remain pending.
@@ -71,15 +72,14 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [ ] Install plugins centrally; grant users access to approved agent profiles, never arbitrary server-code installation.
 - [ ] Package and verify this fork in the Docker lab, including direct API/CLI bypass attempts from a user's UID, certificate login and user-to-user denials.
 
-## Remaining delivery packages after increment 54
+## Remaining delivery packages after increment 60
 
 Increment numbers describe verified implementation slices, not a fixed count of
-product features. As a planning estimate, the remaining scope including project
-MCP connections and the reusable agent experience needs approximately 6–10
-additional implementation increments after 54, putting the expected final number
-around 60–65. This is not a completion guarantee or a time estimate. Integration
-findings may split packages; close the existing requirements by evidence rather
-than treating a target increment number as acceptance.
+product features. The earlier 60–65 planning estimate no longer describes the
+remaining scope: the machine/workspace audit required additional implementation
+and regression checks. Complete the packages below by their acceptance evidence;
+project MCP and reusable agents still require product implementation, not only
+an audit of existing paths. No final increment number is an acceptance gate.
 
 1. Complete current user/project/profile/source authorization across machine RPC,
    queues and retries. Core thread/turn shutdown admission is implemented in 53;
@@ -90,8 +90,9 @@ than treating a target increment number as acceptance.
    refusal are implemented in 57. The remaining machine/action and composite
    recovery/source acceptance stay open. Increment 58 binds outgoing RPC targets
    and attachment reads; increment 59 implements registered native workspace/Git
-   operations under the saved Unix identity. Legacy provider callbacks and the
-   complete machine/action acceptance remain open.
+   operations under the saved Unix identity. Increment 60 fences core provider
+   callbacks and quarantines legacy managed lifecycle records. The complete
+   machine/action and composite acceptance remain open.
 2. Composite background acceptance: retries, schedules, restart/replay, child
    workers, results/events/notifications, revocation and legacy owner assignment.
 3. Complete supported provider/profile translation and resume behavior, with
@@ -107,7 +108,7 @@ than treating a target increment number as acceptance.
    API/CLI/RPC bypass attempts, revocation and recovery.
 
 Packages overlap and do not replace the unchecked requirements below. Project
-MCP and agent product work can follow 54 without waiting for every audit package;
+MCP and agent product work can proceed without waiting for every audit package;
 new execution paths must enforce authority from their first implementation.
 
 ## Project MCP connections
@@ -2713,3 +2714,49 @@ explicit listener-error handling. Portable compression assertions retain exact
 JSON wire sizes while avoiding Node/zlib-specific gzip byte counts. Earlier
 passing Docker runs were superseded after strengthening descendant checks and
 finalizing IPC/client handling; acceptance uses the complete rebuilt final run.
+
+
+## Sixtieth increment: registered environment provider lifecycle policy
+
+Core no longer invokes service-account environment provider callbacks for managed
+projects or paths inside registered HOME/projects roots. This applies to current
+local-source aliases, proposed/claimed/returned paths, direct selection and
+preparation, recovered contexts, availability and actual plugin invocation after
+asynchronous preparation. Native registered workspace operations retain the
+UID-scoped path from 59; ordinary operator providers remain supported.
+
+Legacy creation/removal is quarantined before callbacks, preserving provider
+metadata, paths, claims and resources. Automatic retries do not consume removal
+attempts, repeated sweeps retain stable state, and explicit cleanup/recovery
+cannot bypass the policy. Lifecycle-first recovery also changes a creating row
+to an explicit error. This does not automatically adopt unknown legacy resources
+or delete user files. See [provider policy and recovery](control-plane-environment-provider-policy.md).
+
+Host protocol remains 254 and Plugin SDK remains 0.6.80. No public wire field,
+SDK member, CLI command or migration is introduced. Arbitrary central plugin code
+remains trusted; the complete machine/action and composite background acceptance
+requirements remain open. Final evidence is recorded in
+[the verification record](control-plane-phase-60-verification.json).
+
+
+Verification passed: 1055 selected server tests in 110 files, including nine
+new migrated-SQLite authority tests, six typecheck tasks and strict lint/formatting
+for all ten changed code files. Existing provider orchestration covers ordinary
+operator behavior. Source mutation at the bridge boundary proves actual-callback
+rechecks for create, restore, remove and availability. No database mocks or lint
+exceptions were added.
+
+The full rebuilt Docker deployment passed all 63 tasks in 8m30.025s, without
+extending budgets. A real central provider executes its ordinary operator remove
+callback. Both users' legacy creating/removal rows and an operator path alias
+inside registered HOME are quarantined, preserve claims/resources, and refuse
+actual native cleanup/recovery HTTP requests. After restart the records remain
+intact and the callback trace still contains only the operator control call.
+Native two-user Qwen and UID-scoped Git, workflow/automation, shutdown and actual
+crash recovery checks remain green. Seven server/daemon/worker/fixture artifact
+hashes match the final image. No frontend changed; browser baseline remains 51.
+
+The initial Docker run exposed sweeper ordering: removal quarantined a creating
+row without changing its creation status. That state transition was corrected,
+covered with lifecycle-first regression ordering, and verified in the complete
+replacement deployment. Test deadlines were not extended.

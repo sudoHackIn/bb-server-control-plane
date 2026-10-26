@@ -144,6 +144,7 @@ async function probeMachineAvailability(
     if (checkout.status !== "available") return checkout;
   }
   const resolution = await resolvePluginEnvironmentProviderAvailability(
+    deps,
     record,
     {
       project,

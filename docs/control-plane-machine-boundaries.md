@@ -97,9 +97,11 @@ foreign/service reads, descendant cleanup, live revocation, regrant and restart.
 See [managed workspace execution](control-plane-workspace-execution.md) for the
 full path, deadlines, immutable artifact installation and limitations.
 
-This does not complete the machine/action inventory: legacy provider recovery,
-arbitrary centrally installed provider callbacks and the composite background
-source/recovery acceptance remain separate work. Trusted operator code and
+Increment 60 additionally fences core provider selection/invocation and legacy
+provider recovery for managed projects and registered namespaces, preserving old
+resources in quarantine. See [provider policy](control-plane-environment-provider-policy.md).
+This does not complete the machine/action inventory or composite background
+source/recovery acceptance; arbitrary centrally installed code remains trusted. Trusted operator code and
 commands outside registered namespaces retain their existing semantics. This is
 not a filesystem jail, network boundary or isolation from a compromised daemon.
 

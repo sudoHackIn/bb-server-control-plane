@@ -1,3 +1,4 @@
+import { assertControlPlaneEnvironmentProviderAllowed } from "../../control-plane/environment-provider-authority.js";
 import {
   getLatestThreadSequence,
   getControlPlaneProjectOwner,
@@ -153,7 +154,9 @@ function toProviderProjectCheckout(
     : null;
 }
 
-export async function parseProviderInputs(
+async function parseProviderInputs(
+  deps: PlacementDeps,
+  projectId: string,
   record: PluginEnvironmentProviderRecord,
   inputs: JsonValue | null,
 ): Promise<JsonValue | null> {
@@ -177,7 +180,10 @@ export async function parseProviderInputs(
   const invocation = await invokeEnvironmentProvider(
     record,
     `"${environmentProviderId}" environment provider inputs`,
-    async () => schema["~standard"].validate(inputs),
+    async () => {
+      assertControlPlaneEnvironmentProviderAllowed(deps.db, projectId);
+      return schema["~standard"].validate(inputs);
+    },
   );
   if (!invocation.ok) {
     throw new ApiError(
@@ -227,6 +233,7 @@ export async function completeProviderSelection(
   projectId: string,
   selection: ProviderSelection,
 ): Promise<ProviderSelection> {
+  assertControlPlaneEnvironmentProviderAllowed(deps.db, projectId);
   const environmentProviderId = record.provider.id;
   const requires = record.provider.requires;
   let machine: EnvironmentMachineSelection;
@@ -255,7 +262,12 @@ export async function completeProviderSelection(
       "does not serve projectless threads",
     );
   }
-  const inputs = await parseProviderInputs(record, selection.inputs);
+  const inputs = await parseProviderInputs(
+    deps,
+    projectId,
+    record,
+    selection.inputs,
+  );
   if (machine.type === "existing") {
     await validateProviderSelection(deps, record, {
       hostId: machine.hostId,
@@ -303,6 +315,7 @@ export async function validateProviderSelection(
   record: PluginEnvironmentProviderRecord,
   args: { hostId: string; inputs: JsonValue | null; projectId: string },
 ): Promise<void> {
+  assertControlPlaneEnvironmentProviderAllowed(deps.db, args.projectId);
   const environmentProviderId = record.provider.id;
   const requires = record.provider.requires;
   const project = requirePublicProject(deps.db, args.projectId);
@@ -345,6 +358,7 @@ export async function validateProviderSelection(
     }
   }
   const availability = await resolvePluginEnvironmentProviderAvailability(
+    deps,
     record,
     {
       project,
@@ -383,19 +397,20 @@ export async function validateProviderSelection(
     record,
     `"${environmentProviderId}" environment provider validate`,
     () =>
-      decideWithinBox(
-        () =>
-          Promise.resolve(
-            validate({
-              project,
-              host,
-              projectCheckout,
-              gitRemote: requires.gitRemote ? project.gitRemoteUrl : null,
-              inputs: args.inputs,
-            }),
-          ),
-        environmentProviderDecisionTimeoutMs(),
-      ),
+      decideWithinBox(() => {
+        assertControlPlaneEnvironmentProviderAllowed(deps.db, args.projectId, [
+          projectCheckout?.path ?? null,
+        ]);
+        return Promise.resolve(
+          validate({
+            project,
+            host,
+            projectCheckout,
+            gitRemote: requires.gitRemote ? project.gitRemoteUrl : null,
+            inputs: args.inputs,
+          }),
+        );
+      }, environmentProviderDecisionTimeoutMs()),
   );
   const failure = !invocation.ok
     ? invocation.error
@@ -627,6 +642,7 @@ export async function resolveProviderOperationContext(
   >,
   record: NonNullable<ReturnType<typeof getEnvironmentProvider>>,
 ): Promise<ProviderOperationContext | null> {
+  assertControlPlaneEnvironmentProviderAllowed(deps.db, thread.projectId);
   const project = requirePublicProject(deps.db, thread.projectId);
   let selection;
   try {
@@ -1142,6 +1158,10 @@ export function prepareProviderEnvironment(
     statusMessage?: string;
   } = {},
 ): ProviderEnvironmentCreationDecision {
+  assertControlPlaneEnvironmentProviderAllowed(deps.db, context.project.id, [
+    context.projectCheckout?.path ?? null,
+    context.environment?.path ?? null,
+  ]);
   requireEnvironmentPlacementHost(deps, context.host.id);
   const now = Date.now();
   const policy = record.provider.policy;
@@ -1295,6 +1315,7 @@ async function providerPlacement(
   environmentProviderId: string,
   requested: ProviderSelection,
 ): Promise<ThreadEnvironmentPlacement> {
+  assertControlPlaneEnvironmentProviderAllowed(deps.db, projectId);
   const selection = await resolveCompleteProviderSelection(
     deps,
     projectId,
@@ -1311,7 +1332,10 @@ async function providerPlacement(
     const invocation = await invokeEnvironmentProvider(
       record,
       "environment existing path",
-      async () => selectPath(selection.inputs),
+      async () => {
+        assertControlPlaneEnvironmentProviderAllowed(deps.db, projectId);
+        return selectPath(selection.inputs);
+      },
     );
     if (!invocation.ok) {
       throw new ApiError(502, "environment_provider_failed", invocation.error);
@@ -1332,6 +1356,7 @@ async function providerPlacement(
     }
     if (parsed.data !== null) {
       const path = canonicalizeHostPath(parsed.data);
+      assertControlPlaneEnvironmentProviderAllowed(deps.db, projectId, [path]);
       const hostId = selection.machine.hostId;
       const refusal = foreignProjectOwnedPathRefusal(deps.db, {
         projectId,

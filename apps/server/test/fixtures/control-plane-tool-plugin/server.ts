@@ -1,8 +1,52 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { z } from "zod";
 
 export default function plugin(bb: BbPluginApi) {
+  bb.experimental_environments.register({
+    id: "control-plane-provider-fixture",
+    displayName: "Provider authority fixture",
+    description: "Disposable provider callback admission probe",
+    icon: "Folder",
+    policy: { retireGraceMs: null },
+    async create(context) {
+      appendFileSync(
+        "/srv/bb/provider-callbacks.ndjson",
+        JSON.stringify({ operation: "create", projectId: context.project.id }) +
+          "\n",
+      );
+      return {
+        status: "failed",
+        message: "Fixture does not provision workspaces",
+      };
+    },
+    async restore(context) {
+      appendFileSync(
+        "/srv/bb/provider-callbacks.ndjson",
+        JSON.stringify({
+          operation: "restore",
+          projectId: context.project.id,
+        }) + "\n",
+      );
+      return {
+        status: "failed",
+        message: "Fixture does not restore workspaces",
+      };
+    },
+    async remove(context) {
+      appendFileSync(
+        "/srv/bb/provider-callbacks.ndjson",
+        JSON.stringify({ operation: "remove", path: context.path }) + "\n",
+      );
+      return { status: "removed" };
+    },
+  });
+
   bb.background.schedule("shutdown-first", "* * * * *", async () => {
     const gate = "/srv/bb/shutdown-cron-hold";
     if (!existsSync(gate)) return;

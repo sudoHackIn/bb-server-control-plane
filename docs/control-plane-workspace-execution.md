@@ -102,9 +102,11 @@ held commit prevents that commit, Bob remains available, and regrant permits a
 subsequent commit. Native Git identity and HEAD survive restart. See
 [the verification record](control-plane-phase-59-verification.json).
 
-This covers the registered native workspace path, not arbitrary centrally
-installed plugin code, every custom provider callback or legacy provider-owned
-workspace recovery. Those remain part of the machine/action audit. The daemon,
+This covers the registered native workspace path. Increment 60 separately
+fences core provider callbacks and quarantines legacy provider-owned lifecycle
+records; see [provider policy](control-plane-environment-provider-policy.md).
+Arbitrary centrally installed plugin code remains trusted, and the complete
+machine/action audit remains open. The daemon,
 root helper and centrally installed plugins remain trusted for their assigned
 runtimes. The deployment uses stock Qwen with a deterministic local model backend;
 it does not verify the corporate certificate SDK. Composite background, project

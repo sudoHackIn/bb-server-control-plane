@@ -1,0 +1,159 @@
+{
+  "scope": "Mandatory registered-namespace environment provider callback admission and retained legacy lifecycle quarantine",
+  "previousStageCommit": "25f6a5a16",
+  "centralDatabaseMigration": null,
+  "hostDaemonProtocol": {
+    "version": 254,
+    "changed": false,
+    "reason": "Core server admission and existing lifecycle/error responses only; no daemon wire changes"
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "managedProjectSelectionAndPreparationDenied": true,
+    "currentLocalProjectSourcesAndProposedClaimedReturnedPathsChecked": true,
+    "registeredHomeAndProjectsRootNamespacesProtected": true,
+    "disabledUserDoesNotReleaseNamespaceForOperatorExecution": true,
+    "unknownNamespaceSubdirectoryNotOperatorFallback": true,
+    "guardBeforeMachineAndProviderInputSelection": true,
+    "guardInsideActualInputValidationAvailabilityRequestValidationAndExistingPathCallbacks": true,
+    "guardInsideActualCreateRestoreRemoveCallbacksAfterBridgePreparation": true,
+    "guardBeforePathBindingAfterHostWait": true,
+    "legacyCreatingRowsEnterExplicitError": true,
+    "lifecycleFirstOrderingAlsoEndsCreatingState": true,
+    "legacyRemovalRetainsPathsClaimsProviderIdentityAndResources": true,
+    "quarantineClearsRetirementAndDoesNotConsumeRemovalRetries": true,
+    "repeatedQuarantinePreservesIdenticalRows": true,
+    "explicitCleanupAndRecoverCannotBypassPolicy": true,
+    "ordinaryOperatorProviderCallbacksOutsideNamespacesPreserved": true,
+    "fixedNativeUidWorkspacePathRemainsSupported": true,
+    "coreEnforcementIndependentOfOptionalPolicyPlugin": true,
+    "publicDeniedStatus": 403,
+    "publicDeniedCode": "managed_environment_provider_denied"
+  },
+  "verification": {
+    "serverTests": 1055,
+    "serverTestFiles": 110,
+    "newRealSqliteProviderAuthorityTests": 9,
+    "realMigratedSqliteUsed": true,
+    "databaseMocksUsed": false,
+    "typecheckTasks": 6,
+    "strictLintChangedCodePassed": true,
+    "formatChangedCodePassed": true,
+    "changedCodeFilesChecked": 10,
+    "lintRuleExceptionsAdded": false,
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/internal test/security test/hosts test/threads test/environments test/services/environments test/services/plugins/plugin-background.test.ts test/services/plugins/plugin-tool-calls.test.ts",
+      "pnpm exec turbo run typecheck --filter=@bb/server",
+      "pnpm exec turbo run test:control-plane-deployment --filter=@bb/server"
+    ],
+    "findings": [
+      {
+        "kind": "implementation",
+        "reason": "Lifecycle removal can quarantine a creating legacy record before the provisioning sweep reaches it, leaving status creating despite denied callbacks",
+        "fix": "Lifecycle-first quarantine also records explicit creation error; regression reverses sweeper order and verifies retained resources"
+      },
+      {
+        "kind": "supersededDeploymentRun",
+        "reason": "Initial real deployment exposed creating-state inconsistency before the normal restart/recovery checks",
+        "fix": "Add lifecycle-first state transition and rebuild for complete final acceptance without extending budgets"
+      }
+    ],
+    "imageHashes": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "bbe416ec95a9b1a3f6bb75f4777bb36174d21747f512708d1e6713d599452cd0"
+      },
+      "apps/server/dist/index.js": {
+        "imagePath": "/opt/bb/apps/server/dist/index.js",
+        "sha256HostAndImage": "d805e33dbe404f83eba01d3dc80b7e940365bd7cb1439178a5ca16cc1881da76"
+      },
+      "apps/host-daemon/dist/start-host-daemon.js": {
+        "imagePath": "/opt/bb/apps/host-daemon/dist/start-host-daemon.js",
+        "sha256HostAndImage": "efff2745df65ea70fd8db0ac33195c6ef3191fc84462ff73d503c7ae9489cf15"
+      },
+      "apps/host-daemon/dist/workspace-worker.mjs": {
+        "imagePath": "/opt/bb-control-plane/workspace-worker.mjs",
+        "sha256HostAndImage": "8dcdae75651fc36062a75278fdeb346e7d4f98c8ef676921e2ed2cc504d40a3b"
+      },
+      "apps/server/test/fixtures/control-plane-tool-plugin/server.ts": {
+        "imagePath": "/srv/bb-tool-fixture/server.ts",
+        "sha256HostAndImage": "5f787b68f41e106c11a8f37aa9af38fcf88078c1eae385b48387842493ba3902"
+      },
+      "scripts/check-control-plane-provider-lifecycle.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-provider-lifecycle.mjs",
+        "sha256HostAndImage": "6e4a5922cb663bdc03504b7b2831d9114ea42759747b234a91493d26c3dee415"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "fd12b240c44e58b11232cec1bc07466b01b709b30356227837e042df32bb1133"
+      }
+    },
+    "docker": {
+      "status": "passed",
+      "budgetsChanged": false,
+      "tasks": 63,
+      "cachedTasks": 59,
+      "duration": "8m30.025s",
+      "stageTimings": [
+        {
+          "controlPlaneStage": "message-sources-complete",
+          "elapsedMs": 12151
+        },
+        {
+          "controlPlaneStage": "native-dispatch-complete",
+          "elapsedMs": 12152
+        },
+        {
+          "controlPlaneStage": "workspace-complete",
+          "elapsedMs": 15462
+        },
+        {
+          "controlPlaneStage": "provider-lifecycle-complete",
+          "elapsedMs": 20391
+        },
+        {
+          "controlPlaneStage": "personal-and-browser-complete",
+          "elapsedMs": 384951
+        },
+        {
+          "controlPlaneStage": "message-sources-restart-complete",
+          "elapsedMs": 422206
+        },
+        {
+          "controlPlaneStage": "restart-complete",
+          "elapsedMs": 423013
+        },
+        {
+          "controlPlaneStage": "crash-recovery-complete",
+          "elapsedMs": 449392
+        }
+      ],
+      "assertions": {
+        "managedLegacyProviderCreationQuarantined": true,
+        "managedProviderRemovalAndRecoveryDenied": true,
+        "registeredNamespaceProviderAliasDenied": true,
+        "ordinaryOperatorProviderCallbackPreserved": true,
+        "managedProviderQuarantineAndResourcesSurviveRestart": true,
+        "managedWorkspaceNativeGitStatusDiffCommitUnderTwoUids": true,
+        "managedWorkspaceGitIdentitySurvivesRestart": true,
+        "nativeUidHomeTools": true,
+        "resumedThreadAfterRestart": true,
+        "crashRecoveryRetainsIdentityAndThreads": true,
+        "coreShutdownAdmissionRejectsCreateSendAndQueue": true,
+        "machineCredentialNotFullPublicApi": true
+      },
+      "stockNativeQwenWithDeterministicLocalModelBackend": true,
+      "nativeTwoOwnerStartResumeAndColdProvisioningPassed": true,
+      "shutdownAndCrashRecoveryPassed": true
+    }
+  },
+  "limitations": [
+    "Central plugins, daemon and root remain trusted for assigned runtimes. This fences core provider invocation, not arbitrary Node filesystem/process calls by central code.",
+    "Existing plugin/filesystem effects are not rolled back if later admission fails.",
+    "Unknown legacy resources are retained for explicit operator review rather than automatically adopted or deleted.",
+    "No new frontend code; actual-browser baseline remains increment 51.",
+    "Stock Qwen and deterministic local model do not verify the corporate certificate SDK contract.",
+    "Full machine/action and composite background acceptance, supported profile translation, project MCP, reusable agents and wider UI/cache requirements remain open."
+  ]
+}
