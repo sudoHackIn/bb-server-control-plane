@@ -55,11 +55,12 @@ def state(directory, user_id, uid):
     return value
 
 
-def require_launch_allowed(user_id, uid):
+def require_launch_allowed(user_id, uid, generation=0):
     directory = LEASES['trusted_directory'](DIRECTORY)
     try:
-        if state(directory, user_id, uid)['blocked']:
-            raise ValueError('UID maintenance is active')
+        current = state(directory, user_id, uid)
+        if current['blocked'] or type(generation) is not int or generation != current['generation']:
+            raise ValueError('UID maintenance is active or launch generation is stale')
     finally:
         os.close(directory)
 

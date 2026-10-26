@@ -3,6 +3,7 @@ import {
   controlPlaneProjects,
   controlPlaneUsers,
   getControlPlaneProject,
+  getControlPlaneUidMaintenance,
   type DbQueryConnection,
 } from "@bb/db";
 import { workspaceExecutionResponseSchema } from "@bb/host-daemon-contract";
@@ -23,8 +24,6 @@ export function resolveControlPlaneWorkspaceExecution(
     .select({
       projectId: controlPlaneProjects.projectId,
       userId: controlPlaneUsers.id,
-      uid: controlPlaneUsers.uid,
-      state: controlPlaneUsers.environmentStatus,
     })
     .from(controlPlaneProjects)
     .innerJoin(
@@ -34,10 +33,20 @@ export function resolveControlPlaneWorkspaceExecution(
     .where(eq(controlPlaneProjects.cwd, cwd))
     .get();
   if (row) {
+    const maintenance = getControlPlaneUidMaintenance(db, row.userId);
     const project = getControlPlaneProject(db, row.userId, row.projectId);
+    const user = db
+      .select()
+      .from(controlPlaneUsers)
+      .where(eq(controlPlaneUsers.id, row.userId))
+      .get();
     if (
       !project ||
-      row.state !== "ready" ||
+      (maintenance !== undefined && maintenance.phase !== "idle") ||
+      project.ownerUserId !== row.userId ||
+      project.cwd !== cwd ||
+      !user?.enabled ||
+      user.environmentStatus !== "ready" ||
       !["owner", "runner"].includes(project.role)
     )
       throw new ApiError(
@@ -49,7 +58,8 @@ export function resolveControlPlaneWorkspaceExecution(
       kind: "managed",
       identity: {
         userId: row.userId,
-        uid: row.uid,
+        uid: user.uid,
+        maintenanceGeneration: maintenance?.generation ?? 0,
         projectId: row.projectId,
         cwd,
       },

@@ -556,3 +556,5 @@ export {
 export * from "./control-plane-mcp.js";
 
 export * from "./control-plane-project-policy.js";
+
+export * from "./control-plane-uid-maintenance.js";

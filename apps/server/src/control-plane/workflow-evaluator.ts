@@ -68,7 +68,17 @@ export async function evaluateControlPlaneWorkflow(
   const args = [context.user.id, String(context.user.uid), jobId];
   const child = spawn(
     "/usr/bin/sudo",
-    ["-n", "--", helper, "launch-workflow", ...args, context.project.cwd],
+    [
+      "-n",
+      "--",
+      helper,
+      "launch-workflow",
+      context.user.id,
+      String(context.user.uid),
+      `--uid-generation=${context.maintenanceGeneration}`,
+      jobId,
+      context.project.cwd,
+    ],
     {
       cwd: "/tmp",
       env: { PATH: "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" },

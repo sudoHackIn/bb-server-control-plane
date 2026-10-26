@@ -1,3 +1,4 @@
+import { createControlPlaneUidMaintenanceCoordinator } from "../../src/control-plane/uid-maintenance.js";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
@@ -23,6 +24,30 @@ import {
 const input = z
   .discriminatedUnion("mode", [
     z.object({ mode: z.literal("seed") }).strict(),
+    z
+      .object({
+        mode: z.literal("coordinate"),
+        userId: z.string().uuid(),
+        request: z.discriminatedUnion("action", [
+          z.object({ action: z.literal("status") }).strict(),
+          z
+            .object({
+              action: z.literal("begin"),
+              projectId: z.string(),
+              operationId: z.string().uuid(),
+              restartGeneration: z.number().int().positive().optional(),
+            })
+            .strict(),
+          z
+            .object({
+              action: z.literal("finish"),
+              operationId: z.string().uuid(),
+              generation: z.number().int().positive(),
+            })
+            .strict(),
+        ]),
+      })
+      .strict(),
     z
       .object({
         mode: z.literal("maintenance"),
@@ -108,6 +133,27 @@ try {
       projects.push(row);
     }
     process.stdout.write(JSON.stringify({ users, projects }));
+  } else if (input.mode === "coordinate") {
+    const coordinator = createControlPlaneUidMaintenanceCoordinator(db);
+    const request = input.request;
+    const result =
+      request.action === "status"
+        ? coordinator.status(input.userId)
+        : request.action === "begin"
+          ? await coordinator.begin({
+              userId: input.userId,
+              projectId: request.projectId,
+              operationId: request.operationId,
+              ...(request.restartGeneration !== undefined
+                ? { restartGeneration: request.restartGeneration }
+                : {}),
+            })
+          : await coordinator.finish({
+              userId: input.userId,
+              operationId: request.operationId,
+              generation: request.generation,
+            });
+    process.stdout.write(JSON.stringify(result ?? null));
   } else if (input.mode === "maintenance") {
     const user = db
       .select()

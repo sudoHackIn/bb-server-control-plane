@@ -57,6 +57,44 @@ export const controlPlaneUsers = sqliteTable("control_plane_users", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const controlPlaneUidMaintenance = sqliteTable(
+  "control_plane_uid_maintenance",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => controlPlaneUsers.id),
+    generation: integer("generation").notNull(),
+    operationId: text("operation_id").notNull(),
+    projectId: text("project_id").references(
+      () => controlPlaneProjects.projectId,
+      { onDelete: "set null" },
+    ),
+    projectRevision: integer("project_revision").notNull(),
+    phase: text("phase", {
+      enum: ["blocking", "blocked", "releasing", "idle"],
+    }).notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("control_plane_uid_maintenance_operation_idx").on(
+      table.operationId,
+      table.userId,
+    ),
+    check(
+      "control_plane_uid_maintenance_generation",
+      sql`${table.generation} >= 1 AND ${table.generation} <= 9007199254740991`,
+    ),
+    check(
+      "control_plane_uid_maintenance_context",
+      sql`${table.phase} = 'idle' OR ${table.projectId} IS NOT NULL`,
+    ),
+    check(
+      "control_plane_uid_maintenance_revision",
+      sql`${table.projectRevision} >= 1 AND ${table.projectRevision} <= 9007199254740991`,
+    ),
+  ],
+);
+
 export const controlPlaneCounters = sqliteTable("control_plane_counters", {
   name: text("name").primaryKey(),
   nextValue: integer("next_value").notNull(),

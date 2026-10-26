@@ -1,0 +1,178 @@
+{
+  "scope": "Durable per-UID DB/root maintenance coordinator, mandatory core admission and launch-generation seals including after release",
+  "previousStageCommit": "e0d7bfa27",
+  "hostDaemonProtocol": 256,
+  "previousDaemonProtocol255Accepted": false,
+  "qwenServerPluginVersion": "0.1.1",
+  "pluginSdkVersion": "0.6.80",
+  "databaseMigrations": ["0160_control_plane_uid_maintenance"],
+  "publicRoleApiEnabled": false,
+  "contracts": {
+    "durableLatestUidIntentBeforeRootBegin": true,
+    "blockingBlockedReleasingIdlePhases": true,
+    "exactCurrentAndAppliedRevisionRequiredForRelease": true,
+    "staleCompletionOrChangedPolicyDoesNotClearDbAdmission": true,
+    "explicitRebaseAdvancesGeneration": true,
+    "generationAndGrantDecisionUseSameCapturedMaintenanceSnapshot": true,
+    "ordinaryAndBackgroundAndWorkspaceAdmissionRefuseNonIdleUid": true,
+    "threadMetadataAndExplicitCleanupRemainAvailable": true,
+    "allLauncherRuntimesReceiveCapturedGeneration": true,
+    "rootRejectsOldGenerationEvenAfterUnblock": true,
+    "legacyUnversionedGenerationZeroOnly": true,
+    "activeProjectContextRetainedAndIdleDeletionPreservesEpoch": true,
+    "privateControllerNotPublicGrantMutation": true
+  },
+  "verification": {
+    "server": {
+      "testsPassed": 3826,
+      "filesPassed": 391,
+      "filesSkipped": 3,
+      "testsSkipped": 1
+    },
+    "hostDaemon": {
+      "testsPassed": 819,
+      "filesPassed": 77,
+      "testsSkipped": 12
+    },
+    "fullServerDaemonTurboTasks": 11,
+    "fullServerDaemonDuration": "2m38.494s",
+    "database": {
+      "testsPassed": 682,
+      "filesPassed": 62,
+      "newMaintenanceTests": 7
+    },
+    "hostDaemonContract": {
+      "testsPassed": 77,
+      "filesPassed": 5
+    },
+    "qwenServerPlugin": {
+      "testsPassed": 31,
+      "filesPassed": 8
+    },
+    "dataContractProviderTurboTasks": 8,
+    "dataContractProviderDuration": "7.566s",
+    "typecheckTasks": 8,
+    "strictLintAndFormattingCodeFiles": 24,
+    "pythonModulesCompiled": 3,
+    "newSkips": 0,
+    "dockerDeployment": {
+      "passed": true,
+      "tasks": 63,
+      "duration": "9m30.564s",
+      "budgetsChanged": false,
+      "checks": {
+        "projectUidMaintenanceCanBeginWhileJobsRun": true,
+        "projectUidMaintenanceIdentityAndGenerationValidation": true,
+        "projectUidMaintenancePrivateStateNotAgentWritable": true,
+        "projectUidMaintenanceBlocksQueuedLaunchBeforeJobRegistration": true,
+        "projectUidMaintenanceOldCompletionCannotReleaseNewGeneration": true,
+        "projectUidMaintenanceIdempotentBeginAndFinish": true,
+        "projectUidMaintenanceClosedGenerationCannotReopen": true,
+        "projectUidMaintenancePendingPolicyCannotUnblockUid": true,
+        "projectUidMaintenanceRemainsBlockedAfterAclApplication": true,
+        "projectAclManagedUidLifetimeLeasesSharedByTwoJobs": true,
+        "projectAclLiveHeldDescriptorJobsBlockMutationUntilBothStopped": true,
+        "projectAclStaleSupervisorLeaseBlocksMutation": true,
+        "projectAclUnmanagedUidProcessBlocksMutation": true,
+        "projectAclExclusiveLeaseRefusesNewLaunchBeforeJobRegistration": true,
+        "projectAclOtherUidLaunchRemainsAvailable": true,
+        "projectAclStoppedTombstoneDoesNotBlockMutation": true,
+        "projectAclPendingPriorWritersRemainInCleanupBarrier": true,
+        "projectAclLegacyPendingWriterStateRequiresReview": true,
+        "projectAclLegacyReadyAdoptionRequiresAllRegisteredUsersIdle": true,
+        "projectAclBusyAttemptsPreservePolicyAndAcl": true,
+        "projectAclDatabaseRunnerGrantAndViewerDowngrade": true,
+        "projectAclDatabaseRemovedGrantRevokesAndStaleReceiptDenied": true,
+        "projectAclRealMigratedRegistryAndNumericUsers": true,
+        "projectAclExistingAndInheritedFilesShared": true,
+        "projectAclHomesAndOtherProjectsUnchanged": true,
+        "projectAclRevisionConflictAndIdentityRebindDenied": true,
+        "projectAclRevocationAndStaleGrantDenied": true,
+        "projectAclHardlinkAndSymlinkTargetsUntouched": true,
+        "projectAclFailureAndSameRevisionRecovery": true,
+        "projectAclRetainedMemberSurvivesFailedNewGrant": true,
+        "projectAclSiblingGrantTraversalPreserved": true,
+        "projectAclFifoRejectedWithoutBlocking": true,
+        "projectAclAgentCannotInvokeHelper": true,
+        "projectAclLegacyForeignLaunchStillDenied": true,
+        "projectAclLargeTreeEntries": 2048,
+        "projectUidMaintenancePersistsAcrossCallingProcessRestart": true,
+        "projectUidMaintenanceHighWaterAndHomePreserved": true,
+        "projectUidMaintenanceDbIntentSurvivesRestart": true,
+        "projectUidMaintenanceOldLaunchRejectedAfterRelease": true,
+        "projectUidMaintenanceCoordinatorRevisionChangeRequiresRebase": true,
+        "projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant": true,
+        "projectAclDatabasePolicyPersistsAndStaleReceiptDenied": true,
+        "projectAclStateSurvivesServerRestart": true
+      },
+      "nativeQwenMcp": true,
+      "nativeWorkspaceGit": true,
+      "serverRestart": true,
+      "crashRecovery": true,
+      "savedDbIntentAndRootBarrierVerifiedAfterBbRestart": true,
+      "preparedRequestHeldAcrossRestartThenRejectedAfterRelease": true,
+      "driverLogContainsRemoteFixturePat": false
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "3c60c7defd69029170dc900228d87eb71aa41097b6893dc6d2a68936c0661618"
+      },
+      "apps/host-daemon/dist/start-host-daemon.js": {
+        "imagePath": "/opt/bb/apps/host-daemon/dist/start-host-daemon.js",
+        "sha256HostAndImage": "92e2f998162d1ae58250c3f2cb24588ac7658c43a6d6d37b2ba8640d7e958a41"
+      },
+      "deploy/control-plane/launcher/helper.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/helper.py",
+        "sha256HostAndImage": "fee219306242b0015a00e687f47f9bd4e2c585d87b4b35d23be279d6b37335a2"
+      },
+      "deploy/control-plane/launcher/jobs.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/jobs.py",
+        "sha256HostAndImage": "0e6ba8d33552dc2d92061702840f02e2616fc772d845ee231344aded7c0cfb06"
+      },
+      "deploy/control-plane/launcher/uid_maintenance.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/uid_maintenance.py",
+        "sha256HostAndImage": "0f01bfe4723f71e19acfd8e1558bf84be49e4d88dc4b049cd8d60a96008926b8"
+      },
+      "packages/db/drizzle/0160_control_plane_uid_maintenance.sql": {
+        "imagePath": "/opt/bb/apps/server/dist/drizzle/0160_control_plane_uid_maintenance.sql",
+        "sha256HostAndImage": "1744866b8f4c29d962102fc0a916ac84c9d56826095051d5e6e6cb8b86d28bdd"
+      },
+      "scripts/check-control-plane-uid-leases.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-uid-leases.mjs",
+        "sha256HostAndImage": "009f84644fc542e1a46c591e32ad2a0a5c6d5cd52d5a814eaa72f873411fe638"
+      },
+      "packages/bundled-plugins/dist/provider-qwen-server/package.json": {
+        "imagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/package.json",
+        "sha256HostAndImage": "a6ba545bdc82d302881cc41c8be3892e4734f48731b17fb8e102073cb99eadfc"
+      },
+      "packages/bundled-plugins/dist/provider-qwen-server/dist/host.js": {
+        "imagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/dist/host.js",
+        "sha256HostAndImage": "962be12e8325536c812326279b5b3b57e843b52729c56ad61d01b64d27819261"
+      }
+    },
+    "browserBaselineIncrement": 63,
+    "productionFrontendChanged": false,
+    "finalDocumentationPackaging": {
+      "providerSkillMatchesImage": true,
+      "skillSha256": "d3f0e2becbe4d98eadc35d1ccb8cb574981daa8bd10a811bce46b64186001d70",
+      "skillImagePath": "/opt/bb/apps/server/dist/builtin-plugins/provider-qwen-server/skills/qwen-server/SKILL.md",
+      "allNineExecutableMigrationManifestHashesUnchanged": true,
+      "focusedFinalDockerTasks": 63,
+      "focusedFinalDockerDuration": "19.323s"
+    }
+  },
+  "developmentFixes": [
+    "Updated the exact Qwen context expectation for the required generation field.",
+    "Regenerated the uncommitted migration to preserve UID epochs after idle project deletion while retaining active context.",
+    "Rewind fixture removes this and later migration history before replay rather than leaving a later timestamp applied.",
+    "An earlier deployment was intentionally stopped for the schema correction; only the final rebuilt deployment is claimed green."
+  ],
+  "limitations": [
+    "The private coordinator controls one UID and one pinned project policy; it does not yet reserve all historical/current participants atomically with a role mutation.",
+    "Runtime draining, automatic project reconciliation, startup sweep, queue-specific retention and administrative API/SDK/CLI/UI remain pending.",
+    "Latest UID operation state is not a full administrative history.",
+    "No public shared-project Qwen launch is enabled.",
+    "Root/service code remains trusted and a cross-database/filesystem exactly-once transaction is not claimed."
+  ]
+}

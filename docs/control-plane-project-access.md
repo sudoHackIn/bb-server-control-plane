@@ -263,3 +263,60 @@ must recover incomplete operations and root high-water generations after restart
 and expose current maintenance to mandatory server admission so rejected starts
 are retained appropriately. The root marker closes the launcher gap but is not
 that controller or an end-user grant API.
+
+## Durable server intent and launch generations (increment 69)
+
+Migration 0160 stores each UID's latest maintenance operation, generation, pinned
+project revision and phase (`blocking`, `blocked`, `releasing`, `idle`). A missing
+row means initial generation zero. The private per-UID coordinator reserves the
+blocking DB row before beginning the root barrier, using the maximum saved/root
+high-water generation plus one. It checkpoints the root begin and requires an
+exact current/applied project revision before release. Root finish is followed
+by another transactional DB revision check before admission becomes idle.
+
+The same operation can retry an interrupted begin or finish; closed operation IDs
+cannot reopen. A changed policy or superseded generation keeps admission blocked.
+Explicit restart of the current generation pins the new policy revision and
+allocates a higher generation; old completion receipts cannot release it.
+Active operations retain their project context. Deleting a completed project
+clears only that nullable reference and preserves the UID generation, preventing
+an old context from becoming valid again. This table is latest-operation state,
+not a complete administrative operation history.
+
+Managed thread creation/dispatch/context resolution, background job authority and
+workspace execution refuse non-idle UID intent. Thread metadata and explicit
+cleanup/stop remain available. Authority captures the maintenance row before
+checking current grants and emits that same generation; it does not combine an
+old grant check with a freshly reread pending generation. Workspace resolution
+also revalidates current owner, canonical cwd and user readiness.
+
+Every Qwen, workflow, script and workspace launch now carries an explicit
+`--uid-generation` prefix through the trusted launcher. Root admission compares
+it with the saved UID generation even after the barrier has been released. This
+closes the delayed-command gap: an old prepared request cannot start with stale
+authority merely because maintenance is over. Unversioned commands retain only
+generation-zero compatibility before the UID's first maintenance operation.
+Stop commands do not require a launch generation.
+
+The workspace identity wire field is required, so host daemon protocol is 256;
+255 is refused. The Qwen Server plugin is 0.1.1 and requires the corresponding
+private context field. Deploy server, daemon, helper modules and provider together.
+The Plugin SDK API version is unchanged; stock Qwen SDK behavior is unchanged.
+
+Docker reserves a DB/root operation before the BB restart matrix. After restart,
+the private coordinator reads its saved blocked phase, verifies current policy,
+releases it and rejects a command prepared before that operation even though root
+is now unblocked. A fresh job preserves UID/HOME. A subsequent policy change
+refuses completion until explicit rebase and exact revision acknowledgement.
+Real migrated-SQLite tests cover ordinary/background admission, metadata privacy,
+other-user execution, phase/generation CAS, overflow, rollback, repeated migration
+and active/completed project deletion behavior.
+
+This remains a private per-UID controller. Public role mutation, multi-UID project
+reconciliation and shared native launch remain closed. The next integration must
+resolve all saved/current writers, reserve their intents atomically with the
+administrative grant change, drain runtimes through supported lifecycle, apply
+and acknowledge the pinned filesystem policy, finish all participants and resume
+pending operations at startup. It must retain queued work appropriately and ship
+administrative API/SDK/CLI/UI controls. None of those end-user surfaces are implied
+by the new internal coordinator.

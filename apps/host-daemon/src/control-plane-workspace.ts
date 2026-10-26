@@ -135,6 +135,7 @@ async function invoke(
               "launch-workspace",
               identity.userId,
               String(identity.uid),
+              `--uid-generation=${identity.maintenanceGeneration}`,
               jobId,
               identity.cwd,
             ],

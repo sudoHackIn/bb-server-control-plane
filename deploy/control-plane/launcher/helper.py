@@ -129,6 +129,12 @@ def main():
         jobs = runpy.run_path(jobs_file)
         if operation == 'stop' and len(args) == 1:
             return jobs['stop_job'](user_id, uid, args[0], lock)
+        maintenance_generation = 0
+        if operation != 'stop' and args and args[0].startswith('--uid-generation='):
+            raw_generation = args.pop(0).removeprefix('--uid-generation=')
+            if not re.fullmatch(r'0|[1-9][0-9]{0,15}', raw_generation) or int(raw_generation) > 9007199254740991:
+                raise ValueError('Invalid launch generation')
+            maintenance_generation = int(raw_generation)
         launch_policy = None
         if operation in ('launch-workflow', 'launch-script', 'launch-workspace') and len(args) == 2:
             args = [*args, '--']
@@ -163,7 +169,7 @@ def main():
         if os.fstat(fd).st_uid != uid:
             raise ValueError('Project belongs to another identity')
         os.fchdir(fd)
-        return jobs['launch_job'](policy, user_id, uid, home, cwd, session_id, cli_args, lock, launch_policy, {'launch-workflow': 'workflow', 'launch-script': 'script', 'launch-workspace': 'workspace'}.get(operation, 'qwen'))
+        return jobs['launch_job'](policy, user_id, uid, home, cwd, session_id, cli_args, lock, launch_policy, {'launch-workflow': 'workflow', 'launch-script': 'script', 'launch-workspace': 'workspace'}.get(operation, 'qwen'), maintenance_generation)
     if operation == 'provision' and not args:
 
         base_fd = directory(root_fd, user_id, 0, 0, 0o711)

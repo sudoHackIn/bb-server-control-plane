@@ -96,6 +96,7 @@ it("serves only validated owned thread/session bindings on a private Unix socket
         id: user.id,
         user: user.login,
         uid: user.uid,
+        maintenanceGeneration: 0,
         gid: user.gid,
         home: user.home,
         profile: {

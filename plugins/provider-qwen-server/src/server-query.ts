@@ -87,6 +87,7 @@ class ProcessTransport implements Transport {
         "launch-policy",
         context.id,
         String(context.uid),
+        `--uid-generation=${context.maintenanceGeneration}`,
         this.jobId,
         context.cwd,
       ],

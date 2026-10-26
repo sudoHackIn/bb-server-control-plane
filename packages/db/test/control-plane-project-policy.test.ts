@@ -313,9 +313,11 @@ it("backfills old registered projects and preserves applied revisions across rep
     .digest("hex");
   expect(
     f.db.$client
-      .prepare("DELETE FROM __drizzle_migrations WHERE hash = ?")
+      .prepare(
+        "DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations WHERE hash = ?)",
+      )
       .run(hash).changes,
-  ).toBe(1);
+  ).toBeGreaterThanOrEqual(1);
   migrate(f.db);
   expect(f.policy().revision).toBe(1);
   expect(f.policy().members.map((u) => u.id)).toEqual([f.bob.id]);

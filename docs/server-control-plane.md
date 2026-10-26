@@ -29,6 +29,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Persist database-derived desired/applied project ACL revisions, invalidate them transactionally on grants and source/identity changes, and fence stale helper acknowledgements. Verify runner/viewer/removal and restart through the real helper in Docker. Public reconciliation and shared execution remain pending.
 - [x] Hold per-UID lifetime leases for every managed launcher job and require exclusive, quiescent writer leases before ACL mutation; retain former writers through pending recovery. Verify real namespaced jobs, cleanup/stale records, busy immutability and legacy adoption in Docker. Service admission fences and public shared execution remain pending.
 - [x] Persist generation-bound root UID launch barriers with typed server begin/status/finish, queued-launch refusal, quiescent/policy-ready release and restart checks. Durable service reconciliation and administrative role surfaces remain pending.
+- [x] Persist per-UID server maintenance intent, enforce non-idle admission in core thread/background/workspace paths, and seal every managed launch with its captured generation. Verify DB/root restart, exact-revision rebase and post-release stale-command refusal. Multi-UID role reconciliation and public administrative surfaces remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3135,3 +3136,56 @@ post-restart helper check: it still rejects launch, rejects stale finish, then
 allows an explicitly released job under the same UID with preserved HOME content.
 Six source/image hashes match. Database schema/policy and production frontend are
 unchanged. See [the verification record](control-plane-phase-68-verification.json).
+
+
+## Sixty-ninth increment: durable per-UID coordinator and launch generation seals
+
+Migration 0160 records latest operation identity, high-water generation, pinned
+project revision and durable blocking/blocked/releasing/idle phases. The private
+coordinator commits server admission blocking before root begin, checkpoints it,
+and checks exact current/applied policy both before root release and before DB
+unblocking. Interrupted calls can retry the same operation; policy changes require
+explicit generation rebase. Active context cannot disappear with project deletion;
+a completed project's nullable reference can clear without resetting the UID epoch.
+
+Mandatory ordinary-thread, background-job and workspace guards use the persisted
+UID state, including work in other projects of that user. They capture generation
+before authoritative grant reads and preserve it through transport. Every launcher
+runtime checks that generation even when root is unblocked, refusing delayed old
+commands after maintenance completion. History reads and cleanup remain available.
+Workspace context also rechecks current owner/path/readiness.
+
+The required workspace wire field bumps the host daemon protocol to 256; protocol
+255 is rejected. Qwen Server plugin version is 0.1.1, with a required private
+context generation and explicit root launch prefix. Plugin SDK version remains
+0.6.80. This requires coordinated server/daemon/helper/provider deployment.
+
+The controller remains private and per UID. Automatic all-participant role
+reconciliation, startup sweep, queue-specific maintenance retention and public
+administrative API/SDK/CLI/UI are subsequent work. Shared native execution is not
+opened by this increment. See [the controller's implemented and remaining
+boundaries](control-plane-project-access.md#durable-server-intent-and-launch-generations-increment-69).
+
+Verification passes 3826 server tests, 819 daemon tests, 682 database tests,
+77 daemon-contract tests and 31 Qwen Server plugin tests, with unchanged existing
+skips. Seven database cases cover admission, exact phases/revisions, high-water
+and overflow/retry behavior, rollback, migration and active/idle project deletion;
+workspace and private-context tests cover the new field and source checks.
+Eight typecheck tasks, strict lint/formatting of 24 TS/MJS files and compilation of
+three Python modules pass.
+
+The final rebuilt Docker deployment passes all 63 tasks in 9m30.564s with unchanged
+budgets, including native Qwen/MCP, workflows/scripts/workspace, shutdown, restart
+and crash recovery. A saved DB/root intent remains blocked until post-restart
+release; a service request prepared before that operation is then dispatched and
+refused despite root now being unblocked. Fresh UID/HOME execution succeeds;
+changed policy requires explicit rebase and old completion is refused. Nine
+source/image artifacts match, including protocol-bearing daemon, migration and
+provider 0.1.1 manifest/host bundle. See [the verification
+record](control-plane-phase-69-verification.json). Public role/shared execution
+requirements remain open.
+
+The provider's operator skill documents protocol 256, the required captured
+generation and coordinated deployment. Repackaging that documentation preserves
+all nine executable/migration/manifest hashes; the final focused Docker deployment
+passes 63 tasks in 19.323s and the skill matches its image copy exactly.

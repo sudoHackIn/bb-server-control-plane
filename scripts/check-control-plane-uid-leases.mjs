@@ -88,12 +88,19 @@ export async function verifyProjectUidLeases({
         ).stdout,
       )
       .digest("hex");
-  const maintenance = (action, generation) =>
-    service({
+  let launchGeneration = 0;
+  const maintenance = async (action, generation) => {
+    const result = await service({
       mode: "maintenance",
       userId: bob.id,
       request: action === "status" ? { action } : { action, generation },
     });
+    launchGeneration = result.generation;
+    return result;
+  };
+  const coordinatedOperation = randomUUID();
+  const coordinate = (request) =>
+    service({ mode: "coordinate", userId: bob.id, request });
   async function rejectedJob(refused) {
     await wait(
       () => refused.child.exitCode !== null,
@@ -126,6 +133,7 @@ export async function verifyProjectUidLeases({
           "launch-script",
           user.id,
           String(user.uid),
+          `--uid-generation=${user.id === bob.id ? launchGeneration : 0}`,
           session,
           user.projectsRoot + "/default",
         ],
@@ -137,7 +145,14 @@ export async function verifyProjectUidLeases({
       ),
     );
     if (!queued) observed.child.stdin.end(code);
-    const job = { ...observed, user, session, queued, closed: false };
+    const job = {
+      ...observed,
+      user,
+      session,
+      queued,
+      closed: false,
+      deferred: false,
+    };
     jobs.push(job);
     return job;
   }
@@ -359,6 +374,7 @@ export async function verifyProjectUidLeases({
       `require("node:fs").linkSync(process.env.HOME+"/credential.txt",${JSON.stringify(project.cwd + "/pending-hardlink")})`,
     );
     const removed = await change(null);
+    let finalRevision = removed.revision;
     await assert.rejects(apply());
     const pending = JSON.parse(await readFile(path, "utf8"));
     assert.equal(pending.phase, "pending");
@@ -396,10 +412,25 @@ export async function verifyProjectUidLeases({
       bob,
       `require("node:fs").writeFileSync(process.env.HOME+"/maintenance-marker.txt","preserved")`,
     );
-    assert.equal((await maintenance("begin", 4)).blocked, true);
+    const postReleaseRequest = start(bob, idleCode, true);
+    await wait(
+      () => postReleaseRequest.stdout().includes("queued"),
+      "old request prepared before DB maintenance",
+    );
+    const blocked = await coordinate({
+      action: "begin",
+      projectId: project.projectId,
+      operationId: coordinatedOperation,
+    });
+    assert.equal(blocked.generation, 4);
+    assert.equal(blocked.phase, "blocked");
+    assert.equal((await maintenance("status")).blocked, true);
+    postReleaseRequest.deferred = true;
     await blockedJob();
     return {
-      revision: removed.revision,
+      get revision() {
+        return finalRevision;
+      },
       async verifyMaintenancePersistence() {
         assert.deepEqual(await maintenance("status"), {
           userId: bob.id,
@@ -409,7 +440,20 @@ export async function verifyProjectUidLeases({
         });
         await assert.rejects(maintenance("finish", 3));
         await blockedJob();
-        assert.equal((await maintenance("finish", 4)).blocked, false);
+        assert.equal((await coordinate({ action: "status" })).phase, "blocked");
+        assert.equal(
+          (
+            await coordinate({
+              action: "finish",
+              operationId: coordinatedOperation,
+              generation: 4,
+            })
+          ).phase,
+          "idle",
+        );
+        assert.equal((await maintenance("status")).blocked, false);
+        postReleaseRequest.child.stdin.end();
+        await rejectedJob(postReleaseRequest);
         await assert.rejects(maintenance("begin", 4));
         const resumed = start(
           bob,
@@ -420,12 +464,59 @@ export async function verifyProjectUidLeases({
         } finally {
           if (!resumed.closed) await stop(resumed);
         }
-        assert.equal((await maintenance("begin", 5)).blocked, true);
-        await assert.rejects(maintenance("finish", 4));
-        assert.equal((await maintenance("finish", 5)).blocked, false);
+        const newerOperation = randomUUID();
+        assert.equal(
+          (
+            await coordinate({
+              action: "begin",
+              projectId: project.projectId,
+              operationId: newerOperation,
+            })
+          ).generation,
+          5,
+        );
+        await maintenance("status");
+        await change("viewer");
+        await assert.rejects(
+          coordinate({
+            action: "finish",
+            operationId: newerOperation,
+            generation: 5,
+          }),
+        );
+        assert.equal((await maintenance("status")).blocked, true);
+        finalRevision = (await apply()).revision;
+        const rebased = await coordinate({
+          action: "begin",
+          projectId: project.projectId,
+          operationId: newerOperation,
+          restartGeneration: 5,
+        });
+        assert.equal(rebased.generation, 6);
+        await assert.rejects(
+          coordinate({
+            action: "finish",
+            operationId: newerOperation,
+            generation: 5,
+          }),
+        );
+        assert.equal(
+          (
+            await coordinate({
+              action: "finish",
+              operationId: newerOperation,
+              generation: 6,
+            })
+          ).phase,
+          "idle",
+        );
+        assert.equal((await maintenance("status")).generation, 6);
         return {
           projectUidMaintenancePersistsAcrossCallingProcessRestart: true,
           projectUidMaintenanceHighWaterAndHomePreserved: true,
+          projectUidMaintenanceDbIntentSurvivesRestart: true,
+          projectUidMaintenanceOldLaunchRejectedAfterRelease: true,
+          projectUidMaintenanceCoordinatorRevisionChangeRequiresRebase: true,
         };
       },
       verification: {
@@ -461,7 +552,7 @@ export async function verifyProjectUidLeases({
       await exclusive.done;
     }
     for (const job of jobs)
-      if (!job.closed) {
+      if (!job.closed && !job.deferred) {
         if (job.queued) job.child.stdin.end();
         await stop(job);
       }

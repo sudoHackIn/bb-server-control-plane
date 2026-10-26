@@ -1,3 +1,4 @@
+import { getControlPlaneUidMaintenance } from "./control-plane-uid-maintenance.js";
 import {
   CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID,
   CONTROL_PLANE_WORKFLOWS_PLUGIN_ID,
@@ -52,7 +53,14 @@ export function requireControlPlaneThreadOwner(
     originPluginId?: string | null;
     relatedThreadIds: readonly (string | null | undefined)[];
   },
-) {
+): {
+  user: typeof controlPlaneUsers.$inferSelect;
+  project: NonNullable<ReturnType<typeof getControlPlaneProject>>;
+  profileVersion: NonNullable<
+    ReturnType<typeof getControlPlaneProfile>
+  >["version"];
+  maintenanceGeneration: number;
+} | null {
   const managed = getControlPlaneProjectOwner(db, input.projectId);
   if (!managed) {
     if (
@@ -66,6 +74,7 @@ export function requireControlPlaneThreadOwner(
   }
   if (!input.ownerUserId || input.providerId !== "qwen-server")
     throw new ControlPlaneThreadError();
+  const maintenance = getControlPlaneUidMaintenance(db, input.ownerUserId);
   const project = getControlPlaneProject(
     db,
     input.ownerUserId,
@@ -81,6 +90,7 @@ export function requireControlPlaneThreadOwner(
     project.ownerUserId !== input.ownerUserId ||
     !["owner", "runner"].includes(project.role) ||
     !user?.enabled ||
+    (maintenance !== undefined && maintenance.phase !== "idle") ||
     user.environmentStatus !== "ready"
   )
     throw new ControlPlaneThreadError();
@@ -145,7 +155,12 @@ export function requireControlPlaneThreadOwner(
       throw error;
     }
   }
-  return { user, project, profileVersion: profile.version };
+  return {
+    user,
+    project,
+    profileVersion: profile.version,
+    maintenanceGeneration: maintenance?.generation ?? 0,
+  };
 }
 
 export function requireControlPlaneThreadDispatch(
@@ -240,6 +255,7 @@ export function resolveControlPlaneQwenContext(
         id: context.user.id,
         user: context.user.login,
         uid: context.user.uid,
+        maintenanceGeneration: context.maintenanceGeneration,
         gid: context.user.gid,
         home: context.user.home,
         cwd: context.project.cwd,

@@ -13,6 +13,7 @@ function context(): ServiceContext {
   return {
     id: randomUUID(),
     uid: 200000,
+    maintenanceGeneration: 0,
     gid: 200000,
     user: "alice",
     home: "/srv/alice/home",

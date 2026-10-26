@@ -22,6 +22,15 @@ thread identity. The provider requests the registered user UID/GID, HOME, cwd
 and native Qwen session binding plus its bound approved profile version; caller-selected paths and identities are not
 deployment settings. No shared-service fallback is allowed.
 
+Provider 0.1.1 requires host daemon protocol 256 and the private context's
+`maintenanceGeneration`. The generation is captured with server authority and
+passed to every managed launcher; an old request is refused even after UID
+maintenance finishes. Caller options cannot supply or override it. Deploy the
+server, daemon, provider and root helper modules together. On a maintenance/stale
+generation error, inspect the saved coordinator/barrier state and obtain a fresh
+authorized context; do not reset the high-water generation or use a service-user
+fallback.
+
 The root-owned launcher policy selects the Node and Qwen CLI files. A privileged
 supervisor drops the child to its numeric UID with cleared groups and no new
 privileges, and owns cancellation of that job's descendants. Agent UIDs have no

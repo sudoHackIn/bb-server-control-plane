@@ -1,6 +1,7 @@
 import type { DbConnection } from "../../src/index.js";
 
 export function dropProjectPolicySchemaForRewind(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS control_plane_uid_maintenance");
   const triggers = db.$client
     .prepare<[], { name: string }>(
       "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'cp_project_policy_%'",

@@ -75,6 +75,7 @@ export async function runControlPlaneAutomationScript(
     JSON.stringify({
       user: value.user.id,
       uid: value.user.uid,
+      maintenanceGeneration: value.maintenanceGeneration,
       home: value.user.home,
       cwd: value.project.cwd,
       project: value.project.projectId,
@@ -92,7 +93,17 @@ export async function runControlPlaneAutomationScript(
   const args = [context.user.id, String(context.user.uid), parsed.jobId];
   const child = spawn(
     "/usr/bin/sudo",
-    ["-n", "--", helper, "launch-script", ...args, context.project.cwd],
+    [
+      "-n",
+      "--",
+      helper,
+      "launch-script",
+      context.user.id,
+      String(context.user.uid),
+      `--uid-generation=${context.maintenanceGeneration}`,
+      parsed.jobId,
+      context.project.cwd,
+    ],
     {
       cwd: "/tmp",
       env: { PATH: "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" },

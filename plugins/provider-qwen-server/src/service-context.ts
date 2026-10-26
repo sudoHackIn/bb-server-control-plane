@@ -18,6 +18,7 @@ const schema = z
     id: z.string().uuid(),
     user: z.string(),
     uid: z.number().int().min(200000).max(299999),
+    maintenanceGeneration: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     gid: z.number().int().min(200000).max(299999),
     home: z.string().startsWith("/"),
     cwd: z.string().startsWith("/"),

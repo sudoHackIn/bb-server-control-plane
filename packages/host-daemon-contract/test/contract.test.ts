@@ -1234,7 +1234,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(255);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(256);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1249,7 +1249,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(252)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(253)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(254)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(255)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(256)).toBe(true);
     expect(contract.hostDaemonSupportsConnectNext(246)).toBe(false);
     expect(contract.hostDaemonSupportsConnectNext(247)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
@@ -3901,4 +3902,29 @@ describe("bounded file read contract", () => {
         .success,
     ).toBe(false);
   });
+});
+
+it("requires a safe maintenance generation in managed workspace identities", () => {
+  const identity = {
+    userId: "11111111-1111-4111-8111-111111111111",
+    uid: 200000,
+    projectId: "project",
+    cwd: "/srv/project",
+  };
+  expect(
+    contract.workspaceExecutionIdentitySchema.safeParse(identity).success,
+  ).toBe(false);
+  for (const maintenanceGeneration of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1])
+    expect(
+      contract.workspaceExecutionIdentitySchema.safeParse({
+        ...identity,
+        maintenanceGeneration,
+      }).success,
+    ).toBe(false);
+  expect(
+    contract.workspaceExecutionIdentitySchema.parse({
+      ...identity,
+      maintenanceGeneration: 0,
+    }).maintenanceGeneration,
+  ).toBe(0);
 });

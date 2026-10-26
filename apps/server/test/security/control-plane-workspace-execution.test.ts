@@ -1,6 +1,15 @@
 import { eq } from "drizzle-orm";
 import { expect, it } from "vitest";
-import { controlPlaneProjectAccess, controlPlaneUsers, projects } from "@bb/db";
+import {
+  controlPlaneProjectAccess,
+  controlPlaneUsers,
+  projects,
+  reserveControlPlaneUidMaintenance,
+  checkpointControlPlaneUidMaintenance,
+  getControlPlaneProjectAccessPolicy,
+  acknowledgeControlPlaneProjectAccessPolicy,
+} from "@bb/db";
+import { randomUUID } from "node:crypto";
 import { createMigratedConnection } from "@bb/db/testing";
 import { seedControlPlaneJobSubjects } from "../helpers/control-plane-authority.js";
 import { resolveControlPlaneWorkspaceExecution } from "../../src/control-plane/workspace-execution.js";
@@ -16,6 +25,7 @@ it("resolves only exact registered project roots to their saved numeric owners",
         identity: {
           userId: subject.user.id,
           uid: subject.user.uid,
+          maintenanceGeneration: 0,
           cwd,
           projectId: subject.project.id,
         },
@@ -129,5 +139,63 @@ it("serves managed workspace authority only through the private validated socket
     await service.close();
     db.$client.close();
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("refuses workspace execution while a user's durable maintenance is pending", async () => {
+  const db = createMigratedConnection();
+  try {
+    const { alice, bob } = seedControlPlaneJobSubjects(db);
+    const state = reserveControlPlaneUidMaintenance(db, {
+      userId: alice.user.id,
+      projectId: alice.project.id,
+      operationId: randomUUID(),
+      rootGeneration: 2,
+    });
+    expect(() =>
+      resolveControlPlaneWorkspaceExecution(db, alice.environment.path!),
+    ).toThrow("not authorized");
+    expect(
+      resolveControlPlaneWorkspaceExecution(db, bob.environment.path!),
+    ).toMatchObject({
+      kind: "managed",
+      identity: { maintenanceGeneration: 0 },
+    });
+    checkpointControlPlaneUidMaintenance(
+      db,
+      state.userId,
+      state.operationId,
+      state.generation,
+      "blocked",
+    );
+    const policy = getControlPlaneProjectAccessPolicy(db, alice.project.id);
+    if (!policy) throw new Error("Missing policy");
+    acknowledgeControlPlaneProjectAccessPolicy(
+      db,
+      alice.project.id,
+      policy.revision,
+    );
+    checkpointControlPlaneUidMaintenance(
+      db,
+      state.userId,
+      state.operationId,
+      state.generation,
+      "releasing",
+    );
+    checkpointControlPlaneUidMaintenance(
+      db,
+      state.userId,
+      state.operationId,
+      state.generation,
+      "idle",
+    );
+    expect(
+      resolveControlPlaneWorkspaceExecution(db, alice.environment.path!),
+    ).toMatchObject({
+      kind: "managed",
+      identity: { maintenanceGeneration: 3 },
+    });
+  } finally {
+    db.$client.close();
   }
 });

@@ -18,6 +18,7 @@ test("provider resolves numeric identity through private service socket; denies 
     id: randomUUID(),
     user: "alice",
     uid: 200000,
+    maintenanceGeneration: 0,
     gid: 200000,
     home: "/srv/users/alice/home",
     cwd: "/srv/users/alice/projects/default",
@@ -84,6 +85,9 @@ test("provider resolves numeric identity through private service socket; denies 
     }
     for (const patch of [
       { uid: 0 },
+      { maintenanceGeneration: -1 },
+      { maintenanceGeneration: Number.MAX_SAFE_INTEGER + 1 },
+      { maintenanceGeneration: undefined },
       { gid: 200001 },
       { cwd: "/tmp" },
       { id: "alice" },

@@ -10,6 +10,7 @@ function context(): ServiceContext {
     sessionId: randomUUID(),
     user: "alice",
     uid: 200000,
+    maintenanceGeneration: 0,
     gid: 200000,
     home: "/srv/alice/home",
     cwd: "/srv/alice/projects/app",
