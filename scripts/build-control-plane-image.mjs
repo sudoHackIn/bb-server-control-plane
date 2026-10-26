@@ -105,6 +105,20 @@ try {
   ]) {
     await cp(join(repo, source), join(directory, target), { recursive: true });
   }
+  await cp(
+    join(repo, "scripts/check-control-plane-project-access.mjs"),
+    join(directory, "check-control-plane-project-access.mjs"),
+  );
+  await buildNodeEsmEntry({
+    cleanDist: false,
+    entryPoint: join(
+      repo,
+      "apps/server/test/fixtures/control-plane-project-access-fixture.ts",
+    ),
+    outfile: join(directory, "server/project-access-check.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
   await buildNodeEsmEntry({
     cleanDist: false,
     entryPoint: join(

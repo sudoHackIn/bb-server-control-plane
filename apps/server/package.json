@@ -16,7 +16,8 @@
     "build:control-plane-image": "node ../../scripts/build-control-plane-image.mjs",
     "test:control-plane-deployment": "node ../../scripts/test-control-plane-deployment.mjs",
     "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus",
-    "test:control-plane-browser": "node ../../scripts/test-control-plane-deployment.mjs --browser"
+    "test:control-plane-browser": "node ../../scripts/test-control-plane-deployment.mjs --browser",
+    "test:control-plane-project-access": "node ../../scripts/test-control-plane-project-access.mjs"
   },
   "dependencies": {
     "@bb/config": "workspace:*",

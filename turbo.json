@@ -42,6 +42,17 @@
         "DOCKER_CERT_PATH"
       ]
     },
+    "@bb/server#test:control-plane-project-access": {
+      "cache": false,
+      "dependsOn": ["@bb/server#build:control-plane-image"],
+      "passThroughEnv": [
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CONFIG",
+        "DOCKER_TLS_VERIFY",
+        "DOCKER_CERT_PATH"
+      ]
+    },
     "@bb/server#test:control-plane-browser": {
       "cache": false,
       "dependsOn": ["@bb/server#build:control-plane-image"],

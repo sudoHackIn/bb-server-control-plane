@@ -57,7 +57,7 @@ def main():
     with open(POLICY, encoding='utf8') as file:
         policy = json.load(file)
     operation, user_id, raw_uid, *args = sys.argv[1:]
-    if operation not in ('provision', 'project', 'launch', 'launch-policy', 'launch-workflow', 'launch-script', 'launch-workspace', 'stop'):
+    if operation not in ('provision', 'project', 'project-access', 'launch', 'launch-policy', 'launch-workflow', 'launch-script', 'launch-workspace', 'stop'):
         raise ValueError('Invalid launcher operation')
     if str(uuid.UUID(user_id)) != user_id or not re.fullmatch(r'[0-9]{6}', raw_uid):
         raise ValueError('Invalid identity')
@@ -104,6 +104,10 @@ def main():
         os.close(manifest_dir)
     else:
         raise ValueError('Identity is not provisioned')
+    if operation == 'project-access':
+        access_file = '/opt/bb-control-plane/launcher/project_access.py'
+        trusted_file(access_file)
+        return runpy.run_path(access_file)['synchronize'](policy, root_fd, user_id, uid, args)
     base = os.path.join(root, user_id)
     home = os.path.join(base, 'home')
     projects = os.path.join(base, 'projects')

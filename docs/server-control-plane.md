@@ -25,6 +25,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Connect approved `bb` MCP tools through the native Qwen SDK/BB tool channel, revalidate context on MCP requests and invoke the mandatory core guard; verify actual two-user model → plugin → model round trips in Docker. Other MCP transports and interactive approvals remain pending.
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
+- [x] Add an internal revision-fenced project ACL primitive and three-UID Docker checks, preserving separate HOME and legacy owner-only launch. Central role integration, concurrent-filesystem safety and shared execution remain pending. See [directory access](control-plane-project-access.md).
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -2989,3 +2990,36 @@ driver log contains no fixture PAT values. The browser baseline remains incremen
 
 This closes the two assertion mismatches recorded in 62–63. It does not close the
 remaining shared-project execution or other unchecked product requirements.
+
+
+## Sixty-fifth increment: project directory ACL substrate
+
+A fixed privileged helper and bounded TypeScript wrapper can apply exact project
+ACLs to registered numeric identities without sudo accounts or access to another
+user's HOME. A root-owned applied ledger preserves project binding, rejects stale
+or conflicting revisions and records pending recovery. Existing files and default
+ACL inheritance are covered; parent traversal preserves sibling project grants.
+Failed new grants retain previously authorized members, while newly requested
+members remain blocked. Static symlink substitution, hardlinks and FIFOs are
+rejected or skipped without modifying protected target ACLs.
+
+This is an internal substrate. No role mutation API or shared native launch is
+opened. Recursive ACL changes are not atomic against hostile concurrent filesystem
+mutation; the helper lock alone does not solve that boundary. Database-derived
+policy, exclusive mutation/active-job coordination, durable revocation and actual
+shared Qwen admission remain required. See [the implementation boundary and
+reproduction](control-plane-project-access.md).
+
+Verification uses real migrated SQLite and three numeric UID/HOME identities in
+Docker, including a 2048-file tree, default inheritance, sibling-project traversal,
+revocation/stale grants, retained-member failure recovery, hardlinks, symlinks and
+nonblocking FIFO rejection. The full deployment passes all 63 tasks in 9m29.863s
+with unchanged budgets, including native Qwen/MCP, shutdown, restart and crash
+recovery; a new helper process then verifies persisted revocation again.
+All 3825 server tests, six typecheck tasks, strict lint for six code files,
+formatting and Python compilation pass. The first full server run observed one
+existing async-install polling deadline; the complete unchanged selection passes
+on recheck without changing code or deadlines. Five host/image artifacts match.
+Browser production code is unchanged. See [the verification
+record](control-plane-phase-65-verification.json). The shared execution feature
+and broader unchecked acceptance requirements remain open.

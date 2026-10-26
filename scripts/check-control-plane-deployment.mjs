@@ -8,6 +8,8 @@ import { verifyScriptJobs } from "./check-control-plane-script-jobs.mjs";
 import { verifyQwenJobs } from "./check-control-plane-qwen-jobs.mjs";
 import { verifyManagedRuntime } from "./check-control-plane-managed-runtime.mjs";
 
+import { verifyProjectDirectoryAccess } from "./check-control-plane-project-access.mjs";
+
 const origin = "http://127.0.0.1:8080";
 const password = "deployment-check-admin-password";
 const controller = new AbortController();
@@ -178,6 +180,7 @@ try {
     signal: controller.signal,
     password,
   });
+  const projectAccess = await verifyProjectDirectoryAccess();
   const qwen = await verifyQwenJobs({
     command,
     launch,
@@ -193,8 +196,15 @@ try {
     signal: controller.signal,
     password,
   });
+  assert.equal(managedRuntime.resumedThreadAfterRestart, true);
+  const projectAccessPersistence = await projectAccess.verifyPersistence();
   process.stdout.write(
     JSON.stringify({
+      projectAccess: {
+        ...projectAccess.verification,
+        ...projectAccessPersistence,
+        projectAclStateSurvivesServerRestart: true,
+      },
       deployedServer: true,
       nativeUi: true,
       sqlite: true,

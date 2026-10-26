@@ -1,0 +1,122 @@
+{
+  "scope": "Internal revision-fenced Linux project ACL primitive; shared user execution remains disabled",
+  "previousStageCommit": "9eb4f010b",
+  "hostDaemonProtocol": 255,
+  "pluginSdkVersion": "0.6.80",
+  "databaseMigrations": [],
+  "publicContractsChanged": false,
+  "contracts": {
+    "rootOwnedProjectBindingAndAppliedRevision": true,
+    "registeredUuidUidMembersOnly": true,
+    "noSudousersOrSupplementaryGroups": true,
+    "actorHomeUnchanged": true,
+    "retainedMembersPreservedOnFailedAddition": true,
+    "sameRevisionRepairAndStaleGrantRejection": true,
+    "parentTraversalUnionAcrossProjects": true,
+    "newMemberRootBarrierUntilCompletion": true,
+    "legacyForeignCwdLaunchStillDenied": true,
+    "centralDbMembershipNotYetIntegrated": true
+  },
+  "verification": {
+    "standaloneDocker": {
+      "projectAclRealMigratedRegistryAndNumericUsers": true,
+      "projectAclExistingAndInheritedFilesShared": true,
+      "projectAclHomesAndOtherProjectsUnchanged": true,
+      "projectAclRevisionConflictAndIdentityRebindDenied": true,
+      "projectAclRevocationAndStaleGrantDenied": true,
+      "projectAclHardlinkAndSymlinkTargetsUntouched": true,
+      "projectAclFailureAndSameRevisionRecovery": true,
+      "projectAclRetainedMemberSurvivesFailedNewGrant": true,
+      "projectAclSiblingGrantTraversalPreserved": true,
+      "projectAclFifoRejectedWithoutBlocking": true,
+      "projectAclAgentCannotInvokeHelper": true,
+      "projectAclLegacyForeignLaunchStillDenied": true,
+      "projectAclLargeTreeEntries": 2048,
+      "projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant": true
+    },
+    "fullServerTests": 3825,
+    "passedFiles": 391,
+    "skippedFiles": 3,
+    "skippedTests": 1,
+    "newSkips": 0,
+    "fullServerTurboTasks": 10,
+    "fullServerDuration": "2m15.69s",
+    "firstRun": {
+      "passedTests": 3824,
+      "failedTests": 1,
+      "failure": "Existing asynchronous builtin install completion polling observed running instead of succeeded",
+      "recheck": "Full unchanged test selection passed without code or timeout changes"
+    },
+    "typecheckTasks": 6,
+    "strictLintCodeFiles": 6,
+    "formattingFiles": 8,
+    "pythonModulesCompiled": 3,
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "f2a98991abb04f10fbfa04b03a1ac1c5c4668f8f357f531d4aa745812cf7fbcd"
+      },
+      "deploy/control-plane/launcher/helper.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/helper.py",
+        "sha256HostAndImage": "bccc0a110e875c5e2bf4b0c57cc0f0da069dc3a103ac087bb27f33f0bc852be3"
+      },
+      "deploy/control-plane/launcher/project_access.py": {
+        "imagePath": "/opt/bb-control-plane/launcher/project_access.py",
+        "sha256HostAndImage": "55a08985845537cef709e67f03cc1cdcc7505da4d52f6bba04249adb113d43c3"
+      },
+      "scripts/check-control-plane-project-access.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-access.mjs",
+        "sha256HostAndImage": "dffa18ebec18ad3b8a1216fa60badc50b0ce049e63ae06d3a52050fdf63c29db"
+      },
+      "scripts/check-control-plane-deployment.mjs": {
+        "imagePath": "/opt/bb/deployment-check.mjs",
+        "sha256HostAndImage": "5b9a1445bbd97412ad73519ad4b29ca4a0c6b29ae45ed4c1ef4c37eb43d74de2"
+      }
+    },
+    "browserBaselineIncrement": 63,
+    "productionFrontendChanged": false,
+    "dockerDeployment": {
+      "passed": true,
+      "tasks": 63,
+      "duration": "9m29.863s",
+      "budgetsChanged": false,
+      "projectAccess": {
+        "projectAclRealMigratedRegistryAndNumericUsers": true,
+        "projectAclExistingAndInheritedFilesShared": true,
+        "projectAclHomesAndOtherProjectsUnchanged": true,
+        "projectAclRevisionConflictAndIdentityRebindDenied": true,
+        "projectAclRevocationAndStaleGrantDenied": true,
+        "projectAclHardlinkAndSymlinkTargetsUntouched": true,
+        "projectAclFailureAndSameRevisionRecovery": true,
+        "projectAclRetainedMemberSurvivesFailedNewGrant": true,
+        "projectAclSiblingGrantTraversalPreserved": true,
+        "projectAclFifoRejectedWithoutBlocking": true,
+        "projectAclAgentCannotInvokeHelper": true,
+        "projectAclLegacyForeignLaunchStillDenied": true,
+        "projectAclLargeTreeEntries": 2048,
+        "projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant": true,
+        "projectAclStateSurvivesServerRestart": true
+      },
+      "nativeDaemonDispatch": true,
+      "nativeMcpRoundTrip": true,
+      "nativeSameSessionResume": true,
+      "serverRestart": true,
+      "crashRecovery": true,
+      "driverLogContainsRemoteFixturePat": false
+    },
+    "focusedTurboTask": {
+      "passed": true,
+      "tasks": 63,
+      "duration": "8.234s",
+      "containerCleanupVerified": true
+    },
+    "finalFocusedImageHashesUnchanged": true
+  },
+  "limitations": [
+    "No central role mutation, shared Qwen/workflow execution or public API is enabled.",
+    "Helper serialization does not freeze hostile concurrent filesystem rename/hardlink mutation. Shared execution must first establish an exclusive mutation boundary or a stronger filesystem design.",
+    "ACL changes do not revoke open descriptors, erase copied data or stop active jobs.",
+    "Static substitution tests are not proof against concurrent filesystem races.",
+    "Recursive policy application is bounded and repairable, not an atomic filesystem transaction."
+  ]
+}

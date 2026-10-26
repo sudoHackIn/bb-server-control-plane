@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import type { ControlPlaneRegistry, ControlPlaneUser } from "@bb/db";
@@ -83,4 +83,121 @@ export function createControlPlaneProvisioner(
     void operation.finally(() => pending.delete(user.id)).catch(() => {});
     return operation;
   };
+}
+
+export async function prepareProjectAccess(input: {
+  owner: ControlPlaneUser;
+  projectId: string;
+  slug: string;
+  revision: number;
+  members: readonly ControlPlaneUser[];
+}) {
+  const request = z
+    .object({
+      projectId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/u),
+      slug: z.string().regex(/^[a-z][a-z0-9-]{0,47}$/u),
+      revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      members: z
+        .array(
+          z
+            .object({
+              userId: z.string().uuid(),
+              uid: z.number().int().min(200000).max(299999),
+            })
+            .strict(),
+        )
+        .max(128),
+    })
+    .strict()
+    .parse({
+      projectId: input.projectId,
+      slug: input.slug,
+      revision: input.revision,
+      members: input.members.map((user) => {
+        if (
+          !user.enabled ||
+          user.environmentStatus !== "ready" ||
+          user.gid !== user.uid
+        )
+          throw new Error("Project member environment is not ready");
+        return { userId: user.id, uid: user.uid };
+      }),
+    });
+  const ownerId = z.string().uuid().parse(input.owner.id);
+  const uid = z.number().int().min(200000).max(299999).parse(input.owner.uid);
+  if (input.owner.gid !== uid)
+    throw new Error("Unexpected project owner identity");
+  const result = await new Promise<string>((resolve, reject) => {
+    const child = spawn(
+      "/usr/bin/sudo",
+      [
+        "-n",
+        "--",
+        helper,
+        "project-access",
+        ownerId,
+        String(uid),
+        request.slug,
+        request.projectId,
+        String(request.revision),
+      ],
+      {
+        cwd: "/",
+        env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
+        stdio: "pipe",
+      },
+    );
+    let stdout = "";
+    let settled = false;
+    const finish = (error: Error | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(stdout);
+    };
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      finish(new Error("Project access synchronization timed out"));
+    }, 30000);
+    child.stdout.setEncoding("utf8").on("data", (part: string) => {
+      if (settled) return;
+      stdout += part;
+      if (Buffer.byteLength(stdout) > 16384) {
+        child.kill("SIGTERM");
+        finish(new Error("Invalid project access response"));
+      }
+    });
+    child.stderr.resume();
+    child.once("error", () =>
+      finish(new Error("Project access helper unavailable")),
+    );
+    child.stdin.on("error", () =>
+      finish(new Error("Project access helper input failed")),
+    );
+    child.once("close", (code) =>
+      finish(
+        code === 0 ? null : new Error("Project access synchronization failed"),
+      ),
+    );
+    child.stdin.end(JSON.stringify({ members: request.members }));
+  });
+  const reply = z
+    .object({
+      projectId: z.string(),
+      revision: z.number().int(),
+      cwd: z.string(),
+      memberCount: z.number().int(),
+      state: z.literal("ready"),
+    })
+    .strict()
+    .parse(JSON.parse(result));
+  if (
+    reply.projectId !== request.projectId ||
+    reply.revision !== request.revision ||
+    reply.memberCount !== request.members.length ||
+    reply.cwd !== join(input.owner.projectsRoot, request.slug)
+  )
+    throw new Error("Project access helper returned another binding");
+  return reply;
 }
