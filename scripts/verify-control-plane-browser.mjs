@@ -6,6 +6,10 @@ import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "playwright-core";
 import { verifyBrowserAutomations } from "./verify-control-plane-browser-automations.mjs";
+import {
+  readLimitedCli,
+  verifyForeignCliDenied,
+} from "./verify-control-plane-browser-cli.mjs";
 
 export async function verifyControlPlaneBrowser({ name, ready }) {
   assert.equal(ready.origin, "https://127.0.0.1:8080");
@@ -96,7 +100,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         );
       }
     });
-    return { page, context };
+    return { login, page, context };
   }
   async function visible(locator) {
     await locator.waitFor({ state: "visible" });
@@ -134,6 +138,11 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     const bob = await actor("bob");
     await login(alice.page, aliceUser);
     await login(bob.page, bobUser);
+    const bobAgentResponse = await bob.context.request.get(
+      `${ready.origin}/control-plane/user/threads/${bobUser.threadId}/profile`,
+    );
+    assert.equal(bobAgentResponse.status(), 200);
+    const bobAgent = await bobAgentResponse.json();
     assert.equal(
       await alice.page
         .getByRole("button", { name: "Personal bob", exact: true })
@@ -150,6 +159,22 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       (
         await bob.context.request.get(
           `${ready.origin}/control-plane/user/projects/${aliceUser.projectId}`,
+        )
+      ).status(),
+      404,
+    );
+    assert.equal(
+      (
+        await alice.context.request.get(
+          `${ready.origin}/control-plane/user/projects/${bobUser.projectId}`,
+        )
+      ).status(),
+      404,
+    );
+    assert.equal(
+      (
+        await alice.context.request.get(
+          `${ready.origin}/control-plane/user/profiles/${bobAgent.profile.id}`,
         )
       ).status(),
       404,
@@ -175,6 +200,12 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       .click();
     await visible(alice.page.getByRole("combobox", { name: "Agent profile" }));
     await alice.page.getByRole("combobox", { name: "Agent profile" }).click();
+    assert.equal(
+      await alice.page
+        .getByRole("option", { name: "Personal bob", exact: true })
+        .count(),
+      0,
+    );
     await alice.page
       .getByRole("option", { name: "Personal alice", exact: true })
       .click();
@@ -209,6 +240,58 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       ).status(),
       404,
     );
+    for (const [actor, foreignProjectId, foreignProfileId] of [
+      [alice, bobUser.projectId, bobAgent.profile.id],
+      [bob, aliceUser.projectId, chosenAgent.profile.id],
+    ]) {
+      for (const [path, privateId] of [
+        ["projects", foreignProjectId],
+        ["profiles", foreignProfileId],
+      ]) {
+        const response = await actor.context.request.get(
+          `${ready.origin}/control-plane/user/${path}`,
+        );
+        assert.equal(response.status(), 200);
+        assert.equal(
+          JSON.stringify(await response.json()).includes(privateId),
+          false,
+        );
+      }
+    }
+    for (const [login, projectId, profileId, threadId] of [
+      ["alice", bobUser.projectId, bobAgent.profile.id, bobUser.threadId],
+      ["bob", aliceUser.projectId, chosenAgent.profile.id, thread.id],
+    ]) {
+      for (const path of ["projects", "profiles"]) {
+        const page = await readLimitedCli({
+          command,
+          container: name,
+          origin: ready.origin,
+          login,
+          args: [path, "list"],
+        });
+        assert.equal(
+          JSON.stringify(page).includes(
+            path === "projects" ? projectId : profileId,
+          ),
+          false,
+        );
+      }
+      for (const args of [
+        ["projects", "get", projectId],
+        ["profiles", "get", profileId],
+        ["threads", "get", threadId],
+        ["threads", "result", threadId],
+      ])
+        await verifyForeignCliDenied({
+          command,
+          container: name,
+          origin: ready.origin,
+          login,
+          args,
+          privateText: "Personal browser completed",
+        });
+    }
     await alice.page.waitForURL(
       `${ready.origin}/projects/${thread.projectId}/threads/${thread.id}`,
     );
@@ -458,6 +541,14 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     assert.equal(foreign.status(), 404);
     assert.equal(
       (
+        await alice.context.request.get(
+          `${ready.origin}/control-plane/user/threads/${bobUser.threadId}`,
+        )
+      ).status(),
+      404,
+    );
+    assert.equal(
+      (
         await bob.context.request.get(ready.origin + "/api/v1/threads")
       ).status(),
       401,
@@ -479,6 +570,13 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     await visible(
       bob.page.getByRole("heading", { name: bobUser.title, exact: true }),
     );
+    const aliceLocation = alice.page.url();
+    await alice.page.goto(
+      `${ready.origin}/projects/${bobUser.projectId}/threads/${bobUser.threadId}`,
+    );
+    await visible(alice.page.getByRole("alert"));
+    assert.equal(await alice.page.getByRole("textbox").count(), 0);
+    await alice.page.goto(aliceLocation);
     const artifacts = process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS;
     if (artifacts) {
       await mkdir(artifacts, { recursive: true, mode: 0o700 });
@@ -620,12 +718,23 @@ async function verifyAdministrativeDefinitions({
   await page.waitForURL(`${ready.origin}/`);
   await page.goto(`${ready.origin}/plugins/workflows/definitions`);
   const setup = page.getByRole("button", { name: "Skip setup", exact: true });
-  await visible(
-    page
+  try {
+    await page
       .getByRole("heading", { name: "Workflow definitions", exact: true })
       .or(setup)
-      .first(),
-  );
+      .first()
+      .waitFor({ state: "visible", timeout: 30000 });
+  } catch (error) {
+    throw new Error(
+      `Administrative workflow page did not load: ${JSON.stringify({
+        url: page.url(),
+        headingsAndAlerts: await page
+          .locator("h1, [role=alert]")
+          .allTextContents(),
+      })}`,
+      { cause: error },
+    );
+  }
   if (await setup.isVisible()) await setup.click();
   await visible(
     page.getByRole("heading", { name: "Workflow definitions", exact: true }),

@@ -15,7 +15,7 @@ remains the implementation history and backlog.
 - [x] The native personal composer selects an approved profile version and renders a real Qwen conversation.
 - [x] Personal automation creation from a conversation, manual execution, history and result UI exist.
 - [x] Verify the complete path as one production-browser flow starting at login: choose a project and ready agent, exchange messages, create an automation using the same pinned agent version, run it and inspect its result. The Docker browser scenario also denies Bob direct access to Alice's project, agent and automation worker thread.
-- [ ] In that flow, verify Alice/Bob isolation for project and agent catalogs, conversation, automation definition, run and result through the UI and limited API/CLI, including direct foreign-ID requests.
+- [x] In that flow, verify Alice/Bob isolation for project and agent catalogs, conversation, automation definition, run and result through the UI and limited API/CLI, including direct foreign-ID requests. The browser scenario checks native navigation and foreign URLs, limited API reads and writes, and the authorized per-user CLI against both users' objects.
 - [ ] Verify that the saved agent version and user authority are used at automation execution after a restart, and that loss of project/profile access prevents another run without revealing prior private results.
 
 Each completed implementation slice needs focused tests, a real Docker
@@ -29,6 +29,14 @@ automation worker uses the same saved profile version and that Bob cannot
 read the worker thread by ID. The composite Docker scenario passes browser,
 restart and crash recovery; [phase 80 verification](control-plane-phase-80-verification.json)
 records the command and remaining isolation and revocation work.
+
+The same browser scenario now reads each user's project and agent catalogs
+through the limited API and CLI, rejects the other user's IDs through those
+surfaces, opens foreign conversation, automation and result URLs in the native
+UI, and verifies their private content stays hidden. It tests CLI authorization
+with each user's saved token under the token file's UID. See
+[phase 81 verification](control-plane-phase-81-verification.json). The
+post-restart profile and grant-revocation case remains open.
 
 ## Feature sequence
 

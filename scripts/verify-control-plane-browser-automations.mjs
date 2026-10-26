@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { verifyForeignCliDenied } from "./verify-control-plane-browser-cli.mjs";
 
 export async function verifyBrowserAutomations({
   page,
@@ -72,6 +73,34 @@ export async function verifyBrowserAutomations({
       (await foreign.context.request.get(origin + path + suffix)).status(),
       404,
     );
+  const foreignAutomations = await foreign.context.request.get(origin + base);
+  assert.equal(foreignAutomations.status(), 200);
+  assert.equal(
+    JSON.stringify(await foreignAutomations.json()).includes(definition.id),
+    false,
+  );
+  const foreignLocation = foreign.page.url();
+  await foreign.page.goto(page.url());
+  await visible(foreign.page.getByRole("alert"));
+  assert.equal(
+    await foreign.page.getByLabel("Automation name", { exact: true }).count(),
+    0,
+  );
+  await foreign.page.goto(foreignLocation);
+  for (const args of [
+    ["automations", "get", definition.id],
+    ["automations", "definition", definition.id],
+    ["automations", "history", definition.id],
+    ["automations", "run", definition.id],
+  ])
+    await verifyForeignCliDenied({
+      command,
+      container,
+      origin,
+      login: foreign.login,
+      args,
+      privateText: title,
+    });
   for (const suffix of ["/pause", "/resume", "/run"])
     assert.equal(
       (
@@ -165,14 +194,46 @@ export async function verifyBrowserAutomations({
     (await runThread.json()).profileVersionId,
     originProfile.version.id,
   );
-  assert.equal(
-    (
-      await foreign.context.request.get(
-        `${origin}/control-plane/user/threads/${completedRun.threadId}`,
-      )
-    ).status(),
-    404,
+  for (const suffix of ["", "/profile", "/events", "/timeline", "/result"])
+    assert.equal(
+      (
+        await foreign.context.request.get(
+          `${origin}/control-plane/user/threads/${completedRun.threadId}${suffix}`,
+        )
+      ).status(),
+      404,
+    );
+  for (const method of ["get", "result", "timeline", "events"])
+    await verifyForeignCliDenied({
+      command,
+      container,
+      origin,
+      login: foreign.login,
+      args: ["threads", method, completedRun.threadId],
+      privateText: marker,
+    });
+  await verifyForeignCliDenied({
+    command,
+    container,
+    origin,
+    login: foreign.login,
+    args: ["automations", "stop", definition.id, run.id],
+    privateText: marker,
+  });
+  const foreignLocationAfterRun = foreign.page.url();
+  await foreign.page.goto(
+    `${origin}/projects/${user.projectId}/threads/${completedRun.threadId}`,
   );
+  await visible(foreign.page.getByRole("alert"));
+  assert.equal(
+    await foreign.page
+      .getByText(`Personal ${marker} completed`, {
+        exact: true,
+      })
+      .count(),
+    0,
+  );
+  await foreign.page.goto(foreignLocationAfterRun);
 
   assert.equal(
     (
