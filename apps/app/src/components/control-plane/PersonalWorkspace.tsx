@@ -8,6 +8,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { PersonalProjectMcp } from "./PersonalProjectMcp";
 import { PersonalTimeline } from "./PersonalTimeline";
 import { PersonalAutomations } from "./PersonalAutomations";
 import { PersonalWorkflows } from "./PersonalWorkflows";
@@ -72,6 +73,7 @@ function WorkspaceNavigation({
   const view = new URLSearchParams(location.search).get("view");
   const workflowView = view === "workflows";
   const automationView = view === "automations";
+  const integrationView = view === "integrations";
   const projectRoute = useMatch("/projects/:projectId");
   const threadRoute = useMatch("/projects/:projectId/threads/:threadId");
   const shortThreadRoute = useMatch("/threads/:threadId");
@@ -343,6 +345,22 @@ function WorkspaceNavigation({
               {automationView ? "Conversation" : "Automations"}
             </Button>
           )}
+          {selectedProject && !project.isError && (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-pressed={integrationView}
+              onClick={() => {
+                navigate({
+                  pathname: location.pathname,
+                  search: integrationView ? "" : "?view=integrations",
+                });
+                closeSidebar();
+              }}
+            >
+              {integrationView ? "Conversation" : "Integrations"}
+            </Button>
+          )}
         </header>
         {project.isError ||
         (threadId !== null && detail.isError) ||
@@ -354,6 +372,14 @@ function WorkspaceNavigation({
               void threads.refetch();
               if (threadId) void detail.refetch();
             }}
+          />
+        ) : integrationView && selectedProject ? (
+          <PersonalProjectMcp
+            key={bootstrap.session.user.id + ":" + selectedProject.projectId}
+            client={client}
+            userId={bootstrap.session.user.id}
+            projectId={selectedProject.projectId}
+            canManage={selectedProject.canManage}
           />
         ) : automationView && selectedProject ? (
           <PersonalAutomations
@@ -416,6 +442,7 @@ function WorkspaceNavigation({
         {selectedProject &&
           !workflowView &&
           !automationView &&
+          !integrationView &&
           project.data &&
           !project.isError &&
           !mismatchedThread &&

@@ -26,8 +26,9 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
-- [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); actual remote tool execution, activation and project UI remain pending.
-- [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution and UI remain pending.
+- [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
+- [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
+- [x] Add personal project MCP UI for catalog selection, personal token setup/revocation and owner connection controls through the limited SDK. Verify two certificate contexts, shared-reader restrictions, access-loss draft clearing and responsive rendering in Docker/Chrome; actual shared-project agent execution remains pending.
 - [ ] Complete the reusable agent experience on top of approved versioned profiles: catalog/editor, explicit selection for chats and automations, and workflow steps pinned to agent versions. Ship the same operations through UI, limited SDK and CLI.
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
@@ -150,8 +151,9 @@ credentials, project/connector access denial, revoked credentials/connections,
 resume and no secret disclosure. Include a shared-project case proving that
 personal credentials cannot cross users. Increment 61 implements configuration management and encrypted credentials only.
 Increment 62 adds explicit activation and server-owned remote tool execution
-through the native provider bridge. Shared-project workspace execution, project UI
-and the combined acceptance package remain open.
+through the native provider bridge. Increment 63 adds the personal project UI.
+Shared-project workspace execution and the combined acceptance package remain
+open.
 
 ## Per-user workflows, automations and schedules
 
@@ -2889,3 +2891,70 @@ fully green repository.
 The complete project MCP feature remains open: actual shared-project workspace
 execution and project management UI are still required. No frontend code changes
 in this increment; browser baseline remains increment 51.
+
+
+## Sixty-third increment: personal project integrations UI
+
+The personal native sidebar/composer shell has an **Integrations** view per
+project. It reads the permitted connector catalog with pagination, project
+connection/readiness metadata and the selected connector's personal credential
+metadata through the existing limited SDK. Owners can attach, update/enable,
+disable and remove revision-protected connections. Readers can manage their own
+credential and see no project mutation controls. Existing API/SDK/CLI operations
+remain the authoritative path; no administrative or native BB API is exposed.
+
+Personal token inputs are uncontrolled password fields, reset immediately on
+submission and never passed to React Query mutations, cached variables, URLs or
+web storage. Queries contain only metadata and include both user and project in
+their keys. Selecting another project/account or connector revision discards the
+draft. Failed reads hide cached metadata/forms; write failures show a generic
+message, refresh current revisions and do not automatically retry. Missing or
+outdated credentials prevent activation. The UI distinguishes enabled
+configuration from tested remote authentication and directs users to a new
+conversation after changes to refresh the native tool snapshot.
+
+The two MCP SDK readers now accept optional AbortSignals so React Query can
+cancel reads on unmount. There are no new Plugin SDK members or daemon wire
+changes; protocol stays 255 and Plugin SDK stays 0.6.80. Documentation and the
+built CLI guide describe the same controls. Actual shared-project agent workspace
+execution and combined MCP worker/revocation acceptance remain open.
+
+
+Verification passed: all 47 personal UI tests in eight files, all 137 SDK tests
+in 18 files, six typecheck tasks and strict lint/formatting for all ten changed
+code files. Five MCP UI tests cover immediate PAT clearing and cache exclusion,
+reader controls, access loss, account/project draft reset and revision conflicts
+with raw credential text in a failed-response message. The additional SDK test
+verifies cancellation reaches both metadata readers' fetch calls.
+
+The rebuilt Docker/browser deployment passed 63 tasks in 10m4.341s, retaining the
+660/690 second browser budgets. Two separate certificate contexts save credentials,
+connect/disable/re-enable/remove their own project integration, reject stale CAS,
+and render no PAT in text or web storage. A temporary shared reader sees no
+project mutation controls; direct PUT/DELETE attempts return 403, forgetting the
+reader's credential preserves the owner's credential, and access revocation hides
+the reader's draft and metadata. Desktop screenshots for both users and a
+390×844 screenshot are visually reviewed in
+[the browser artifacts](control-plane-phase-63-browser/). The explicit select
+accessible name is tested in actual Chrome; mobile capture waits two frames for
+responsive layout. Existing personal/admin workflows, automations, text chat,
+logout, same-session restart and crash recovery pass in the same full deployment.
+Six host/image artifacts and the built CLI guide match; driver and sampled server
+logs contain no fixture PAT values. See
+[the verification record](control-plane-phase-63-verification.json).
+
+Chrome needs native process privileges in this host's filesystem sandbox. Two
+broader server test files also pass all 81 tests outside that sandbox, resolving
+the three previously observed process/watcher failures without product changes.
+Two earlier full-suite expectation mismatches (reserved builtin IDs and terminal
+interaction error reason) remain explicitly open; the whole repository is not
+claimed green yet.
+
+The enlarged browser matrix initially exhausted the global 3.825GiB Docker VM;
+the server received SIGKILL and memory events recorded OOM kills. The final driver
+releases four already-verified idle Qwen runtimes through standard `threads.stop`
+before later scenarios, keeps histories/session IDs and proves their native
+resume after restart. Unrelated containers, individual operation deadlines,
+assertions and VM resources are unchanged. The MCP browser fixture restores each
+caller's exact original conversation before subsequent scenarios, and failure
+diagnostics contain identity response metadata rather than credentials.

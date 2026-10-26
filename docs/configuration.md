@@ -22,6 +22,17 @@ Managed thread creation additionally requires `controlPlaneProfileVersionId` on 
 
 Managed BB plugin tools require both `mcpServers: ["bb"]` and an exact `bb:<registered-tool-name>` profile tool entry. Current grants are rechecked at every daemon tool invocation. Qwen Server connects only the built-in delegated `bb` MCP adapter after context validation. Missing or unsupported tool names fail before launch; arbitrary stdio/HTTP MCP servers remain unsupported. The adapter rechecks current context and uses the native BB tool route, which checks grants again before invocation. User-principal plugin SDK calls require a scoped adapter and currently fail explicitly, including HTTP and realtime. Trusted administrative/service plugin SDK calls remain available. Managed `update_environment_directory` is denied until it can validate registered projects; `bb_workflow_run` is denied until tenant scripts have a verified UID execution adapter.
 
+Approved project integrations use the limited connector catalog and personal
+credentials in server-side encrypted storage. Profiles opt in with
+`mcpServers:["project"]` and `tools:["mcp:*"]` or exact
+`mcp:<connector-slug>:<remote-tool-name>` entries. The central gateway performs
+approved Streamable HTTP calls; raw user-configured SDK HTTP/stdio instances stay
+unsupported. Project owners configure connections through the personal
+**Integrations** view or `bb server access mcp configure --connection-stdin`.
+Readers manage only their own credential. Connection changes require a new native
+session; start a new conversation in the user UI. See
+[project MCP configuration](control-plane-project-mcp.md).
+
 Qwen Server supports `full` (`yolo`), `accept-edits` (automatic canonical project edits plus BB approval for other operations) and native Qwen `auto` (classifier with BB manual fallback). These are approval policies inside the existing Unix identity, not an added filesystem jail. HOME permission/auto-allow rules are cleared by protected policy. Requests retain native tool/turn IDs, offer only one-time decisions, expire after at most five minutes and recheck current grants after approval. Administrative integrations use the existing `threads.interactions` SDK and `bb thread interactions list|approve|deny`; user-scoped endpoints remain pending.
 
 The packaged `npx bb-app` flow stores persistent package settings under

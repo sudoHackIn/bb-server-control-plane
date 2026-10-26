@@ -365,8 +365,47 @@ export function createProjectMcpFixture({ db, users, config }) {
           )
           .get(entry.threadId);
         entry.sessionId = row.qwen_session_id;
+        const released = await send(
+          `/api/v1/threads/${entry.threadId}/stop`,
+          {},
+          token,
+        );
+        assert.equal(released.status, 200, JSON.stringify(released.body));
+        assert.equal(
+          db
+            .prepare(
+              "SELECT qwen_session_id FROM control_plane_threads WHERE thread_id=?",
+            )
+            .get(entry.threadId).qwen_session_id,
+          entry.sessionId,
+        );
+      }
+      if (process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1") {
+        const browser = await send(
+          "/control-plane/admin/mcp/connectors",
+          {
+            slug: "browser",
+            name: "Browser integration",
+            endpoint: "https://mcp.example.invalid/browser",
+          },
+          token,
+        );
+        assert.equal(browser.status, 201);
+        for (const user of users)
+          assert.equal(
+            (
+              await send(
+                `/control-plane/admin/mcp/connectors/${browser.body.id}/access/${user.id}`,
+                { allowed: true },
+                token,
+                "PUT",
+              )
+            ).status,
+            200,
+          );
       }
       return {
+        projectMcpIdleRuntimeReleasedWithSessionRetained: true,
         projectMcpNativeQwenRoundTrip: true,
         projectMcpNativePersonalCredentials: true,
         projectMcpProfileToolSelection: true,

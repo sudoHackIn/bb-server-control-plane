@@ -311,6 +311,13 @@ personal bearer tokens stay on the server. Remote installation and stdio command
 are not accepted. HTTP JSON and request-response SSE are supported, with no
 persistent server-initiated subscriptions or automatic effectful retries.
 
+In the personal browser UI, open a project and choose **Integrations**. Select an
+approved connector, save your personal token, then **Connect to project**. Only
+project owners can enable, disable or remove project connections; shared readers
+manage their own credential. Token fields clear on submission and are never
+restored from cached data. Start a new conversation after changing a connection
+or token. Enabled configuration is not a successful remote authentication test.
+
 Each invocation rechecks the saved thread owner, project/profile grants, active
 turn/session, connection and personal credential revisions, then compares the
 remote tool definition before calling it. Revocation cancels pending network

@@ -525,6 +525,16 @@ export async function verifyManagedRuntime({ launch, signal, password }) {
       wait,
     });
     stage("project-mcp-native-complete");
+    for (const entry of created) {
+      const released = await send(
+        `/api/v1/threads/${entry.threadId}/stop`,
+        {},
+        token,
+      );
+      assert.equal(released.status, 200, JSON.stringify(released.body));
+    }
+    stage("idle-fixture-runtimes-released");
+
     approvalVerification = await approvals.verify({ send, wait, token });
     personalVerification = await personal.verify({
       launch,

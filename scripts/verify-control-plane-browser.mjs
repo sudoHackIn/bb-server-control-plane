@@ -1,3 +1,4 @@
+import { verifyBrowserProjectMcp } from "./verify-control-plane-browser-mcp.mjs";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -37,6 +38,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
   const contexts = [];
   const pageErrors = [];
   const requests = [];
+  const identityRequests = [];
   async function actor(login) {
     const context = await browser.newContext({
       ignoreHTTPSErrors: true,
@@ -61,6 +63,39 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     page.on("request", (request) =>
       requests.push({ login, path: new URL(request.url()).pathname }),
     );
+    page.on("requestfailed", (request) => {
+      if (new URL(request.url()).pathname === "/control-plane/browser-context")
+        identityRequests.push({
+          login,
+          kind: "failed",
+          failure: request.failure()?.errorText,
+          time: Date.now(),
+        });
+    });
+    page.on("response", (response) => {
+      if (
+        new URL(response.url()).pathname === "/control-plane/browser-context"
+      ) {
+        void response.json().then(
+          (body) =>
+            identityRequests.push({
+              login,
+              kind: "response",
+              status: response.status(),
+              mode: body?.mode,
+              epochType: typeof body?.cacheEpoch,
+              time: Date.now(),
+            }),
+          () =>
+            identityRequests.push({
+              login,
+              kind: "unreadable",
+              status: response.status(),
+              time: Date.now(),
+            }),
+        );
+      }
+    });
     return { page, context };
   }
   async function visible(locator) {
@@ -162,6 +197,16 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         { exact: true },
       ),
     );
+    const projectMcp = await verifyBrowserProjectMcp({
+      actors: [
+        { actor: alice, user: aliceUser },
+        { actor: bob, user: bobUser },
+      ],
+      origin: ready.origin,
+      command,
+      container: name,
+      visible,
+    });
     const browserWorkflowIds = [];
     for (const [actor, user] of [
       [alice, aliceUser],
@@ -440,6 +485,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     assert.deepEqual(pageErrors, []);
     return {
       ...administration,
+      ...projectMcp,
       personalScriptEditorSourceTimeoutReloadAndRevision: true,
       personalScriptOutputStdoutStderrAndExitRendered: true,
       personalScriptHtmlOutputRemainsText: true,
@@ -490,7 +536,11 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
               .innerText()
               .catch(() => "")) +
               "\n" +
-              JSON.stringify({ pageErrors, requests }, null, 2),
+              JSON.stringify(
+                { pageErrors, requests, identityRequests },
+                null,
+                2,
+              ),
             { mode: 0o600 },
           );
         }

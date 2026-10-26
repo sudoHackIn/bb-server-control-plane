@@ -92,9 +92,14 @@ export function createControlPlaneMcpClient(request: Request) {
     },
     user: {
       ...reader(user),
-      async credential(connectorId: string) {
+      async credential(connectorId: string, signal?: AbortSignal) {
         return controlPlaneMcpCredentialMetadataSchema.parse(
-          await request(`${user}/${id(connectorId)}/credential`, "GET"),
+          await request(
+            `${user}/${id(connectorId)}/credential`,
+            "GET",
+            undefined,
+            signal,
+          ),
         );
       },
       async setCredential(
@@ -120,13 +125,15 @@ export function createControlPlaneMcpClient(request: Request) {
           }),
         );
       },
-      async connections(projectId: string) {
+      async connections(projectId: string, signal?: AbortSignal) {
         return z
           .object({
             connections: z.array(controlPlaneMcpConnectionSchema),
             executionSupported: z.boolean(),
           })
-          .parse(await request(projectPath(projectId), "GET"));
+          .parse(
+            await request(projectPath(projectId), "GET", undefined, signal),
+          );
       },
       async configure(
         projectId: string,

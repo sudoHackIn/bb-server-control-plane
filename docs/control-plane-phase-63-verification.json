@@ -1,0 +1,197 @@
+{
+  "scope": "Personal project MCP management UI using existing limited API/SDK/CLI contracts with owner/reader separation and non-cached credential input",
+  "previousStageCommit": "9f3e0f91f",
+  "databaseMigrations": [],
+  "hostDaemonProtocol": {
+    "version": 255,
+    "changed": false
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "ui": {
+    "projectView": "?view=integrations",
+    "nativeSidebarPreserved": true,
+    "rightWorkspacePanelNotAdded": true,
+    "grantedCatalogWithPagination": true,
+    "personalCredentialMetadataOnly": true,
+    "ownerRevisionProtectedConnectEnableDisableRemove": true,
+    "sharedReaderPersonalCredentialOnly": true,
+    "typedSdkAndExistingCliParity": true,
+    "passwordDraftResetBeforeAwait": true,
+    "noCredentialInQueryOrMutationCache": true,
+    "noCredentialInUrlsOrWebStorage": true,
+    "identityAndProjectInMetadataQueryKeys": true,
+    "draftUnmountOnIdentityProjectAndConnectorVersionChange": true,
+    "accessFailuresHideCachedMetadataAndForms": true,
+    "genericErrorsDoNotRenderRawPatFromFailedResponse": true,
+    "configurationStateDoesNotClaimRemoteHealth": true,
+    "newConversationNeededAfterConfigurationChanges": true,
+    "abortSignalSupportAddedToSdkReaders": [
+      "mcp.credential",
+      "mcp.connections"
+    ],
+    "explicitSelectAccessibleNameVerifiedInRealChrome": true
+  },
+  "verification": {
+    "uiTests": 47,
+    "uiFiles": 8,
+    "newMcpUiTests": 5,
+    "sdkTests": 137,
+    "sdkFiles": 18,
+    "newSdkCancellationTests": 1,
+    "typecheckTasks": 6,
+    "strictLintAndFormattingCodeFiles": 10,
+    "nativeProcessRegressionTests": {
+      "tests": 81,
+      "files": 2,
+      "passed": true,
+      "outsideFilesystemSandbox": true,
+      "reason": "Installer child-process termination and builtin file watchers require native macOS process privileges; three previously observed failures pass with no product/test expectation changes"
+    },
+    "fullServerSweepNotClaimedGreen": true,
+    "knownOutstandingAssertions": [
+      "builtin-registry reserved unprefixed ID list omits fork provider-qwen-server",
+      "pending-interactions expects terminal-dedupe reason when request belongs to another turn"
+    ],
+    "dockerBrowser": {
+      "passed": true,
+      "tasks": 63,
+      "cached": 61,
+      "duration": "10m4.341s",
+      "innerBudgetMs": 660000,
+      "outerBudgetMs": 690000,
+      "budgetsChanged": false,
+      "headlessChromeTemporaryProfileOutsideFilesystemSandbox": true,
+      "browserVersion": "155.0.8059.85",
+      "mcpChecks": {
+        "projectMcpBrowserTwoUserCrudAndCas": true,
+        "projectMcpBrowserPatClearedAndAbsentFromWebStorage": true,
+        "projectMcpBrowserSharedReaderCannotChangeConnections": true,
+        "projectMcpBrowserSharedCredentialRevocationUsesOwnIdentity": true,
+        "projectMcpBrowserAccessLossHidesDraftAndMetadata": true
+      },
+      "baselinePersonalAndAdministrativeBrowserChecks": {
+        "nativeAdministrativeDefinitionUiRendered": true,
+        "administrativeDefinitionsShowBothOwners": true,
+        "administrativeDefinitionsCrudAndImmutableRevisionRun": true,
+        "administrativeDefinitionRunAdoptsEachSavedOwner": true,
+        "administrativeUiRejectsStaleRevisionSave": true,
+        "administrativeUiDisableCannotBeBypassedByAdminRun": true,
+        "administrativeUiLogoutRevokesNativeRpc": true,
+        "projectMcpBrowserTwoUserCrudAndCas": true,
+        "projectMcpBrowserPatClearedAndAbsentFromWebStorage": true,
+        "projectMcpBrowserSharedReaderCannotChangeConnections": true,
+        "projectMcpBrowserSharedCredentialRevocationUsesOwnIdentity": true,
+        "projectMcpBrowserAccessLossHidesDraftAndMetadata": true,
+        "personalScriptEditorSourceTimeoutReloadAndRevision": true,
+        "personalScriptOutputStdoutStderrAndExitRendered": true,
+        "personalScriptHtmlOutputRemainsText": true,
+        "personalScriptActualUidHomeCwdVerified": true,
+        "personalScriptForeignDefinitionAndOutputDenied": true,
+        "personalAutomationsCrudSchedulesAndRevisionEditor": true,
+        "personalAutomationResponsiveToolbarVerified": true,
+        "personalAutomationHistoryAndConversationLinks": true,
+        "personalAutomationSelectionSurvivesReload": true,
+        "personalAutomationBrowserQwenUidHomeCwdVerified": true,
+        "personalAutomationBrowserCancellationReapsActualCommands": true,
+        "personalAutomationBrowserForeignReadsAndMutationsDenied": true,
+        "productionBrowserRenderingVerified": true,
+        "browserVersion": "155.0.8059.85",
+        "separateCertificateBrowserContexts": true,
+        "certificateLoginPreservesConversationAndMessageFragment": true,
+        "nativeSidebarTimelineAndComposerRendered": true,
+        "actualNativeEditorCreatesAndContinuesQwenConversation": true,
+        "liveQwenResponseRendered": true,
+        "personalWorkflowDefinitionsCrudAndExactRevisionRun": true,
+        "personalWorkflowDefinitionQwenWorkerAndDefaultArguments": true,
+        "personalWorkflowDefinitionForeignRequestsDeniedWhilePresent": true,
+        "personalWorkflowListStartProgressHistoryAndResultRendered": true,
+        "personalWorkflowReplayAndCancellationFromNativeUi": true,
+        "personalWorkflowViewSurvivesReload": true,
+        "personalWorkflowPaginationAfterReload": true,
+        "foreignWorkflowHiddenAndApiDenied": true,
+        "nativeDeepLinkSurvivesReload": true,
+        "personalUiDoesNotRequestAdministrativeApiOrPluginFrontends": true,
+        "foreignConversationHiddenAndApiDenied": true,
+        "logoutRevokesBrowserAndHidesConversation": true,
+        "uncaughtPageErrors": 0
+      },
+      "nativeMcpRoundTripsStillPass": true,
+      "nativeMcpRuntimeReleaseRetainsSession": true,
+      "nativeMcpSameSessionResumeAfterRestart": true,
+      "shutdownAndCrashRecovery": true,
+      "driverLogContainsFixturePat": false,
+      "serverLogScan": {
+        "files": 2,
+        "bytes": 73604,
+        "plaintextCredentialsFound": false
+      },
+      "memoryTelemetry": {
+        "samples": 37,
+        "peakObserved": {
+          "time": 1792983609,
+          "memory": "2.228GiB / 3.825GiB",
+          "percent": "58.25%",
+          "cpu": "168.52%",
+          "pids": "361"
+        },
+        "samplingSeconds": 10,
+        "globalDockerMemoryGiB": 3.825,
+        "unrelatedContainersUntouched": true
+      },
+      "idleFixtureCleanup": "Release two already-verified original and two MCP Qwen runtimes through the standard threads.stop API before later matrices; retained histories and session IDs are resumed by unchanged restart/crash assertions"
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "09dc3edc96fe7b5a7f1c6eee006c3c92df10acba0fcfa9ec2e35e41fcc0ccd1f"
+      },
+      "apps/cli/dist/index.js": {
+        "imagePath": "/opt/bb/apps/cli/dist/index.js",
+        "sha256HostAndImage": "8737f3c53949d8f9cb1ece97c31626ab7ccaba4853032e1b98a3262b8e59d0eb"
+      },
+      "scripts/check-control-plane-project-mcp.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-mcp.mjs",
+        "sha256HostAndImage": "e1735014c1a2d59f88b6f9e2ce4849de668de2a476f6dad9cf44232fd964319e"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "0ec12fcd9cb3caa545786ce0fdb751c3654b5ab6d52b86e56451a59fcd39b17e"
+      },
+      "apps/app/dist/assets/personal-main-B-OgOYeZ.css": {
+        "imagePath": "/opt/bb/apps/app/dist/assets/personal-main-B-OgOYeZ.css",
+        "sha256HostAndImage": "5aec48ac207010c1b9c2bb5a25dabca9ddafd7fcdc6460dfb3621b0c160c8a84"
+      },
+      "apps/app/dist/assets/personal-main-DCRrTkE5.js": {
+        "imagePath": "/opt/bb/apps/app/dist/assets/personal-main-DCRrTkE5.js",
+        "sha256HostAndImage": "a06a230d37fdb9d71aa82b5d26b415c67079932f57d509b8692f0ac67d43e408"
+      }
+    },
+    "builtCliGuideIncludesUiInstructions": true,
+    "screenshots": {
+      "docs/control-plane-phase-63-browser/project-integrations-bob.png": "033a1cb8d2222da895018288143b01c27cda246a82a3e7f69e5f1a4afe9d07de",
+      "docs/control-plane-phase-63-browser/project-integrations-alice.png": "02f0e235ba27ee88204a0c5494547e9e8efeef51e03d3f0ca891df6da5a75914",
+      "docs/control-plane-phase-63-browser/project-integrations-mobile.png": "b3794a0ec919ae3c110809c98e1aeca6debf4fa5672b7eebb6d9ff4cab4ed892"
+    },
+    "screenshotsVisuallyReviewed": true,
+    "mobileViewport": {
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false,
+      "screenshotAfterTwoAnimationFrames": true
+    }
+  },
+  "iterations": [
+    "Initial Chrome launch was denied in filesystem sandbox; standalone temporary-profile Chrome launch and complete browser tests use native process privileges.",
+    "Real Chrome exposed select label text including option text; explicit aria-label fixes the accessible name and exact lookup.",
+    "The added browser fixture now restores each caller original conversation URL. Identity failures record only status/error metadata.",
+    "Expanded full browser run exceeded available global Docker VM memory and the kernel killed the server (SIGKILL, oom_kill). Standard release of four completed test runtimes removed that retained load without stopping unrelated containers or weakening tests/timeouts."
+  ],
+  "limitations": [
+    "Browser MCP checks cover configuration/credential UX; actual remote calls are verified by the separate native Qwen fixture.",
+    "Shared-project workspace agent execution and combined MCP workflow/active-revocation acceptance remain open.",
+    "No corporate Qwen SDK authorization or live external model/MCP service verified.",
+    "The full server sweep is not claimed green until its two remaining assertion mismatches are addressed and the full appropriate native-process run is repeated.",
+    "Other unchecked shared-server requirements remain open; goal is not complete."
+  ]
+}

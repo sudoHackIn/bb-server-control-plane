@@ -6,8 +6,8 @@ remote tool execution through native Qwen. Connections default to disabled.
 Owners may explicitly activate with `enabled:true` when their current credential
 matches the connector revision. Active records report `executionState:"enabled"`;
 connection lists report `executionSupported:true`. These flags describe enabled
-configuration, not a successful remote authentication probe. Project UI and actual
-shared-project workspace execution remain required for the complete feature.
+configuration, not a successful remote authentication probe. The personal project UI exposes these controls; actual shared-project workspace
+execution remains required for the complete feature.
 
 ## Stored authority and contracts
 
@@ -82,6 +82,28 @@ connection invalidates existing tool bindings.
 No new Plugin SDK member is added. Protocol 255 signals the changed dynamic-tool
 semantics to host daemons; Plugin SDK remains 0.6.80.
 
+## Personal project UI
+
+Open a project and choose **Integrations**. The catalog contains only connectors
+granted to the authenticated account, with pagination. Selecting a connector
+loads personal credential metadata. The password field is uncontrolled, clears
+immediately on submission and is not passed through a React Query mutation cache.
+Only metadata enters the query cache; keys include the authenticated user and
+project. Switching project/account unmounts drafts. Access failures hide cached
+connections and credential forms.
+
+A project owner can connect using an existing matching credential, update and
+enable, disable or remove the current connection revision. Shared readers can
+manage their own token but see no project mutation controls. Server authorization
+and CAS remain authoritative. A failed write uses a generic error without raw
+server messages, refreshes current metadata and does not retry automatically.
+No UI access to native APIs, plugin installation or administrative routes is added.
+
+The view separates credential readiness from enabled configuration and makes no
+remote health/authentication claim. Start a new conversation after changes to
+refresh the native harness tool snapshot. The same operations remain available
+through the existing limited SDK and `bb server access mcp` CLI.
+
 ## Native execution
 
 Approved profiles opt in with `mcpServers:["project"]` and `tools:["mcp:*"]` or
@@ -125,10 +147,11 @@ checks each service request's distinct personal bearer token and consumes the
 actual remote result in the next model turn. It also resumes Bob's saved Qwen
 session after server restart. Unit/integration tests exercise JSON/SSE, forged
 turn/session/foreign bindings, schema drift, redirects, PAT reflection and active
-grant revocation. See the [configuration evidence](control-plane-phase-61-verification.json)
-and [execution evidence](control-plane-phase-62-verification.json).
+grant revocation. See the [configuration evidence](control-plane-phase-61-verification.json),
+[execution evidence](control-plane-phase-62-verification.json) and
+[personal UI evidence](control-plane-phase-63-verification.json).
 
 The local model backend and remote MCP endpoint are deterministic test services;
 this does not establish corporate CLI/SDK support. The complete combined Docker
-acceptance, shared-project execution/workspace policy and project UI remain open.
+acceptance and shared-project execution/workspace policy remain open.
 Do not equate `configured` or `enabled` with a working authenticated connection.

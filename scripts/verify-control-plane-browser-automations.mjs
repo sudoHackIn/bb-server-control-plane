@@ -113,9 +113,30 @@ export async function verifyBrowserAutomations({
       page.getByRole("button", { name: "Run automation", exact: true }).click(),
     201,
   );
-  await visible(
-    page.getByText(`${run.id} · succeeded · manual`, { exact: true }),
-  );
+  try {
+    await visible(
+      page.getByText(`${run.id} · succeeded · manual`, { exact: true }),
+    );
+  } catch (error) {
+    const response = await page
+      .context()
+      .request.get(origin + path + "/history");
+    const body = await response.json();
+    const current = body.runs?.find((item) => item.id === run.id);
+    console.log(
+      JSON.stringify({
+        browserAutomationFailure: {
+          owner: user.login,
+          historyStatus: response.status(),
+          runId: run.id,
+          status: current?.status,
+          threadId: current?.threadId,
+        },
+      }),
+    );
+    throw error;
+  }
+
   assert.equal(
     (
       await foreign.context.request.post(
