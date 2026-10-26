@@ -560,3 +560,4 @@ export * from "./control-plane-project-policy.js";
 export * from "./control-plane-uid-maintenance.js";
 
 export * from "./control-plane-project-maintenance.js";
+export * from "./control-plane-project-roles.js";

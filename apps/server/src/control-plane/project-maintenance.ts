@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
   controlPlaneUsers,
+  controlPlaneProjectAccess,
+  changeControlPlaneProjectRoleAndReserveMaintenance,
   getControlPlaneProjectAccessPolicy,
   getControlPlaneProjectMaintenance,
   reserveControlPlaneProjectMaintenance,
@@ -270,42 +272,109 @@ export function createControlPlaneProjectMaintenanceCoordinator(options: {
         );
     }
   }
+  const reconcile = (input: {
+    projectId: string;
+    operationId: string;
+    expectedAttempt?: number;
+  }) => {
+    const key = input.operationId;
+    const signature = JSON.stringify([
+      input.projectId,
+      input.expectedAttempt ?? null,
+    ]);
+    const pending = active.get(key);
+    if (pending) {
+      if (pending.signature !== signature)
+        return Promise.reject(
+          new Error(
+            "Maintenance request is already running with different parameters",
+          ),
+        );
+      return pending.promise;
+    }
+    const result = execute(input).then(() => {
+      const latest = getControlPlaneProjectMaintenance(db, input.operationId);
+      if (!latest) throw new Error("Maintenance operation disappeared");
+      return latest;
+    });
+    active.set(key, { signature, promise: result });
+    void result
+      .finally(() => {
+        if (active.get(key)?.promise === result) active.delete(key);
+      })
+      .catch(() => {});
+    return result;
+  };
   return {
     status(operationId: string) {
       return getControlPlaneProjectMaintenance(db, operationId);
     },
-    reconcile(input: {
+    reconcile,
+    async changeRole(input: {
       projectId: string;
+      userId: string;
+      role: "runner" | "viewer" | null;
+      expectedRevision: number;
       operationId: string;
-      expectedAttempt?: number;
     }) {
-      const key = input.operationId;
-      const signature = JSON.stringify([
-        input.projectId,
-        input.expectedAttempt ?? null,
-      ]);
-      const pending = active.get(key);
-      if (pending) {
-        if (pending.signature !== signature)
-          return Promise.reject(
-            new Error(
-              "Maintenance request is already running with different parameters",
-            ),
-          );
-        return pending.promise;
+      const policy = getControlPlaneProjectAccessPolicy(db, input.projectId);
+      if (!policy || policy.revision !== input.expectedRevision)
+        throw new Error("Project role revision changed");
+      const root = await inspectProjectAccess(
+        policy.owner,
+        policy.project.projectId,
+        policy.project.slug,
+      );
+      const identities = new Map<string, { userId: string; uid: number }>();
+      const grants = db
+        .select({ userId: controlPlaneProjectAccess.userId })
+        .from(controlPlaneProjectAccess)
+        .where(eq(controlPlaneProjectAccess.projectId, input.projectId))
+        .all();
+      for (const row of [
+        policy.owner.id,
+        input.userId,
+        ...grants.map((grant) => grant.userId),
+        ...root.writers.map((writer) => writer.userId),
+      ]) {
+        const identity = db
+          .select()
+          .from(controlPlaneUsers)
+          .where(eq(controlPlaneUsers.id, row))
+          .get();
+        if (!identity || identity.gid !== identity.uid)
+          throw new Error("Project role participant identity changed");
+        const prior = identities.get(identity.id);
+        const writer = root.writers.find((item) => item.userId === identity.id);
+        if (
+          (prior && prior.uid !== identity.uid) ||
+          (writer && writer.uid !== identity.uid)
+        )
+          throw new Error("Project role participant identity changed");
+        identities.set(identity.id, { userId: identity.id, uid: identity.uid });
       }
-      const result = execute(input).then(() => {
-        const latest = getControlPlaneProjectMaintenance(db, input.operationId);
-        if (!latest) throw new Error("Maintenance operation disappeared");
-        return latest;
+      const participants = [];
+      for (const member of [...identities.values()].sort((a, b) =>
+        a.userId.localeCompare(b.userId),
+      )) {
+        const identity = user(member.userId, member.uid);
+        const state = await controlPlaneUidMaintenance(identity, {
+          action: "status",
+        });
+        participants.push({ ...member, rootGeneration: state.generation });
+      }
+      const changed = changeControlPlaneProjectRoleAndReserveMaintenance(db, {
+        ...input,
+        workerId: randomUUID(),
+        workerPid: process.pid,
+        participants,
       });
-      active.set(key, { signature, promise: result });
-      void result
-        .finally(() => {
-          if (active.get(key)?.promise === result) active.delete(key);
-        })
-        .catch(() => {});
-      return result;
+      if (!changed.changed) return changed;
+      const operation = await reconcile({
+        projectId: input.projectId,
+        operationId: input.operationId,
+      });
+      return { ...changed, operation };
     },
   };
 }

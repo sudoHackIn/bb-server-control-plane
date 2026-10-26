@@ -467,3 +467,26 @@ full matrix in 558.221s, with 63/63 Turbo tasks successful. The full matrix
 confirms startup recovery of the saved UID operation, unchanged participant
 generations, notification receipt replay, workflow crash recovery and native
 script cleanup. See [the stage 72 record](control-plane-phase-72-verification.json).
+
+
+## Atomic private role change (increment 73)
+
+The private coordinator reads the current project policy and root ACL writers
+before asking SQLite to change a single nonowner grant. The database transaction
+checks the expected policy revision, confirms coverage of the owner, target and
+all current grantees, changes the grant, and reserves every supplied UID against
+the triggered new revision. The group worker claim is released inside the same
+transaction, so a later process or the restart sweep can resume the operation.
+If any UID is busy, the grant and all reservations roll back together.
+
+After commit, normal reconciliation stops native threads and root jobs, applies
+the exact ACL, acknowledges the revision and releases all participants. A failed
+postcommit step leaves the saved operation and launch barriers in place. The
+database function also refuses concurrent pending project maintenance and
+owner-role changes. The service entry remains private while administrative
+authorization, API/SDK/CLI/UI controls and shared native execution are built.
+The stage 73 Docker matrix verifies the runner grant, generation advance,
+completed saved operation, retained shared content and separate HOME isolation
+after restart. Role removal has a migrated SQLite reservation test; the earlier
+three-UID Docker ACL scenario continues to cover direct revocation and former
+writers. See [the stage 73 record](control-plane-phase-73-verification.json).

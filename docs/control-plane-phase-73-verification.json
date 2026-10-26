@@ -1,0 +1,70 @@
+{
+  "scope": "Private one-role mutation and cohort UID reservation in one SQLite transaction, followed by saved project maintenance",
+  "previousStageCommit": "b7f0f1858",
+  "publicRoleApiEnabled": false,
+  "sharedNativeExecutionEnabled": false,
+  "schemaChanged": false,
+  "contracts": {
+    "grantAndUidBarriersCommitOrRollbackTogether": true,
+    "oldAndNewGranteesOwnerAndRootWritersIncluded": true,
+    "expectedPolicyRevisionRequired": true,
+    "pendingProjectOperationRefused": true,
+    "postCommitOperationRecoverableWithUnclaimedWorker": true,
+    "ownerRoleImmutable": true,
+    "formerGranteeReservedOnRemoval": true
+  },
+  "verification": {
+    "database": {
+      "testsPassed": 695,
+      "filesPassed": 63
+    },
+    "server": {
+      "testsPassed": 3845,
+      "filesPassed": 394,
+      "filesSkipped": 3,
+      "testsSkipped": 1,
+      "unsandboxedForNpmCache": true
+    },
+    "typecheckTasks": 7,
+    "docker": {
+      "nativeMaintenanceSuite": {
+        "passed": true,
+        "durationMs": 98582
+      },
+      "compositeSuite": {
+        "passed": true,
+        "durationMs": 530916,
+        "privateRoleGrantAfterRestartAndAclCheck": true
+      },
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "10m40.377s",
+      "hostExitCode": 0
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "edb95c532f3b5deb350cb3f563ae96ccc176f051c02b552f19098c132cda4659"
+      },
+      "scripts/check-control-plane-project-maintenance.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-maintenance.mjs",
+        "sha256HostAndImage": "68e457007a7589c47379394aaa76eda2c826069969a0d7bd496212056d159901"
+      }
+    },
+    "compiledFixtureImageHash": {
+      "/opt/bb/apps/server/dist/project-access-check.mjs": "d3f31b70e161319ef537be91c5704212d4e892e880bc60a80fcd8769f87c1e4b"
+    },
+    "strictLintAndFormattingCodeFiles": 6,
+    "newSkips": 0
+  },
+  "developmentFixes": [
+    "The first complete server run failed 22 unrelated npm-pack and plugin-build tests because the sandbox denied writes to the user-owned npm cache; overriding the cache environment was stripped by the command runner. The same unchanged 3845-test suite passed outside the sandbox.",
+    "The new removal regression initially assumed a fixed UUID sort order; it now compares the two required participant identities without depending on random UUID order. The final database suite passes 695 tests."
+  ],
+  "limitations": [
+    "The role change entry remains private; no administrator HTTP, SDK, CLI or UI contract is exposed.",
+    "The Docker role-change scenario verifies runner grant; removal is covered by migrated SQLite tests and the earlier direct ACL revocation scenario.",
+    "Actual shared native Qwen project execution remains closed.",
+    "Postcommit failure keeps the saved operation and UID barriers until reconciliation; it does not roll the role change back."
+  ]
+}

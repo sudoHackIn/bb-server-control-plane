@@ -33,6 +33,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Add private durable project-participant reconciliation: atomic cohort reservation, former-writer recovery, confirmed job draining, exact ACL acknowledgement and all-participant DB release after root completion. Verify interrupted release and dead-worker recovery in Docker. Atomic administrative role mutation, startup sweep, queue retention and shared native execution remain pending.
 - [x] Preserve queued input, source identity and retry budgets when the mandatory execution guard observes UID maintenance; verify repeated explicit sends, retry sweeps and late failure handling, plus one native Qwen delivery after release under the advanced generation. Native maintenance draining and accepted-turn settlement remain pending.
 - [x] Connect private project maintenance to native BB lifecycle settlement, preserve intentional queue pauses, defer owned workflow/schedule dispatch and recover saved operations through periodic reconciliation after restart. Public atomic role mutation and shared native project execution remain pending.
+- [x] Make one private project role change and all affected UID admission reservations a single SQLite transaction, then resume the saved maintenance operation through the coordinator. Verify the real three-UID grant and ACL application in Docker. Administrative API/SDK/CLI/UI controls and shared native execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3302,3 +3303,32 @@ complete existing deployment matrix in 558.221s: 63 of 63 Turbo tasks pass in
 native script cleanup after a crash all pass. Twenty-two host/image artifacts
 match; three compiled fixture hashes are recorded. The earlier failed and
 inconclusive deployment attempts remain in [the verification record](control-plane-phase-72-verification.json).
+
+
+## Seventy-third increment: atomic private role change and cohort reservation
+
+The private project coordinator can now change one runner/viewer grant or remove
+it with an expected policy revision. It inspects the current ACL writers, collects
+the owner, target and every existing grantee, and reads their root generations.
+One immediate SQLite transaction applies the role change and reserves every UID
+under a durable project operation. A busy UID, stale revision, omitted participant
+or existing pending operation rolls back the grant. The operation is left
+unclaimed for the normal coordinator or restart sweep to drain jobs and native
+threads, apply the exact ACL revision and release the cohort.
+
+The Docker grant scenario runs after restart with three numeric UIDs. It restores
+Charlie's runner role after a previous revocation, verifies the saved operation
+completed at the next generation, reads retained shared content as Charlie and
+confirms that Alice's HOME stays inaccessible. The direct role mutation used by
+older ACL fixtures is not a public role API; this increment adds no external role
+endpoint. Administrative controls, user-facing role lists and actual shared Qwen
+execution remain open. See [the role contract](control-plane-project-access.md#atomic-private-role-change-increment-73).
+
+Verification passes 695 database tests in 63 files and 3845 server tests in
+394 files, with existing skips unchanged. Seven typecheck tasks and strict
+lint/formatting of the six changed code files pass. The rebuilt Docker image
+passes the focused native-maintenance suite in 98.582s and the full composite
+in 530.916s: 63/63 Turbo tasks pass in 10m40.377s. The server bundle and role
+scenario script match the image; the compiled project fixture hash is recorded.
+The full server suite required access to the user-owned npm cache used by its
+plugin packaging tests. See [the verification record](control-plane-phase-73-verification.json).

@@ -197,10 +197,34 @@ export async function verifyProjectMaintenance({
         alice,
         `require("node:assert/strict").equal(require("node:fs").readFileSync(${JSON.stringify(project.cwd + "/shared.txt")},"utf8"),"preserved-shared-content")`,
       );
+      const beforeRole = await grant(null);
+      const roleGroup = await service({
+        mode: "role-group",
+        projectId: project.projectId,
+        userId: charlie.id,
+        role: "runner",
+        expectedRevision: beforeRole.revision,
+        operationId: randomUUID(),
+      });
+      assert.equal(roleGroup.changed, true);
+      assert.equal(roleGroup.revision, beforeRole.revision + 1);
+      assert.equal(roleGroup.operation.phase, "complete");
+      assert.equal(roleGroup.operation.workerId, null);
+      assert.ok(
+        roleGroup.operation.participants.some(
+          (member) => member.userId === charlie.id && member.generation === 3,
+        ),
+      );
+      await as(
+        charlie,
+        `require("node:assert/strict").equal(require("node:fs").readFileSync(${JSON.stringify(project.cwd + "/shared.txt")},"utf8"),"preserved-shared-content")`,
+      );
+      await denied(charlie, alice.home + "/credential.txt");
       return {
         projectMaintenanceDeadWorkerReclaimedAfterRestart: true,
         projectMaintenancePartialReleaseResumesWithoutResettingGenerations: true,
         projectMaintenanceFormerWriterRevocationAndContentPersist: true,
+        projectRoleMutationAndCohortReservationUseOneSavedOperation: true,
       };
     },
   };

@@ -71,6 +71,16 @@ const input = z
       .strict(),
     z
       .object({
+        mode: z.literal("role-group"),
+        projectId: z.string(),
+        userId: z.string().uuid(),
+        role: z.enum(["runner", "viewer"]).nullable(),
+        expectedRevision: z.number().int().positive(),
+        operationId: z.string().uuid(),
+      })
+      .strict(),
+    z
+      .object({
         mode: z.literal("coordinate"),
         userId: z.string().uuid(),
         request: z.discriminatedUnion("action", [
@@ -377,7 +387,11 @@ try {
         getControlPlaneProjectMaintenance(db, input.operationId) ?? null,
       ),
     );
-  } else if (input.mode === "group" || input.mode === "group-cut-release") {
+  } else if (
+    input.mode === "group" ||
+    input.mode === "group-cut-release" ||
+    input.mode === "role-group"
+  ) {
     const stopThreads = async (userId: string) => {
       if (
         db
@@ -388,20 +402,28 @@ try {
       )
         throw new Error("Fixture cannot stop native threads");
     };
-    if (input.mode === "group") {
+    if (input.mode === "group" || input.mode === "role-group") {
       const coordinator = createControlPlaneProjectMaintenanceCoordinator({
         db,
         stopThreads,
       });
       process.stdout.write(
         JSON.stringify(
-          await coordinator.reconcile({
-            projectId: input.projectId,
-            operationId: input.operationId,
-            ...(input.expectedAttempt === undefined
-              ? {}
-              : { expectedAttempt: input.expectedAttempt }),
-          }),
+          input.mode === "role-group"
+            ? await coordinator.changeRole({
+                projectId: input.projectId,
+                userId: input.userId,
+                role: input.role,
+                expectedRevision: input.expectedRevision,
+                operationId: input.operationId,
+              })
+            : await coordinator.reconcile({
+                projectId: input.projectId,
+                operationId: input.operationId,
+                ...(input.expectedAttempt === undefined
+                  ? {}
+                  : { expectedAttempt: input.expectedAttempt }),
+              }),
         ),
       );
     } else {

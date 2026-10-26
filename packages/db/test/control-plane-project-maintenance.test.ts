@@ -19,6 +19,8 @@ import {
   controlPlaneProjects,
   controlPlaneProjectMaintenance,
   listPendingControlPlaneProjectMaintenance,
+  changeControlPlaneProjectRoleAndReserveMaintenance,
+  reserveControlPlaneUidMaintenance,
 } from "../src/index.js";
 import { createMigratedConnection } from "../src/testing.js";
 function fixture() {
@@ -270,4 +272,136 @@ it("rejects malformed worker pairs and identity substitutions without reserving 
       .where(eq(controlPlaneProjectMaintenance.id, f.id))
       .run(),
   ).toThrow();
+});
+it("changes a project role and reserves every UID in one durable transaction", () => {
+  const originalRevision = f.revision();
+  const changed = changeControlPlaneProjectRoleAndReserveMaintenance(f.db, {
+    projectId: f.project.id,
+    userId: f.bob.id,
+    role: "runner",
+    expectedRevision: originalRevision,
+    operationId: f.id,
+    workerId: f.workerId,
+    workerPid: process.pid,
+    participants: [f.alice, f.bob].map((user) => ({
+      userId: user.id,
+      uid: user.uid,
+      rootGeneration: 0,
+    })),
+  });
+  expect(changed).toEqual({
+    changed: true,
+    revision: originalRevision + 1,
+    operationId: f.id,
+  });
+  expect(
+    getControlPlaneProjectAccessPolicy(f.db, f.project.id)?.members,
+  ).toEqual([expect.objectContaining({ id: f.bob.id })]);
+  expect(getControlPlaneProjectMaintenance(f.db, f.id)).toMatchObject({
+    projectRevision: originalRevision + 1,
+    workerId: null,
+    workerPid: null,
+    phase: "preparing",
+  });
+  for (const user of [f.alice, f.bob])
+    expect(getControlPlaneUidMaintenance(f.db, user.id)).toMatchObject({
+      operationId: f.id,
+      projectRevision: originalRevision + 1,
+      phase: "blocking",
+    });
+});
+it("reserves the former grantee when removing its role", () => {
+  f.db
+    .insert(controlPlaneProjectAccess)
+    .values({ projectId: f.project.id, userId: f.bob.id, role: "runner" })
+    .run();
+  const revision = f.revision();
+  const removed = changeControlPlaneProjectRoleAndReserveMaintenance(f.db, {
+    projectId: f.project.id,
+    userId: f.bob.id,
+    role: null,
+    expectedRevision: revision,
+    operationId: f.id,
+    workerId: f.workerId,
+    workerPid: process.pid,
+    participants: [f.alice, f.bob].map((user) => ({
+      userId: user.id,
+      uid: user.uid,
+      rootGeneration: 0,
+    })),
+  });
+  expect(removed).toMatchObject({ changed: true, revision: revision + 1 });
+  expect(
+    getControlPlaneProjectAccessPolicy(f.db, f.project.id)?.members,
+  ).toEqual([]);
+  expect(
+    getControlPlaneProjectMaintenance(f.db, f.id)
+      ?.participants.map((member) => member.userId)
+      .sort(),
+  ).toEqual([f.alice.id, f.bob.id].sort());
+  expect(getControlPlaneUidMaintenance(f.db, f.bob.id)).toMatchObject({
+    operationId: f.id,
+    phase: "blocking",
+  });
+});
+it("rolls back role changes if participant reservation fails", () => {
+  const revision = f.revision();
+  reserveControlPlaneUidMaintenance(f.db, {
+    userId: f.bob.id,
+    projectId: f.project.id,
+    operationId: randomUUID(),
+    rootGeneration: 0,
+  });
+  expect(() =>
+    changeControlPlaneProjectRoleAndReserveMaintenance(f.db, {
+      projectId: f.project.id,
+      userId: f.bob.id,
+      role: "runner",
+      expectedRevision: revision,
+      operationId: randomUUID(),
+      workerId: randomUUID(),
+      workerPid: process.pid,
+      participants: [f.alice, f.bob].map((user) => ({
+        userId: user.id,
+        uid: user.uid,
+        rootGeneration: 0,
+      })),
+    }),
+  ).toThrow("busy");
+  expect(f.revision()).toBe(revision);
+  expect(
+    getControlPlaneProjectAccessPolicy(f.db, f.project.id)?.members,
+  ).toEqual([]);
+  expect(getControlPlaneUidMaintenance(f.db, f.bob.id)?.operationId).not.toBe(
+    f.id,
+  );
+});
+it("rejects omitted participants, stale revisions and owner changes without altering grants", () => {
+  const input = {
+    projectId: f.project.id,
+    userId: f.bob.id,
+    role: "runner" as const,
+    expectedRevision: f.revision(),
+    operationId: f.id,
+    workerId: f.workerId,
+    workerPid: process.pid,
+    participants: [{ userId: f.bob.id, uid: f.bob.uid, rootGeneration: 0 }],
+  };
+  expect(() =>
+    changeControlPlaneProjectRoleAndReserveMaintenance(f.db, input),
+  ).toThrow("omitted");
+  expect(() =>
+    changeControlPlaneProjectRoleAndReserveMaintenance(f.db, {
+      ...input,
+      expectedRevision: input.expectedRevision - 1,
+    }),
+  ).toThrow("revision changed");
+  expect(() =>
+    changeControlPlaneProjectRoleAndReserveMaintenance(f.db, {
+      ...input,
+      userId: f.alice.id,
+    }),
+  ).toThrow("immutable");
+  expect(getControlPlaneProjectMaintenance(f.db, f.id)).toBeUndefined();
+  expect(getControlPlaneUidMaintenance(f.db, f.bob.id)).toBeUndefined();
 });
