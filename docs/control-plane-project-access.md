@@ -320,3 +320,49 @@ and acknowledge the pinned filesystem policy, finish all participants and resume
 pending operations at startup. It must retain queued work appropriately and ship
 administrative API/SDK/CLI/UI controls. None of those end-user surfaces are implied
 by the new internal coordinator.
+
+## Durable project participant coordinator (increment 70)
+
+Migration 0161 stores each private project maintenance operation with its pinned
+policy revision, attempt, complete participant/generation snapshot, phase and
+worker claim. Reserving all participant UID intents is one SQLite transaction;
+a conflict on any UID rolls back the entire reservation. Participants include
+the owner, current runnable members, root's saved former writers and the previous
+attempt's participants. Removing a database grant therefore cannot hide a process
+which still holds a shared file descriptor. Explicit rebase retains those identities
+and advances generations; stale attempts cannot complete it.
+
+The coordinator advances preparing → draining → applying → releasing → complete.
+It blocks every participant in the database before root barriers, confirms stops
+before applying the pinned ACL, acknowledges only the same current revision, and
+finishes every root barrier before atomically returning all database UID intents
+to idle. A crash after one root release leaves the entire service cohort blocked.
+Recovery reclaims only an exited worker, retains previous participant identities
+and retries the remaining release without reopening a closed root generation.
+A live worker cannot be stolen. An uncertain stop retains its claim while that
+process is alive, avoiding a second coordinator racing an unfinished stop request.
+
+The privileged helper now exposes private validated project-writer inspection
+and a bounded job-ID listing for the exact blocked UID generation. The latter
+includes stale supervisor records and fails closed if cleanup cannot be confirmed;
+it does not silently delete them. The required stop callback is responsible for
+BB lifecycle settlement before helper job cleanup. The independent per-UID
+controller refuses grouped operations. The native BB adapter remains pending: its
+pre-start/active/idle settlement and queue retention must be verified before it is
+connected to project maintenance.
+
+Docker exercises two real numeric users, namespaced script jobs and a descendant
+holding a shared descriptor. It verifies grant, drain, former-writer revocation,
+partial root release, persisted worker/participant state, recovery after the BB
+restart matrix and unchanged shared content and private HOME access. SQLite tests
+cover cohort rollback, exact phases/revisions, rebase, identity substitution,
+worker CAS and active/completed deletion. Server tests reject live-worker takeover,
+independent UID release and conflicting duplicate requests.
+
+This is private reconciliation of an already saved policy. Administrative role
+mutation is not yet combined atomically with cohort reservation. Automatic startup
+sweep, queue-specific retention, public role API/SDK/CLI/UI and actual shared
+native Qwen launch remain subsequent work. A maintenance operation with live
+Qwen/workflow queues still needs its own lifecycle adapter and integration check;
+the Docker cohort scenario uses real script jobs and an empty BB-thread registry. Existing ordinary native runtime deployment checks remain separate.
+Host protocol 256, Qwen Server plugin 0.1.1 and SDK 0.6.80 are unchanged.

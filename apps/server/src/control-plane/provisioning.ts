@@ -267,3 +267,102 @@ export async function controlPlaneUidMaintenance(
     throw new Error("UID maintenance helper returned another binding");
   return reply;
 }
+
+async function maintenanceHelper(
+  user: ControlPlaneUser,
+  operation: string,
+  args: string[],
+) {
+  const id = z.string().uuid().parse(user.id),
+    uid = z.number().int().min(200000).max(299999).parse(user.uid);
+  if (user.gid !== uid) throw new Error("Unexpected maintenance identity");
+  try {
+    const result = await exec(
+      "/usr/bin/sudo",
+      ["-n", "--", helper, operation, id, String(uid), ...args],
+      {
+        cwd: "/",
+        env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
+        timeout: 30000,
+        maxBuffer: 65536,
+      },
+    );
+    return result.stdout;
+  } catch {
+    throw new Error("Privileged maintenance operation failed");
+  }
+}
+export async function inspectProjectAccess(
+  owner: ControlPlaneUser,
+  projectId: string,
+  slug: string,
+) {
+  const reply = z
+    .object({
+      projectId: z.string(),
+      cwd: z.string(),
+      revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+      phase: z.enum(["absent", "pending", "ready"]),
+      writers: z
+        .array(
+          z
+            .object({
+              userId: z.string().uuid(),
+              uid: z.number().int().min(200000).max(299999),
+            })
+            .strict(),
+        )
+        .max(1024),
+      requiresGlobalIdle: z.boolean(),
+    })
+    .strict()
+    .parse(
+      JSON.parse(
+        await maintenanceHelper(owner, "project-access-status", [
+          slug,
+          projectId,
+        ]),
+      ),
+    );
+  if (
+    reply.projectId !== projectId ||
+    reply.cwd !== join(owner.projectsRoot, slug)
+  )
+    throw new Error("Project inspection returned another binding");
+  return reply;
+}
+export async function listUidMaintenanceJobs(
+  user: ControlPlaneUser,
+  generation: number,
+) {
+  z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(generation);
+  const reply = z
+    .object({
+      userId: z.string().uuid(),
+      uid: z.number().int(),
+      generation: z.number().int(),
+      jobs: z.array(z.string().uuid()).max(256),
+    })
+    .strict()
+    .parse(
+      JSON.parse(
+        await maintenanceHelper(user, "uid-maintenance", [
+          "jobs",
+          String(generation),
+        ]),
+      ),
+    );
+  if (
+    reply.userId !== user.id ||
+    reply.uid !== user.uid ||
+    reply.generation !== generation
+  )
+    throw new Error("Job inspection returned another binding");
+  return reply.jobs;
+}
+export async function stopUidMaintenanceJob(
+  user: ControlPlaneUser,
+  jobId: string,
+) {
+  await maintenanceHelper(user, "stop", [z.string().uuid().parse(jobId)]);
+}

@@ -269,3 +269,33 @@ def synchronize(policy, root_fd, owner_id, owner_uid, args):
             os.close(project_fd)
             os.close(projects_fd)
             os.close(state_fd)
+
+
+
+def describe(policy, root_fd, owner_id, owner_uid, args):
+    if len(args) != 2:
+        raise ValueError('Expected project slug and ID')
+    slug, project_id = args
+    if not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', slug) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,199}', project_id):
+        raise ValueError('Invalid project binding')
+    directory = runpy.run_path('/opt/bb-control-plane/launcher/uid_leases.py')['trusted_directory'](STATE)
+    try:
+        name = owner_id + '-' + hashlib.sha256(project_id.encode()).hexdigest() + '.json'
+        record = read_json(directory, name)
+        if record is None:
+            revision, phase, writers, legacy = 0, 'absent', [], False
+        else:
+            if type(record) is not dict or record.get('version') != 1 or record.get('projectId') != project_id or record.get('ownerId') != owner_id or record.get('ownerUid') != owner_uid or record.get('slug') != slug or record.get('phase') not in ('ready', 'pending'):
+                raise ValueError('Project binding changed')
+            legacy = 'writers' not in record
+            if legacy and record['phase'] == 'pending':
+                raise ValueError('Legacy pending project writers require operator review')
+            registry = os.open('/var/lib/bb-agent-launcher', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                writers = [checked_identity(item, registry) for item in record.get('writers', record['members'])]
+            finally:
+                os.close(registry)
+            revision, phase = record['revision'], record['phase']
+        print(json.dumps({'projectId': project_id, 'cwd': os.path.join(policy['root'], owner_id, 'projects', slug), 'revision': revision, 'phase': phase, 'writers': writers, 'requiresGlobalIdle': legacy}))
+    finally:
+        os.close(directory)

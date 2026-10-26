@@ -1,3 +1,4 @@
+import { verifyProjectMaintenance } from "./check-control-plane-project-maintenance.mjs";
 import { verifyProjectUidLeases } from "./check-control-plane-uid-leases.mjs";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
@@ -366,8 +367,17 @@ export async function verifyProjectDirectoryAccess() {
     as,
     denied,
   });
+  const groupMaintenance = await verifyProjectMaintenance({
+    alice,
+    charlie,
+    project: seed.projects.find((row) => row.slug === "cohort"),
+    service,
+    as,
+    denied,
+  });
   return {
     verification: {
+      ...groupMaintenance.verification,
       ...uidLeases.verification,
       projectAclDatabaseRunnerGrantAndViewerDowngrade: true,
       projectAclDatabaseRemovedGrantRevokesAndStaleReceiptDenied: true,
@@ -388,6 +398,7 @@ export async function verifyProjectDirectoryAccess() {
     async verifyPersistence() {
       const maintenancePersistence =
         await uidLeases.verifyMaintenancePersistence();
+      const groupPersistence = await groupMaintenance.verifyPersistence();
       assert.equal((await applyPolicy()).revision, uidLeases.revision);
       await denied(bob, policyProject.cwd + "/policy.txt");
       assert.deepEqual(
@@ -422,6 +433,7 @@ export async function verifyProjectDirectoryAccess() {
       await denied(bob, shared.cwd + "/existing.txt");
       return {
         ...maintenancePersistence,
+        ...groupPersistence,
         projectAclStateSurvivesHelperRestartAndOldRevisionCannotRegrant: true,
         projectAclDatabasePolicyPersistsAndStaleReceiptDenied: true,
       };

@@ -1,8 +1,15 @@
+import { randomUUID } from "node:crypto";
+import { createControlPlaneProjectMaintenanceCoordinator } from "../../src/control-plane/project-maintenance.js";
 import { createControlPlaneUidMaintenanceCoordinator } from "../../src/control-plane/uid-maintenance.js";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import {
   createConnection,
+  controlPlaneThreads,
+  getControlPlaneProjectMaintenance,
+  reserveControlPlaneProjectMaintenance,
+  checkpointControlPlaneProjectMaintenance,
+  checkpointControlPlaneUidMaintenance,
   migrate,
   ControlPlaneRegistry,
   createControlPlaneProject,
@@ -19,11 +26,28 @@ import {
   prepareUserProject,
   prepareProjectAccess,
   controlPlaneUidMaintenance,
+  inspectProjectAccess,
+  listUidMaintenanceJobs,
+  stopUidMaintenanceJob,
 } from "../../src/control-plane/provisioning.js";
 
 const input = z
   .discriminatedUnion("mode", [
     z.object({ mode: z.literal("seed") }).strict(),
+    z
+      .object({
+        mode: z.enum(["group", "group-cut-release"]),
+        projectId: z.string(),
+        operationId: z.string().uuid(),
+        expectedAttempt: z.number().int().positive().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        mode: z.literal("group-status"),
+        operationId: z.string().uuid(),
+      })
+      .strict(),
     z
       .object({
         mode: z.literal("coordinate"),
@@ -116,7 +140,7 @@ try {
     const owner = users[0];
     if (!owner) throw new Error("Missing owner");
     const projects = [];
-    for (const slug of ["shared", "private", "secondary", "policy"]) {
+    for (const slug of ["shared", "private", "secondary", "policy", "cohort"]) {
       await prepareUserProject(owner, slug);
       const result = createControlPlaneProject(db, noopNotifier, {
         userId: owner.id,
@@ -133,6 +157,157 @@ try {
       projects.push(row);
     }
     process.stdout.write(JSON.stringify({ users, projects }));
+  } else if (input.mode === "group-status") {
+    process.stdout.write(
+      JSON.stringify(
+        getControlPlaneProjectMaintenance(db, input.operationId) ?? null,
+      ),
+    );
+  } else if (input.mode === "group" || input.mode === "group-cut-release") {
+    const stopThreads = async (userId: string) => {
+      if (
+        db
+          .select()
+          .from(controlPlaneThreads)
+          .where(eq(controlPlaneThreads.ownerUserId, userId))
+          .get()
+      )
+        throw new Error("Fixture cannot stop native threads");
+    };
+    if (input.mode === "group") {
+      const coordinator = createControlPlaneProjectMaintenanceCoordinator({
+        db,
+        stopThreads,
+      });
+      process.stdout.write(
+        JSON.stringify(
+          await coordinator.reconcile({
+            projectId: input.projectId,
+            operationId: input.operationId,
+            ...(input.expectedAttempt === undefined
+              ? {}
+              : { expectedAttempt: input.expectedAttempt }),
+          }),
+        ),
+      );
+    } else {
+      const policy = getControlPlaneProjectAccessPolicy(db, input.projectId);
+      if (!policy) throw new Error("Missing policy");
+      const root = await inspectProjectAccess(
+        policy.owner,
+        input.projectId,
+        policy.project.slug,
+      );
+      const identities = new Map(
+        [policy.owner, ...policy.members].map((row) => [row.id, row]),
+      );
+      for (const writer of root.writers) {
+        const identity = db
+          .select()
+          .from(controlPlaneUsers)
+          .where(eq(controlPlaneUsers.id, writer.userId))
+          .get();
+        if (!identity || identity.uid !== writer.uid)
+          throw new Error("Writer changed");
+        identities.set(identity.id, identity);
+      }
+      const participants = [];
+      for (const identity of identities.values())
+        participants.push({
+          userId: identity.id,
+          uid: identity.uid,
+          rootGeneration: (
+            await controlPlaneUidMaintenance(identity, { action: "status" })
+          ).generation,
+        });
+      const workerId = randomUUID();
+      let group = reserveControlPlaneProjectMaintenance(db, {
+        id: input.operationId,
+        projectId: input.projectId,
+        projectRevision: policy.revision,
+        workerId,
+        workerPid: process.pid,
+        participants,
+      });
+      for (const participant of group.participants) {
+        const identity = identities.get(participant.userId);
+        if (!identity) throw new Error("Missing participant");
+        await controlPlaneUidMaintenance(identity, {
+          action: "begin",
+          generation: participant.generation,
+        });
+        if (
+          !checkpointControlPlaneUidMaintenance(
+            db,
+            identity.id,
+            group.id,
+            participant.generation,
+            "blocked",
+          )
+        )
+          throw new Error("Activation failed");
+      }
+      group = checkpointControlPlaneProjectMaintenance(
+        db,
+        group.id,
+        group.attempt,
+        workerId,
+        "draining",
+      );
+      for (const participant of group.participants) {
+        const identity = identities.get(participant.userId);
+        if (!identity) throw new Error("Missing participant");
+        await stopThreads(identity.id);
+        for (const job of await listUidMaintenanceJobs(
+          identity,
+          participant.generation,
+        ))
+          await stopUidMaintenanceJob(identity, job);
+        if (
+          (await listUidMaintenanceJobs(identity, participant.generation))
+            .length
+        )
+          throw new Error("Jobs remain");
+      }
+      group = checkpointControlPlaneProjectMaintenance(
+        db,
+        group.id,
+        group.attempt,
+        workerId,
+        "applying",
+      );
+      await prepareProjectAccess({
+        owner: policy.owner,
+        projectId: input.projectId,
+        slug: policy.project.slug,
+        revision: policy.revision,
+        members: policy.members,
+      });
+      if (
+        !acknowledgeControlPlaneProjectAccessPolicy(
+          db,
+          input.projectId,
+          policy.revision,
+        )
+      )
+        throw new Error("Acknowledgement failed");
+      group = checkpointControlPlaneProjectMaintenance(
+        db,
+        group.id,
+        group.attempt,
+        workerId,
+        "releasing",
+      );
+      const owner = group.participants.find(
+        (row) => row.userId === policy.owner.id,
+      );
+      if (!owner) throw new Error("Missing owner");
+      await controlPlaneUidMaintenance(policy.owner, {
+        action: "finish",
+        generation: owner.generation,
+      });
+      process.stdout.write(JSON.stringify(group));
+    }
   } else if (input.mode === "coordinate") {
     const coordinator = createControlPlaneUidMaintenanceCoordinator(db);
     const request = input.request;
@@ -227,7 +402,7 @@ try {
         ),
       }),
     );
-  } else {
+  } else if (input.mode === "sync") {
     const project = db
       .select()
       .from(controlPlaneProjects)

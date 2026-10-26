@@ -93,7 +93,7 @@ def require_ready_policies(uid):
 
 
 def manage(user_id, uid, args):
-    if os.geteuid() != 0 or not args or args[0] not in ('begin', 'finish', 'status'):
+    if os.geteuid() != 0 or not args or args[0] not in ('begin', 'finish', 'status', 'jobs'):
         raise ValueError('Invalid UID maintenance action')
     action = args[0]
     if action == 'status':
@@ -107,6 +107,34 @@ def manage(user_id, uid, args):
     directory = LEASES['trusted_directory'](DIRECTORY)
     try:
         current = state(directory, user_id, uid)
+        if action == 'jobs':
+            if current['generation'] != generation or not current['blocked']:
+                raise ValueError('UID maintenance is not current')
+            jobs_directory = LEASES['trusted_directory']('/var/lib/bb-agent-launcher/jobs')
+            try:
+                jobs = []
+                for name in os.listdir(jobs_directory):
+                    if not name.endswith('.json'):
+                        continue
+                    record = read_record(jobs_directory, name)
+                    if type(record) is not dict:
+                        raise ValueError('Invalid job lease')
+                    if record.get('uid') != uid:
+                        continue
+                    if record.get('userId') != user_id:
+                        raise ValueError('Job identity changed')
+                    if record.get('stopped') is True:
+                        continue
+                    session = name.removesuffix('.json')
+                    if str(uuid.UUID(session)) != session:
+                        raise ValueError('Invalid job identity')
+                    jobs.append(session)
+                    if len(jobs) > 256:
+                        raise ValueError('Too many UID jobs')
+                print(json.dumps({'userId': user_id, 'uid': uid, 'generation': generation, 'jobs': sorted(jobs)}))
+                return
+            finally:
+                os.close(jobs_directory)
         if action == 'begin':
             if generation < current['generation'] or (generation == current['generation'] and not current['blocked']):
                 raise ValueError('Stale UID maintenance generation')

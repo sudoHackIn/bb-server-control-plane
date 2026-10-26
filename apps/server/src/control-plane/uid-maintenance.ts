@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import {
   controlPlaneUsers,
   getControlPlaneUidMaintenance,
+  getControlPlaneProjectMaintenance,
   reserveControlPlaneUidMaintenance,
   checkpointControlPlaneUidMaintenance,
   type DbConnection,
@@ -38,6 +39,8 @@ export function createControlPlaneUidMaintenanceCoordinator(db: DbConnection) {
       operationId: string;
       restartGeneration?: number;
     }) {
+      if (getControlPlaneProjectMaintenance(db, input.operationId))
+        throw new Error("Grouped maintenance requires its project coordinator");
       const owner = user(input.userId);
       const root = await controlPlaneUidMaintenance(owner, {
         action: "status",
@@ -69,6 +72,8 @@ export function createControlPlaneUidMaintenanceCoordinator(db: DbConnection) {
       operationId: string;
       generation: number;
     }) {
+      if (getControlPlaneProjectMaintenance(db, input.operationId))
+        throw new Error("Grouped maintenance requires its project coordinator");
       const row = current(input.userId, input.operationId, input.generation);
       if (row.phase === "idle") return row;
       if (

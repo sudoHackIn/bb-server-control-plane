@@ -1,3 +1,4 @@
+import { dropUidMaintenanceSchemaForRewind } from "./helpers/rewind.js";
 import { randomUUID, createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -90,7 +91,7 @@ function fixture() {
     bob = subjects[1];
   if (!alice || !bob) throw new Error("Missing actors");
   const reserve = (
-    operationId = randomUUID(),
+    operationId: string = randomUUID(),
     rootGeneration = 0,
     restartGeneration?: number,
   ) =>
@@ -311,7 +312,7 @@ it("rejects unsafe generations and rolls back reservations with their enclosing 
   expect(f.reserve(last.operationId, Number.MAX_SAFE_INTEGER)).toEqual(last);
 });
 it("upgrades existing users without blocking them and retains saved phases on repeated migration", () => {
-  f.db.$client.exec("DROP TABLE control_plane_uid_maintenance");
+  dropUidMaintenanceSchemaForRewind(f.db);
   const hash = createHash("sha256")
     .update(
       readFileSync(
@@ -324,9 +325,11 @@ it("upgrades existing users without blocking them and retains saved phases on re
     .digest("hex");
   expect(
     f.db.$client
-      .prepare("DELETE FROM __drizzle_migrations WHERE hash = ?")
+      .prepare(
+        "DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations WHERE hash = ?)",
+      )
       .run(hash).changes,
-  ).toBe(1);
+  ).toBeGreaterThanOrEqual(1);
   migrate(f.db);
   expect(controlPlaneUidGeneration(f.db, f.alice.user.id)).toBe(0);
   const a = f.reserve(randomUUID(), 4);

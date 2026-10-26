@@ -30,6 +30,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Hold per-UID lifetime leases for every managed launcher job and require exclusive, quiescent writer leases before ACL mutation; retain former writers through pending recovery. Verify real namespaced jobs, cleanup/stale records, busy immutability and legacy adoption in Docker. Service admission fences and public shared execution remain pending.
 - [x] Persist generation-bound root UID launch barriers with typed server begin/status/finish, queued-launch refusal, quiescent/policy-ready release and restart checks. Durable service reconciliation and administrative role surfaces remain pending.
 - [x] Persist per-UID server maintenance intent, enforce non-idle admission in core thread/background/workspace paths, and seal every managed launch with its captured generation. Verify DB/root restart, exact-revision rebase and post-release stale-command refusal. Multi-UID role reconciliation and public administrative surfaces remain pending.
+- [x] Add private durable project-participant reconciliation: atomic cohort reservation, former-writer recovery, confirmed job draining, exact ACL acknowledgement and all-participant DB release after root completion. Verify interrupted release and dead-worker recovery in Docker. Atomic administrative role mutation, startup sweep, queue retention and shared native execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3189,3 +3190,32 @@ The provider's operator skill documents protocol 256, the required captured
 generation and coordinated deployment. Repackaging that documentation preserves
 all nine executable/migration/manifest hashes; the final focused Docker deployment
 passes 63 tasks in 19.323s and the skill matches its image copy exactly.
+
+
+## Seventieth increment: durable project participant reconciliation
+
+Migration 0161 records complete participant/generation snapshots and fenced worker
+attempts. The private coordinator reserves all UID intents atomically, includes
+root's former writers after grant removal, drains confirmed jobs, applies and
+acknowledges the pinned ACL, then clears all database barriers together after every
+root release. Live-worker takeover and independent per-UID release are refused.
+An interrupted partial release can resume using persisted participants without
+resetting generations or losing shared file content.
+
+This increment supplies a private coordinator with a required BB lifecycle stop
+callback;
+public role mutation, automatic startup recovery, queue-specific retention and
+shared native Qwen execution remain open. The new Docker cohort scenario exercises
+real namespaced script jobs, including a descendant holding an open descriptor.
+Its database has no BB threads: live-Qwen/workflow maintenance integration remains
+a separate acceptance check. See [the implemented boundaries](control-plane-project-access.md#durable-project-participant-coordinator-increment-70).
+
+Verification passes 3828 server tests in 392 files, 689 database tests in 63 files,
+and six final targeted server tests. Existing skips are unchanged. Seven typecheck
+tasks, strict lint/formatting of 14 code files and compilation of three Python
+modules pass. The focused Docker check passes 63 tasks in 28.885s. The final rebuilt
+complete deployment passes 63 tasks in 9m11.184s with unchanged budgets, including
+ordinary native Qwen/MCP, workspace/Git, workflows, automations, scripts, restart
+and crash recovery. Eleven host/image artifacts match. The earlier concurrent
+full-deployment attempt hit its existing global deadline and is recorded as failed.
+See [the verification record](control-plane-phase-70-verification.json).

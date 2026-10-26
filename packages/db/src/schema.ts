@@ -95,6 +95,50 @@ export const controlPlaneUidMaintenance = sqliteTable(
   ],
 );
 
+export const controlPlaneProjectMaintenance = sqliteTable(
+  "control_plane_project_maintenance",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id").references(
+      () => controlPlaneProjects.projectId,
+      { onDelete: "set null" },
+    ),
+    projectRevision: integer("project_revision").notNull(),
+    attempt: integer("attempt").notNull(),
+    phase: text("phase", {
+      enum: ["preparing", "draining", "applying", "releasing", "complete"],
+    }).notNull(),
+    participants: text("participants", { mode: "json" })
+      .$type<{ userId: string; uid: number; generation: number }[]>()
+      .notNull(),
+    workerId: text("worker_id"),
+    workerPid: integer("worker_pid"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("control_plane_project_maintenance_pending_idx").on(
+      table.phase,
+      table.updatedAt,
+    ),
+    check(
+      "control_plane_project_maintenance_context",
+      sql`${table.phase} = 'complete' OR ${table.projectId} IS NOT NULL`,
+    ),
+    check(
+      "control_plane_project_maintenance_revision",
+      sql`${table.projectRevision} >= 1 AND ${table.projectRevision} <= 9007199254740991`,
+    ),
+    check(
+      "control_plane_project_maintenance_attempt",
+      sql`${table.attempt} >= 1 AND ${table.attempt} <= 9007199254740991`,
+    ),
+    check(
+      "control_plane_project_maintenance_worker",
+      sql`(${table.workerId} IS NULL AND ${table.workerPid} IS NULL) OR (${table.workerId} IS NOT NULL AND ${table.workerPid} IS NOT NULL AND ${table.workerPid} > 0)`,
+    ),
+  ],
+);
+
 export const controlPlaneCounters = sqliteTable("control_plane_counters", {
   name: text("name").primaryKey(),
   nextValue: integer("next_value").notNull(),
