@@ -1,0 +1,72 @@
+{
+  "scope": "Native administrator project settings controls for revision-checked roles and saved maintenance status",
+  "previousStageCommit": "ec6f79cb1",
+  "administratorRoleUiEnabled": true,
+  "personalRoleUiEnabled": false,
+  "sharedNativeExecutionEnabled": false,
+  "contracts": {
+    "managedProjectPolicyLoadsOnDemand": true,
+    "registeredUserSearchUsesLimitedSdk": true,
+    "grantAndRemovalUseObservedPolicyRevision": true,
+    "ownerGrantReadOnly": true,
+    "disabledAndUnreadyNewTargetsUnavailable": true,
+    "pendingOperationPhasePolledBeforeAnotherMutation": true,
+    "personalBrowserDoesNotLoadAdministrativeApp": true
+  },
+  "verification": {
+    "focusedUiAndSettings": {
+      "testsPassed": 13,
+      "filesPassed": 2
+    },
+    "browserBootstrap": {
+      "testsPassed": 8,
+      "filesPassed": 1
+    },
+    "fullAppSuite": {
+      "testsPassed": 6358,
+      "testsFailed": 5,
+      "filesPassed": 653,
+      "filesFailed": 4,
+      "passed": false,
+      "failedAreas": [
+        "Existing cache-owner raw-write policy violations",
+        "Plugin icon manifest enumeration encountered an existing temporary bundled-stage directory",
+        "Two plugin-update toast expectation failures",
+        "PromptBox action-menu expectation failure"
+      ],
+      "threeNonCacheAreaFailuresReproducedSeparately": true
+    },
+    "appTypecheckTasks": 5,
+    "newComponentAndTestStrictLintPassed": true,
+    "modifiedViewExistingReactLintWarnings": 4,
+    "docker": {
+      "nativeMaintenanceSuite": {
+        "passed": true,
+        "durationMs": 105823
+      },
+      "compositeSuite": {
+        "passed": true,
+        "durationMs": 636017,
+        "startupRecoveryAndCrashCleanup": true
+      },
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "12m53.83s",
+      "hostExitCode": 0,
+      "focusedInnerDeadlineMs": 150000,
+      "focusedOuterDeadlineMs": 180000,
+      "compositeInnerDeadlineMs": 660000,
+      "compositeOuterDeadlineMs": 690000
+    },
+    "productionUiArtifact": {
+      "hostPath": "apps/app/dist/assets/ProjectDetailSettingsView-DGOguVcz.js",
+      "imagePath": "/opt/bb/apps/app/dist/assets/ProjectDetailSettingsView-DGOguVcz.js",
+      "sha256HostAndImage": "8052a6ead5e53a3f6c0a4a953fd20e8e316590883a2e02074b3ddbb24a85424c"
+    }
+  },
+  "limitations": [
+    "The complete app test suite is not green; the five failures listed above were not changed in this increment.",
+    "The administrative role section has DOM interaction tests and a verified production bundle in Docker, but no live production-browser interaction test in this increment.",
+    "Actual shared-project Qwen execution remains closed."
+  ]
+}

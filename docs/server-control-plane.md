@@ -37,6 +37,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Expose a limited administrator HTTP route to inspect project grants, change one runner/viewer role with an expected revision, and inspect the saved maintenance operation. Require an active administrator session; keep personal credentials and the central BB API outside this route. SDK/CLI/UI controls and shared native execution remain pending.
 - [x] Expose the administrator project-role route through the limited SDK and CLI, including revision-checked grant/remove, grant listing and saved-operation inspection. Keep these commands on the same authenticated control-plane transport; UI controls and shared native execution remain pending.
 - [x] Add a bounded administrator user directory to select registered project-role targets by login through the limited API, SDK and CLI. Expose ID, login and availability only; native role UI and shared native execution remain pending.
+- [x] Add administrator project-role controls to the native project settings UI: grant by registered login, change/remove nonowner grants with policy revision, and inspect pending maintenance. Keep these controls on the limited SDK; shared native execution remains pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3420,3 +3421,31 @@ match their image copies. An earlier Docker attempt passed the new focused
 scenario but failed an existing composite thread-creation check with
 `environment_not_ready`; the subsequent complete deployment passed without
 code changes. See [the verification record](control-plane-phase-76-verification.json).
+
+
+## Seventy-seventh increment: native administrator role controls
+
+The full administrator project settings page now includes a server-access
+section. It loads a managed project's grants on demand, searches registered
+users by login through the limited directory, offers runner or viewer grants,
+and lets an administrator change or remove nonowner roles. Each mutation sends
+the displayed policy revision. The section disables another change while a
+saved maintenance operation is applying and polls its phase until completion.
+Unready or disabled users cannot be granted from the UI. Owner grants remain
+read-only. A project without a managed access policy shows an unavailable
+message when the administrator opens the section.
+
+The role methods stay in the limited SDK and have the same CLI equivalents
+from increments 75–76. Personal browser mode does not load the full
+administrator settings app. Shared-project native Qwen execution remains open.
+
+Verification passes 13 focused UI and project-settings tests, eight browser
+bootstrap isolation tests and five app typecheck tasks. Strict lint passes for
+the new component and test; the modified project-settings view has the same
+four pre-existing React lint warnings as the previous commit. The full app
+suite passes 6358 tests and fails five in four unrelated existing test files;
+those failures were reproduced separately and are not counted as a passing
+suite. The rebuilt Docker image passes the focused native/admin scenario in
+105.823s and the complete composite in 636.017s: 63/63 Turbo tasks pass in
+12m53.83s. The production project-settings JS module matches its image copy.
+See [the verification record](control-plane-phase-77-verification.json).

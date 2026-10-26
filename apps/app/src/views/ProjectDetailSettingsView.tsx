@@ -8,6 +8,7 @@ import {
   type LocalPathProjectSource,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
+import { createControlPlaneClient } from "@bb/sdk/browser";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Pill } from "@bb/shared-ui/pill";
@@ -30,6 +31,7 @@ import {
   type ProjectSourceDeleteDialogTarget,
 } from "@/components/dialogs/ProjectSourceDeleteDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
+import { AdminProjectRoles } from "@/components/settings/AdminProjectRoles";
 import {
   formatGitRemote,
   pluralize,
@@ -192,6 +194,9 @@ function LoadingShell({ children }: { children: ReactNode }) {
 
 export function ProjectDetailSettingsView() {
   const { projectId } = useParams<{ projectId: string }>();
+  const controlPlaneClient = createControlPlaneClient({
+    origin: window.location.origin,
+  });
   const navigate = useNavigate();
   const sidebarNavigationQuery = useSidebarNavigation();
   const hostsQuery = useHosts();
@@ -516,6 +521,12 @@ export function ProjectDetailSettingsView() {
             </SettingsDetailRow>
           </SettingsRowList>
         </SettingsSection>
+
+        <AdminProjectRoles
+          key={project.id}
+          client={controlPlaneClient}
+          projectId={project.id}
+        />
 
         <ScopedMachineEnvironmentSettings projectId={project.id} />
 

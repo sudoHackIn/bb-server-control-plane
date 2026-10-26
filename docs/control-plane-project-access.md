@@ -543,3 +543,15 @@ on the returned page when more matching users exist. The SDK method is
 `bb server access users list`. Only an active administrator session can use
 these surfaces. The prefix is case-sensitive. This directory resolves a login
 to a role target; mutation still uses the revision-checked role endpoint.
+
+
+## Native administrator project-role controls (increment 77)
+
+The full administrator UI's project settings page has an on-demand server-access
+section. It reads the project's current grants and policy revision through the
+limited SDK, searches the administrator user directory and submits grant,
+change or removal with that revision. Owner grants are read-only. Disabled or
+unready users cannot be selected for a new grant. While the saved project
+maintenance operation applies filesystem access, the UI shows its phase and
+disables further role changes; completion refreshes the policy. The personal
+browser app does not load this administrative settings page.
