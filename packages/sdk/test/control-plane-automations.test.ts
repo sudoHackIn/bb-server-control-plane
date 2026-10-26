@@ -140,7 +140,10 @@ it("validates definition edits and uses only scoped mutation routes with revisio
     method: "PUT",
     body: { expectedRevision: 1, prompt: "Changed" },
   });
-  expect((await client.automations.definition("auto")).prompt).toBe("Prompt");
+  const definition = await client.automations.definition("auto");
+  if (definition.executionMode !== "agent")
+    throw new Error("Expected an agent definition");
+  expect(definition.prompt).toBe("Prompt");
   await client.automations.pause("auto");
   await client.automations.resume("auto");
   expect(

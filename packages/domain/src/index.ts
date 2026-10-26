@@ -94,3 +94,5 @@ export * from "./control-plane-job.js";
 export * from "./control-plane-workflow.js";
 
 export * from "./control-plane-automation.js";
+
+export * from "./control-plane-mcp.js";

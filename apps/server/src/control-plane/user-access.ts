@@ -1,4 +1,9 @@
 import {
+  installControlPlaneMcpRoutes,
+  isControlPlaneMcpPath,
+} from "./mcp-routes.js";
+import type { ControlPlaneMcpCredentials } from "./mcp-credentials.js";
+import {
   installControlPlaneAutomationRoutes,
   isControlPlaneAutomationPath,
 } from "./automation-routes.js";
@@ -89,6 +94,7 @@ export function certificateLogin(context: Context): string | null {
 
 export function isUserAuthPath(path: string, method: string): boolean {
   if (
+    isControlPlaneMcpPath(path, method) ||
     isControlPlaneAutomationPath(path, method) ||
     isControlPlaneThreadPath(path, method) ||
     isControlPlaneDefinitionPath(path, method) ||
@@ -133,6 +139,7 @@ export function createControlPlaneUserAccess(
   threads?: ControlPlaneThreadService,
   workflows?: ControlPlaneWorkflowService,
   automations?: ControlPlaneAutomationService,
+  mcp?: ControlPlaneMcpCredentials,
 ) {
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
@@ -166,6 +173,8 @@ export function createControlPlaneUserAccess(
       if (automations)
         installControlPlaneAutomationRoutes(app, automations, authenticate);
       installControlPlaneProfileRoutes(app, registry.db, authenticate);
+      if (mcp)
+        installControlPlaneMcpRoutes(app, registry.db, mcp, authenticate);
       if (threads) installControlPlaneThreadRoutes(app, threads, authenticate);
       if (workflows) {
         installControlPlaneWorkflowRoutes(app, workflows, authenticate);

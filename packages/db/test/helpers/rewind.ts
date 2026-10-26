@@ -1,6 +1,16 @@
 import type { DbConnection } from "../../src/index.js";
 
+export function dropProjectMcpSchemaForRewind(db: DbConnection): void {
+  db.$client.exec(`
+    DROP TABLE IF EXISTS control_plane_mcp_connections;
+    DROP TABLE IF EXISTS control_plane_mcp_credentials;
+    DROP TABLE IF EXISTS control_plane_mcp_access;
+    DROP TABLE IF EXISTS control_plane_mcp_connectors;
+  `);
+}
+
 function dropControlPlaneSchemaForRewind(db: DbConnection): void {
+  dropProjectMcpSchemaForRewind(db);
   db.$client.exec(`
     DROP TABLE IF EXISTS control_plane_turn_sources;
     DROP TABLE IF EXISTS control_plane_job_notifications;

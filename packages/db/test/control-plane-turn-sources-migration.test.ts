@@ -1,4 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dropProjectMcpSchemaForRewind } from "./helpers/rewind.js";
+import { createHash, randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createMigratedConnection } from "../src/testing.js";
@@ -64,9 +66,27 @@ it("upgrades a real legacy notification without inventing a request reference an
       originThreadId: thread.id,
       sourceBindingId: null,
     });
+    dropProjectMcpSchemaForRewind(db);
     db.$client.exec(
-      "DROP TABLE control_plane_turn_sources; DROP INDEX control_plane_job_notifications_request_idx; ALTER TABLE control_plane_job_notifications DROP COLUMN request_id; DELETE FROM __drizzle_migrations WHERE created_at = (SELECT max(created_at) FROM __drizzle_migrations);",
+      "DROP TABLE control_plane_turn_sources; DROP INDEX control_plane_job_notifications_request_idx; ALTER TABLE control_plane_job_notifications DROP COLUMN request_id;",
     );
+    const migrationHash = createHash("sha256")
+      .update(
+        readFileSync(
+          new URL(
+            "../drizzle/0156_control_plane_turn_sources.sql",
+            import.meta.url,
+          ),
+        ),
+      )
+      .digest("hex");
+    expect(
+      db.$client
+        .prepare(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= (SELECT created_at FROM __drizzle_migrations WHERE hash = ?)",
+        )
+        .run(migrationHash).changes,
+    ).toBeGreaterThan(0);
     db.$client
       .prepare(
         "INSERT INTO control_plane_job_notifications (binding_id,thread_id,accepted_at) VALUES (?,?,?)",

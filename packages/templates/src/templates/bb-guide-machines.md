@@ -272,6 +272,41 @@ assert their expected identity/session through `x-bb-client-identity` and
 still determine authority. Standalone BB keeps its preexisting local settings.
 Personal chat controls and legacy plugin-owned persistence remain separate stages.
 
+`bb server access mcp list [--admin] [--limit <count>] [--cursor <id>]`
+reads your approved connector catalog, or all entries with administrator access.
+The MCP commands print JSON. `mcp get <connector-id> [--admin]` reads one
+connector from the same catalog. `mcp create --definition-stdin` reads
+`{ "slug": "jira", "name": "Jira", "endpoint": "https://mcp.example/jira" }`.
+`mcp update <connector-id> --definition-stdin` reads `name`, `endpoint`, `enabled`
+and `expectedRevision`. Endpoints must use HTTPS (HTTP loopback is allowed for
+local testing), without embedded credentials, query or fragment. Only the fixed
+streamable-HTTP/bearer descriptor is accepted; executable commands and arbitrary
+headers are not catalog parameters. Every catalog update advances its revision.
+`mcp grant <connector-id> <user-id> [--revoke]` changes connector access.
+
+`mcp credential <connector-id>` returns only your credential metadata.
+`mcp credential-set <connector-id> --credential-stdin` reads JSON containing
+`token`, `connectorRevision` and `expectedRevision` (0 for the first save).
+Keep token JSON in a private file or pipe; never put the secret in command
+arguments. `mcp credential-revoke <connector-id> --revision <number>` clears it
+while retaining an increasing revision, so stale clients cannot revoke a newer
+credential. Missing encryption keys require restoring the server backup; saving
+a new token does not replace a lost key while encrypted credentials exist.
+
+`mcp connections <project-id>` reads project connection metadata and readiness
+for your identity. Only project owners can use `mcp configure <project-id>
+--connection-stdin`, with `connectorId`, `connectorRevision` and
+`expectedRevision` (0 for a new connection). `mcp remove <project-id>
+<connection-id> --revision <number>` removes that exact revision. Readers of a
+shared project use their own credential binding. A connector revision change
+requires explicit connection refresh and a new personal credential binding.
+
+These are configuration operations: connections remain disabled, report
+`executionState: "not_activated"`, and lists report `executionSupported: false`.
+There is no activation flag, arbitrary MCP installation or claim of a live remote
+tool connection. Provider delivery and project UI are subsequent integration
+stages; the existing native `bb` tool bridge is separate.
+
 `bb server access profiles list [--limit <count>] [--cursor <id>]` lists your
 permitted agent profiles. `profiles get <profile-id> [--version <version-id>]`
 reads the latest enabled or specified enabled version. `profiles versions

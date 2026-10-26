@@ -552,3 +552,5 @@ export {
   isControlPlaneThreadManaged,
   requireControlPlaneThreadRelation,
 } from "./control-plane-thread-relations.js";
+
+export * from "./control-plane-mcp.js";

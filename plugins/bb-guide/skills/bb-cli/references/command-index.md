@@ -141,6 +141,17 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access threads interactions approve`
 - `bb server access threads interactions deny`
 - `bb server access threads interactions resolve`
+- `bb server access mcp list`
+- `bb server access mcp get`
+- `bb server access mcp create`
+- `bb server access mcp update`
+- `bb server access mcp grant`
+- `bb server access mcp credential`
+- `bb server access mcp credential-set`
+- `bb server access mcp credential-revoke`
+- `bb server access mcp connections`
+- `bb server access mcp configure`
+- `bb server access mcp remove`
 - `bb server access profiles list`
 - `bb server access profiles get`
 - `bb server access profiles versions`

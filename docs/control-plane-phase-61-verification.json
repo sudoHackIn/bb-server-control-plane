@@ -1,0 +1,229 @@
+{
+  "scope": "Project MCP configuration foundation: approved connector catalog, project records and encrypted personal credentials through limited API/SDK/CLI",
+  "previousStageCommit": "203d2baf2",
+  "centralDatabaseMigration": {
+    "tag": "0157_control_plane_project_mcp",
+    "tables": [
+      "control_plane_mcp_connectors",
+      "control_plane_mcp_access",
+      "control_plane_mcp_credentials",
+      "control_plane_mcp_connections"
+    ],
+    "schemaAndSnapshotGeneratedWithDrizzle": true,
+    "manualSnapshotEdits": false
+  },
+  "hostDaemonProtocol": {
+    "version": 254,
+    "changed": false,
+    "reason": "Configuration routes and server-owned storage; no provider/daemon execution contract changes"
+  },
+  "pluginSdkVersion": "0.6.80",
+  "newPublicPluginSdkMembers": [],
+  "contract": {
+    "adminOwnsConnectorCatalogAndGrants": true,
+    "personalCatalogFilteredByCurrentUserAndConnectorGrants": true,
+    "projectOwnerRequiredForConfiguration": true,
+    "sharedReadersUseOwnCredentialMetadata": true,
+    "connectorAndConnectionCasRequired": true,
+    "credentialCasAndRevocationTombstones": true,
+    "credentialsAndConnectionsPinnedToConnectorRevision": true,
+    "catalogChangesDoNotRedirectOldCredentialToNewRevision": true,
+    "fixedDescriptor": {
+      "transport": "streamable-http",
+      "authentication": "bearer"
+    },
+    "noExecutableOrArbitraryHeadersAccepted": true,
+    "endpointCredentialsQueryAndFragmentDenied": true,
+    "httpsOrLiteralHttpLoopbackOnly": true,
+    "strictBodiesAndQueryFields": true,
+    "mutationBodyBytes": 65536,
+    "credentialTokenBytes": 16384,
+    "credentialInputStdinOnly": true,
+    "malformedJsonDoesNotEchoInput": true,
+    "outputContainsOnlyMetadata": true,
+    "cipher": "aes-256-gcm",
+    "associatedData": [
+      "encryptionVersion1",
+      "userId",
+      "connectorId",
+      "connectorRevision",
+      "credentialRevision"
+    ],
+    "privateKeyFile": "BB_DATA_DIR/control-plane-mcp-key",
+    "keyBytes": 32,
+    "keyFileMode": "0600",
+    "safeDirectoryAndNoSymlinkChecks": true,
+    "keyCreationSerialized": true,
+    "lostKeyNotRecreatedWhileCiphertextExists": true,
+    "authorityRecheckedAfterKeyIoBeforeMutationAndResolution": true,
+    "newServerFilesystemLintExceptions": false,
+    "configurationEnabled": false,
+    "connectionExecutionState": "not_activated",
+    "executionSupported": false,
+    "unsupportedEnabledFieldRejected": true,
+    "fullProjectMcpRequirementComplete": false
+  },
+  "verification": {
+    "serverTests": 1061,
+    "serverTestFiles": 111,
+    "newMcpHttpSdkSecurityTests": 6,
+    "fullDatabaseTests": 659,
+    "databaseTestFiles": 60,
+    "newMcpUpgradeAndIdempotenceTest": 1,
+    "sdkTests": 136,
+    "sdkTestFiles": 17,
+    "secretStorageTests": 8,
+    "secretStorageTestFiles": 3,
+    "newPrivateKeyTests": 2,
+    "selectedCliTests": 6,
+    "cliTestFiles": 2,
+    "typecheckTasks": 10,
+    "strictLintChangedCodePassed": true,
+    "formatChangedCodePassed": true,
+    "changedCodeFilesChecked": 25,
+    "realMigratedSqliteUsed": true,
+    "databaseMocksUsed": false,
+    "lintRuleExceptionsAdded": false,
+    "commands": [
+      "pnpm exec turbo run db:generate --filter=@bb/db -- --name control_plane_project_mcp",
+      "pnpm exec turbo run test --filter=@bb/server -- test/internal test/security test/hosts test/threads test/environments test/services/environments test/services/plugins/plugin-background.test.ts test/services/plugins/plugin-tool-calls.test.ts",
+      "pnpm exec turbo run test --filter=@bb/db --filter=@bb/sdk --filter=@bb/secret-storage",
+      "pnpm exec turbo run test --filter=@bb/cli -- src/__tests__/command-groups.test.ts src/server-access-session.test.ts",
+      "pnpm exec turbo run typecheck --filter=@bb/server --filter=@bb/db --filter=@bb/sdk --filter=@bb/cli --filter=@bb/secret-storage",
+      "pnpm exec turbo run test:control-plane-deployment --filter=@bb/server"
+    ],
+    "findings": [
+      {
+        "kind": "migrationTestFixture",
+        "reason": "Historical schema rewinds erased newer ledger records but retained new MCP tables, causing 39 real migration tests to hit table-already-exists",
+        "fix": "Drop the four MCP tables when reconstructing old schemas; target the turn-source migration by its actual SQL hash rather than assuming it is the newest ledger row. Keep production migration strict."
+      },
+      {
+        "kind": "existingSdkTypeAssertion",
+        "reason": "An existing SDK automation test read prompt without narrowing its agent/script definition union",
+        "fix": "Assert the agent branch before reading prompt; preserve all runtime expectations"
+      },
+      {
+        "kind": "credentialInputPrivacy",
+        "reason": "Node JSON.parse errors can include malformed stdin fragments containing a raw secret",
+        "fix": "Use a generic CLI JSON error and run actual malformed-secret CLI rejection for both users without printing the input"
+      },
+      {
+        "kind": "finalArtifactRebuild",
+        "reason": "Earlier deployment passed before all new guide/get/CLI privacy checks were included",
+        "fix": "Complete replacement deployment on final artifacts, including built guide and real get calls; no timeout increase"
+      }
+    ],
+    "docker": {
+      "status": "passed",
+      "tasks": 63,
+      "cachedTasks": 59,
+      "duration": "8m33.583s",
+      "budgetsChanged": false,
+      "stageTimings": [
+        {
+          "controlPlaneStage": "message-sources-complete",
+          "elapsedMs": 12019
+        },
+        {
+          "controlPlaneStage": "native-dispatch-complete",
+          "elapsedMs": 12019
+        },
+        {
+          "controlPlaneStage": "workspace-complete",
+          "elapsedMs": 15360
+        },
+        {
+          "controlPlaneStage": "provider-lifecycle-complete",
+          "elapsedMs": 20388
+        },
+        {
+          "controlPlaneStage": "project-mcp-configuration-complete",
+          "elapsedMs": 21756
+        },
+        {
+          "controlPlaneStage": "personal-and-browser-complete",
+          "elapsedMs": 387278
+        },
+        {
+          "controlPlaneStage": "message-sources-restart-complete",
+          "elapsedMs": 427061
+        },
+        {
+          "controlPlaneStage": "restart-complete",
+          "elapsedMs": 427873
+        },
+        {
+          "controlPlaneStage": "crash-recovery-complete",
+          "elapsedMs": 454205
+        }
+      ],
+      "assertions": {
+        "projectMcpCatalogAndCredentialCli": true,
+        "projectMcpBuiltCliGuideVerified": true,
+        "projectMcpMalformedSecretInputNotLogged": true,
+        "projectMcpSecretsEncryptedAndIdentityBound": true,
+        "projectMcpSharedMetadataUsesOwnCredentials": true,
+        "projectMcpForeignMutationDenied": true,
+        "projectMcpActivationExplicitlyUnavailable": true,
+        "projectMcpEncryptedCredentialsSurviveRestart": true,
+        "projectMcpRevocationDoesNotAffectOtherUser": true,
+        "managedWorkspaceNativeGitStatusDiffCommitUnderTwoUids": true,
+        "managedProviderQuarantineAndResourcesSurviveRestart": true,
+        "nativeUidHomeTools": true,
+        "resumedThreadAfterRestart": true,
+        "crashRecoveryRetainsIdentityAndThreads": true,
+        "coreShutdownAdmissionRejectsCreateSendAndQueue": true
+      },
+      "stockNativeQwenWithDeterministicLocalModelBackend": true,
+      "shutdownAndCrashRecoveryPassed": true,
+      "fullDriverLogContainsNoFixturePat": true,
+      "postConfigurationServerLogScan": {
+        "files": 2,
+        "bytes": 56459,
+        "plaintextCredentialsFound": false
+      }
+    },
+    "imageHashes": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "424b8d084e2f6fcef6fa7c729ec829bda21dc3db68ae8804230cd75c434c1d18"
+      },
+      "apps/server/dist/index.js": {
+        "imagePath": "/opt/bb/apps/server/dist/index.js",
+        "sha256HostAndImage": "d805e33dbe404f83eba01d3dc80b7e940365bd7cb1439178a5ca16cc1881da76"
+      },
+      "apps/cli/dist/index.js": {
+        "imagePath": "/opt/bb/apps/cli/dist/index.js",
+        "sha256HostAndImage": "424de05ddcfea9cd7bd6108739c45ed0b396b2c9250799cd3977bb0573469d9a"
+      },
+      "apps/host-daemon/dist/start-host-daemon.js": {
+        "imagePath": "/opt/bb/apps/host-daemon/dist/start-host-daemon.js",
+        "sha256HostAndImage": "efff2745df65ea70fd8db0ac33195c6ef3191fc84462ff73d503c7ae9489cf15"
+      },
+      "apps/host-daemon/dist/workspace-worker.mjs": {
+        "imagePath": "/opt/bb-control-plane/workspace-worker.mjs",
+        "sha256HostAndImage": "8dcdae75651fc36062a75278fdeb346e7d4f98c8ef676921e2ed2cc504d40a3b"
+      },
+      "scripts/check-control-plane-project-mcp.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-mcp.mjs",
+        "sha256HostAndImage": "79aef6b6f0c32f13147375d092b589820ed3f3500c53386a4fc5c85f73769ad5"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "f47410dc0ca46a62d708b3e0f686aaf733188b41d32498d2a3d0f0e684440181"
+      },
+      "mcpCredentialFixture": {
+        "sourceTsSha256": "57d914ddc0e0576e834e5a549a5840459ff33db7b7da0c1d18c00071783a14cf",
+        "imageCompiledSha256": "35a3df93405cfe61f470bfb68c950f881f987cbb8f8e1f79520de03ef8f8b509"
+      }
+    }
+  },
+  "limitations": [
+    "Configuration only: connections stay disabled and cannot activate remote MCP tools. Actual provider delivery, active revocation and project UI remain required.",
+    "Shared-project metadata/credential isolation is verified; shared-project agent workspace execution is still a separate requirement.",
+    "No remote MCP service was called in this increment; the descriptor is not proof of corporate Qwen SDK transport support.",
+    "No frontend code changed; actual-browser baseline remains increment 51.",
+    "Full machine/action and composite background acceptance, supported profile translation, reusable agents and wider UI/cache requirements remain open."
+  ]
+}

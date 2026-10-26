@@ -1,3 +1,4 @@
+import { registerServerMcpCommands } from "./server-mcp.js";
 import { registerServerAutomationCommands } from "./server-automations.js";
 import { registerServerWorkflowCommands } from "./server-workflows.js";
 import type { Command } from "commander";
@@ -46,6 +47,12 @@ export function registerServerAccessCommands(
   const access = server
     .command("access")
     .description("Sign in to a protected shared BB server");
+  registerServerMcpCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
   registerServerProfileCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,

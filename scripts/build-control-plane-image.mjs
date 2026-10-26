@@ -46,6 +46,10 @@ try {
     ["apps/host-daemon/dist/workspace-worker.mjs", "workspace-worker.mjs"],
     ["scripts/check-control-plane-deployment.mjs", "deployment-check.mjs"],
     [
+      "scripts/check-control-plane-project-mcp.mjs",
+      "check-control-plane-project-mcp.mjs",
+    ],
+    [
       "scripts/check-control-plane-provider-lifecycle.mjs",
       "check-control-plane-provider-lifecycle.mjs",
     ],
@@ -101,6 +105,16 @@ try {
   ]) {
     await cp(join(repo, source), join(directory, target), { recursive: true });
   }
+  await buildNodeEsmEntry({
+    cleanDist: false,
+    entryPoint: join(
+      repo,
+      "apps/server/test/fixtures/control-plane-mcp-credential-fixture.ts",
+    ),
+    outfile: join(directory, "mcp-credential-check.mjs"),
+    packageRoot: repo,
+    sourcemap: false,
+  });
   await buildNodeEsmEntry({
     cleanDist: false,
     entryPoint: join(

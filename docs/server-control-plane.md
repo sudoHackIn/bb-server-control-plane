@@ -26,6 +26,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Route native Qwen approvals through BB with exact tool/turn identity, current-grant rechecks after approval, cancellation and timeout; verify accept-edits, full and native auto fallback in Docker. Personal approval endpoints and restricted native subagents remain pending.
 - [ ] Apply the bound profile's prompt/provider/model/reasoning/permissions/tool/MCP settings through the actual provider and tool adapter, including configuration changes and resume. Reject unsupported settings rather than accepting ignored restrictions, then open the personal execution API.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
+- [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); actual remote tool execution, activation and project UI remain pending.
 - [ ] Complete the reusable agent experience on top of approved versioned profiles: catalog/editor, explicit selection for chats and automations, and workflow steps pinned to agent versions. Ship the same operations through UI, limited SDK and CLI.
 - [x] Expose owner-scoped native thread start/list/status/send/stop/result, persisted event pages and native approval/question resolution through the personal API, SDK and CLI; verify cold project provisioning and same-session restart in Docker. Live subscriptions and user UI remain pending.
 - [x] Add a personal workflow run screen through the limited SDK: project list, status/result/history, inline start, terminal replay and cancellation, with access failures hiding cached data.
@@ -146,8 +147,9 @@ connection/execution state rather than fall back to another user's credentials.
 Acceptance requires real provider-to-MCP calls in Docker with two users, distinct
 credentials, project/connector access denial, revoked credentials/connections,
 resume and no secret disclosure. Include a shared-project case proving that
-personal credentials cannot cross users. This remains planned work; the existing
-verified BB MCP bridge alone does not satisfy this requirement.
+personal credentials cannot cross users. Increment 61 implements configuration management and encrypted credentials only.
+Actual provider delivery, activation, project UI and remote-tool acceptance remain
+open; the existing verified BB MCP bridge alone does not satisfy this requirement.
 
 ## Per-user workflows, automations and schedules
 
@@ -2760,3 +2762,62 @@ The initial Docker run exposed sweeper ordering: removal quarantined a creating
 row without changing its creation status. That state transition was corrected,
 covered with lifecycle-first regression ordering, and verified in the complete
 replacement deployment. Test deadlines were not extended.
+
+
+## Sixty-first increment: project MCP configuration and personal credentials
+
+Migration 0157 adds central connectors, user grants, project connection records
+and encrypted personal credentials. Administrative catalog updates, credential
+writes/revocation and project changes use explicit revision checks. Credentials
+pin the connector revision and use authenticated encryption bound to user,
+connector and revisions; revocation keeps an increasing tombstone. API/SDK/CLI
+responses expose only metadata. Secret input is stdin-only in the CLI.
+
+Project owners configure connections; shared readers see their own readiness and
+cannot mutate owner configuration. Current grants are rechecked after key I/O.
+The private key cannot be silently regenerated while ciphertext exists, and the
+shared secret-storage primitive rejects symlinks, malformed keys and unsafe
+permissions without a server filesystem lint exception.
+
+This is configuration, not activation: connections remain disabled and explicitly
+report `not_activated` and `executionSupported: false`. Unsupported enable fields
+are rejected. Actual provider-to-MCP calls, profile policy, shared-project
+execution and project UI remain unchecked requirements. See
+[the configuration contract](control-plane-project-mcp.md) and
+[verification record](control-plane-phase-61-verification.json).
+
+
+Verification passed: 1061 selected server tests in 111 files, all 659 database
+tests in 60 files, all 136 SDK tests in 17 files, eight secret-storage tests in
+three files, six selected CLI tests in two files, ten typecheck tasks and strict
+lint/formatting for all 25 changed code files. The six new HTTP/SDK tests use
+real migrated SQLite and verify shared read-only metadata, distinct user secrets,
+CAS/tombstones, revision refresh, ciphertext copying across identities/revisions,
+key loss/modes, asynchronous grant revocation and strict input/body limits.
+The new migration test upgrades existing user/project records and retains MCP
+ciphertext on repeated migration. Two private-key tests cover creation races and
+unsafe filesystem states. No database mocks or filesystem lint exceptions were
+added.
+
+The final Docker deployment passed all 63 tasks in 8m33.583s without extending
+budgets. Both users use the actual built CLI to list/get connectors, submit
+credentials through stdin, configure/read project records and revoke credentials.
+Raw malformed secret input is rejected without its value appearing in output.
+The compiled production credential service resolves each owner's token under the
+server account; SQLite contains ciphertext. A shared reader cannot mutate the
+owner's configuration. Credentials/readiness survive restart; Alice's revocation
+does not affect Bob. Unsupported activation and identity injection are denied.
+The built `bb guide machines` includes the new MCP commands. Seven host/image
+artifact hashes and the compiled credential fixture are recorded. The complete
+Docker driver log and a post-configuration sample of actual server logs contain
+no fixture PAT values. Native Qwen, UID Git, provider quarantine, background
+execution, shutdown and crash recovery remain green. No frontend changed;
+browser baseline remains increment 51.
+
+The first complete deployment passed before final guide/get/input-error checks
+were included; acceptance uses the final rebuilt image. Historical schema-rewind
+tests were updated to remove the four MCP tables when reconstructing old schemas
+and to identify the turn-source migration by SQL hash rather than assuming it is
+latest. Production migrations remain strict. An existing SDK test now explicitly
+narrows agent/script definitions. The CLI's generic JSON error prevents Node's
+parser from echoing malformed secret input.

@@ -263,6 +263,102 @@ export const controlPlaneProjectAccess = sqliteTable(
   ],
 );
 
+export const controlPlaneMcpConnectors = sqliteTable(
+  "control_plane_mcp_connectors",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    endpoint: text("endpoint").notNull(),
+    revision: integer("revision").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    check(
+      "control_plane_mcp_connectors_revision_positive",
+      sql`${table.revision} > 0`,
+    ),
+  ],
+);
+
+export const controlPlaneMcpAccess = sqliteTable(
+  "control_plane_mcp_access",
+  {
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => controlPlaneMcpConnectors.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.connectorId, table.userId] }),
+    index("control_plane_mcp_access_user_idx").on(
+      table.userId,
+      table.connectorId,
+    ),
+  ],
+);
+
+export const controlPlaneMcpCredentials = sqliteTable(
+  "control_plane_mcp_credentials",
+  {
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => controlPlaneMcpConnectors.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    connectorRevision: integer("connector_revision").notNull(),
+    revision: integer("revision").notNull(),
+    ciphertext: text("ciphertext"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.connectorId, table.userId] }),
+    index("control_plane_mcp_credentials_user_idx").on(
+      table.userId,
+      table.connectorId,
+    ),
+    check(
+      "control_plane_mcp_credentials_revisions_positive",
+      sql`${table.revision} > 0 AND ${table.connectorRevision} > 0`,
+    ),
+  ],
+);
+
+export const controlPlaneMcpConnections = sqliteTable(
+  "control_plane_mcp_connections",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => controlPlaneProjects.projectId, {
+        onDelete: "cascade",
+      }),
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => controlPlaneMcpConnectors.id),
+    connectorRevision: integer("connector_revision").notNull(),
+    revision: integer("revision").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_mcp_connections_project_connector_idx").on(
+      table.projectId,
+      table.connectorId,
+    ),
+    check(
+      "control_plane_mcp_connections_revisions_positive",
+      sql`${table.revision} > 0 AND ${table.connectorRevision} > 0`,
+    ),
+  ],
+);
+
 export const controlPlaneProfiles = sqliteTable("control_plane_profiles", {
   id: text("id").primaryKey(),
   slug: text("slug").notNull().unique(),

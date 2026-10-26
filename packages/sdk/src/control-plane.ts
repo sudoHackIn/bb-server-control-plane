@@ -1,3 +1,4 @@
+import { createControlPlaneMcpClient } from "./control-plane-mcp.js";
 import { createControlPlaneAutomationClient } from "./control-plane-automations.js";
 import { createControlPlaneWorkflowClient } from "./control-plane-workflows.js";
 import { z } from "zod";
@@ -168,6 +169,7 @@ export function createControlPlaneClient(args: {
       );
     },
   });
+  const mcp = createControlPlaneMcpClient(request);
   const adminProfiles = "/control-plane/admin/profiles";
   const ok = z.object({ ok: z.literal(true) });
   const threads = createControlPlaneThreadClient(request, requestResponse);
@@ -213,7 +215,9 @@ export function createControlPlaneClient(args: {
     workflows: createControlPlaneWorkflowClient(request),
     automations: createControlPlaneAutomationClient(request),
     profiles: profileReader("/control-plane/user/profiles"),
+    mcp: mcp.user,
     admin: {
+      mcp: mcp.admin,
       profiles: {
         ...profileReader(adminProfiles),
         async create(
