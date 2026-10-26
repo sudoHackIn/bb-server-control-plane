@@ -9,7 +9,7 @@ import {
 } from "../../../src/services/plugins/builtin-registry.js";
 import { resolveBundledMarketplaceDirectory } from "../../../src/services/plugin-catalog/bundled-marketplace.js";
 
-const UNPREFIXED_BUNDLED_PLUGIN_IDS = [
+const UPSTREAM_UNPREFIXED_BUNDLED_PLUGIN_IDS = [
   "account-pool",
   "agent-annotations",
   "ask-user-question",
@@ -51,13 +51,20 @@ const UNPREFIXED_BUNDLED_PLUGIN_IDS = [
   "workflows",
 ];
 
+const FORK_UNPREFIXED_BUNDLED_PLUGIN_IDS = ["provider-qwen-server"];
+
 describe("bundled plugin ids", () => {
-  it("prefixes every bundled plugin added after the reservation with bb--", () => {
+  it("requires bb-- except the upstream reservations and explicit fork provider identity", () => {
     const unprefixed = BUNDLED_PLUGINS.map((plugin) => plugin.pluginId)
       .filter((pluginId) => !pluginId.startsWith(BUILTIN_PLUGIN_ID_PREFIX))
       .sort();
 
-    expect(unprefixed).toEqual(UNPREFIXED_BUNDLED_PLUGIN_IDS);
+    expect(unprefixed).toEqual(
+      [
+        ...UPSTREAM_UNPREFIXED_BUNDLED_PLUGIN_IDS,
+        ...FORK_UNPREFIXED_BUNDLED_PLUGIN_IDS,
+      ].sort(),
+    );
   });
 });
 

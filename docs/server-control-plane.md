@@ -2958,3 +2958,34 @@ resume after restart. Unrelated containers, individual operation deadlines,
 assertions and VM resources are unchanged. The MCP browser fixture restores each
 caller's exact original conversation before subsequent scenarios, and failure
 diagnostics contain identity response metadata rather than credentials.
+
+
+## Sixty-fourth increment: full server regression parity
+
+The full server test selection is green again. The builtin reservation test keeps
+all upstream reserved IDs and explicitly lists this fork's already-deployed
+`provider-qwen-server` identity separately. Every other unprefixed addition still
+fails the exact-set comparison. Production provider IDs, installation guards and
+stored configurations are unchanged.
+
+The terminal interaction test now exercises both rejection paths: a completed
+request in its original turn remains terminal and cannot be reused; the same
+provider request ID in another turn is refused by the thread/turn identity guard
+before terminal-state inspection. The implementation already enforced that order.
+No authorization check is relaxed, no production code changes, and no test is
+removed or newly skipped.
+
+Verification: all 3825 server tests pass across 391 files; three existing skipped
+files and one skipped test are unchanged. The complete server test command uses
+native macOS process privileges for watcher/child-process cases, private temporary
+npm/FRP caches and a short temporary socket path. Six typecheck tasks and strict
+lint/formatting of the two changed test files pass. The rebuilt Docker deployment
+passes all 63 tasks in 8m41.077s with unchanged budgets, including two-user native
+Qwen/MCP, explicit idle-runtime release, cold resume, mandatory machine/session
+checks, shutdown and crash recovery. Four host/image artifacts match and the
+driver log contains no fixture PAT values. The browser baseline remains increment
+63 because production frontend code is unchanged. See
+[the verification record](control-plane-phase-64-verification.json).
+
+This closes the two assertion mismatches recorded in 62–63. It does not close the
+remaining shared-project execution or other unchecked product requirements.

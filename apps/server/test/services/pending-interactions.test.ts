@@ -805,30 +805,40 @@ describe("pending interaction lifecycle", () => {
         ),
       );
 
-      expect(
-        registerPendingInteraction(
-          harness.deps,
-          harness.deps.pendingInteractions,
-          {
-            threadId: thread.id,
-            turnId: "turn-terminal-dedupe-2",
-            providerId: "codex",
-            providerThreadId: "provider-thread-terminal-dedupe",
-            providerRequestId: "request-terminal-dedupe",
-            payload: createCommandApprovalPayload({
-              itemId: "item-terminal-dedupe-2",
-              reason: "Needs approval again",
-              command: "git push",
-              cwd: "/tmp/project",
-              availableDecisions: ["allow_once", "deny"],
-            }),
-          },
-        ),
-      ).toEqual({
-        outcome: "rejected",
-        reason:
+      for (const [turnId, reason] of [
+        [
+          "turn-terminal-dedupe-1",
           "Provider request request-terminal-dedupe was already handled and cannot be reused",
-      });
+        ],
+        [
+          "turn-terminal-dedupe-2",
+          "Provider request belongs to a different thread or turn",
+        ],
+      ]) {
+        expect(
+          registerPendingInteraction(
+            harness.deps,
+            harness.deps.pendingInteractions,
+            {
+              threadId: thread.id,
+              turnId,
+              providerId: "codex",
+              providerThreadId: "provider-thread-terminal-dedupe",
+              providerRequestId: "request-terminal-dedupe",
+              payload: createCommandApprovalPayload({
+                itemId: "item-terminal-dedupe-2",
+                reason: "Needs approval again",
+                command: "git push",
+                cwd: "/tmp/project",
+                availableDecisions: ["allow_once", "deny"],
+              }),
+            },
+          ),
+        ).toEqual({
+          outcome: "rejected",
+          reason,
+        });
+      }
     });
   });
 

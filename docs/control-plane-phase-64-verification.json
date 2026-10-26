@@ -1,0 +1,80 @@
+{
+  "scope": "Restore the full server regression gate using exact fork identity reservations and both terminal/foreign-turn interaction rejection contracts",
+  "previousStageCommit": "681fcc225",
+  "productionBehaviorChanged": false,
+  "databaseMigrations": [],
+  "hostDaemonProtocol": 255,
+  "pluginSdkVersion": "0.6.80",
+  "contracts": {
+    "upstreamUnprefixedReservationsUnchanged": true,
+    "explicitForkUnprefixedIdentity": "provider-qwen-server",
+    "allOtherUnprefixedIdsStillRejectedByExactSetTest": true,
+    "deployedProviderIdentityAndConfigurationCompatibilityPreserved": true,
+    "completedSameTurnProviderRequestRejectedAsAlreadyHandled": true,
+    "completedForeignTurnProviderRequestRejectedBeforeTerminalLookup": true,
+    "noReuseAccepted": true,
+    "realMigratedDatabaseUsed": true
+  },
+  "verification": {
+    "fullServerTests": 3825,
+    "skippedTests": 1,
+    "passedFiles": 391,
+    "skippedFiles": 3,
+    "newSkips": 0,
+    "narrowedTestSelection": false,
+    "fullServerTurboTasks": 10,
+    "fullServerDuration": "2m28.323s",
+    "typecheckTasks": 6,
+    "strictLintAndFormattingCodeFiles": 2,
+    "environment": {
+      "nativeMacProcessPrivilegesRequired": true,
+      "TMPDIR": "/private/tmp",
+      "npm_config_cache": "/private/tmp/bb-stage64-npm-cache",
+      "BB_FRP_CACHE_DIR": "/private/tmp/bb-stage59-frp-cache",
+      "realHomeCachesUnmodified": true
+    },
+    "dockerDeployment": {
+      "passed": true,
+      "tasks": 63,
+      "cached": 59,
+      "duration": "8m41.077s",
+      "budgetsChanged": false,
+      "nativeDaemonDispatch": true,
+      "twoUserNativeUidHomeTools": true,
+      "projectMcpNativeRoundTrip": true,
+      "projectMcpColdResumeAfterRestart": true,
+      "currentMachineTurnAndSessionGuard": true,
+      "shutdownAdmission": true,
+      "crashRecovery": true,
+      "driverLogContainsFixturePat": false
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "09dc3edc96fe7b5a7f1c6eee006c3c92df10acba0fcfa9ec2e35e41fcc0ccd1f"
+      },
+      "apps/cli/dist/index.js": {
+        "imagePath": "/opt/bb/apps/cli/dist/index.js",
+        "sha256HostAndImage": "8737f3c53949d8f9cb1ece97c31626ab7ccaba4853032e1b98a3262b8e59d0eb"
+      },
+      "scripts/check-control-plane-project-mcp.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-project-mcp.mjs",
+        "sha256HostAndImage": "e1735014c1a2d59f88b6f9e2ce4849de668de2a476f6dad9cf44232fd964319e"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "0ec12fcd9cb3caa545786ce0fdb751c3654b5ab6d52b86e56451a59fcd39b17e"
+      }
+    },
+    "browserBaseline": {
+      "increment": 63,
+      "productionFrontendChanged": false,
+      "newBrowserRunRequiredForTestExpectationOnlyChanges": false
+    }
+  },
+  "limitations": [
+    "Only the full server package is claimed green; this is not an all-workspace test run.",
+    "Existing platform/unsupported test skips are unchanged.",
+    "The shared-server product feature list remains incomplete, including shared-project agent execution and combined background/profile/agent/UI acceptance."
+  ]
+}
