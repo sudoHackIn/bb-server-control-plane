@@ -11,6 +11,7 @@ import { setTimeout } from "node:timers/promises";
 import { createControlPlaneClient } from "@bb/sdk/node";
 import { registerServerThreadCommands } from "./server-threads.js";
 import { registerServerProfileCommands } from "./server-profiles.js";
+import { registerServerProjectRoleCommands } from "./server-project-roles.js";
 import { outputJson } from "./helpers.js";
 import { noteJsonPayloadWritten } from "../cli-error-output.js";
 
@@ -131,6 +132,12 @@ export function registerServerAccessCommands(
   const projects = access
     .command("projects")
     .description("Manage your authorized server projects");
+  registerServerProjectRoleCommands(projects, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
   const projectClient = () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,

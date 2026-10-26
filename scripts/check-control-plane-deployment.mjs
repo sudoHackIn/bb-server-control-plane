@@ -197,6 +197,7 @@ try {
   });
   const managedRuntime = await verifyManagedRuntime({
     launch,
+    command,
     signal: controller.signal,
     password,
     nativeMaintenanceOnly,

@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { z } from "zod";
 import { ControlPlaneRegistry, controlPlaneUserSessions } from "@bb/db";
+import { createControlPlaneClient } from "@bb/sdk/node";
 import { createApp } from "../../src/server.js";
 import { createControlPlaneAccess } from "../../src/control-plane/access.js";
 import { createControlPlaneUserAccess } from "../../src/control-plane/user-access.js";
@@ -66,6 +67,11 @@ it("scopes role inspection and mutation to an active administrator request", asy
     const adminToken = z
       .object({ token: z.string() })
       .parse(await login.json()).token;
+    const adminClient = createControlPlaneClient({
+      origin,
+      token: () => adminToken,
+      fetch: async (input, init) => server.app.fetch(new Request(input, init)),
+    }).admin.projectRoles;
     expect((await send("GET", base)).status).toBe(401);
     expect((await send("GET", base, personalToken)).status).toBe(401);
     expect(
@@ -87,6 +93,9 @@ it("scopes role inspection and mutation to an active administrator request", asy
         pendingOperationId: z.string().nullable(),
       })
       .parse(await response.json());
+    expect((await adminClient.list(alice.project.id)).revision).toBe(
+      policy.revision,
+    );
     expect(policy.grants).toContainEqual(
       expect.objectContaining({ userId: alice.user.id, role: "owner" }),
     );
@@ -110,6 +119,12 @@ it("scopes role inspection and mutation to an active administrator request", asy
       (await send("GET", `${base}/maintenance/${randomUUID()}`, adminToken))
         .status,
     ).toBe(404);
+    await expect(
+      adminClient.set(alice.project.id, bob.user.id, {
+        role: "runner",
+        expectedRevision: policy.revision - 1,
+      }),
+    ).rejects.toThrow("409");
     expect((await send("GET", base, adminToken)).status).toBe(200);
   });
 });

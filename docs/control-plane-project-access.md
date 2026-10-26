@@ -512,3 +512,22 @@ anonymous inspection, grants Alice runner access to Bob's project and waits for
 the saved operation and applied revision to complete. The complete composite
 matrix passes separately under the 660/690-second budget already used for
 browser deployments. See [the stage 74 record](control-plane-phase-74-verification.json).
+
+
+## Administrator role SDK and CLI (increment 75)
+
+`createControlPlaneClient(...).admin.projectRoles` provides typed `list`, `set`
+and `operation` methods for the three limited administrator role routes. A role
+change requires the policy revision observed by the caller. A saved operation
+may remain in progress after the role transaction, so callers can inspect its
+phase and the project's applied revision before relying on filesystem access.
+
+`bb server access projects roles <project-id>` lists the current policy and
+grants. `set-role` takes a project ID, user ID, `--role runner|viewer` and
+`--revision`; `remove-role` takes the IDs and `--revision`; `role-operation`
+takes the project and operation IDs. Each command supports `--json` and uses
+the existing administrator login session. Personal sessions cannot access the
+underlying routes. The CLI outputs the saved operation ID from a changed role,
+including the pending result of a postcommit reconciliation failure.
+
+This stage adds no native role editor or shared-project native Qwen execution.

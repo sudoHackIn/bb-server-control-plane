@@ -49,6 +49,7 @@ export function registerServerMcpCommands(
     .option("--admin", "Include disabled connectors as an administrator")
     .option("--cursor <id>", "Exclusive cursor")
     .option("--limit <count>", "Maximum connectors", "50")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(
         async (options: {
@@ -69,6 +70,7 @@ export function registerServerMcpCommands(
   mcp
     .command("get <connector-id>")
     .option("--admin", "Read a connector as an administrator")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, options: { admin?: boolean }) => {
         const api = client();
@@ -81,6 +83,7 @@ export function registerServerMcpCommands(
       "--definition-stdin",
       "Read connector definition JSON from stdin",
     )
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (options: { definitionStdin?: boolean }) =>
         output(
@@ -99,6 +102,7 @@ export function registerServerMcpCommands(
       "--definition-stdin",
       "Read definition, enabled and expectedRevision JSON from stdin",
     )
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, options: { definitionStdin?: boolean }) =>
         output(
@@ -115,6 +119,7 @@ export function registerServerMcpCommands(
   mcp
     .command("grant <connector-id> <user-id>")
     .option("--revoke", "Revoke connector access")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(
         async (id: string, userId: string, options: { revoke?: boolean }) =>
@@ -123,6 +128,7 @@ export function registerServerMcpCommands(
     );
   mcp
     .command("credential <connector-id>")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string) => output(await client().mcp.credential(id))),
     );
@@ -132,6 +138,7 @@ export function registerServerMcpCommands(
       "--credential-stdin",
       "Read token, connectorRevision and expectedRevision JSON from stdin",
     )
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, options: { credentialStdin?: boolean }) =>
         output(
@@ -148,6 +155,7 @@ export function registerServerMcpCommands(
   mcp
     .command("credential-revoke <connector-id>")
     .requiredOption("--revision <number>", "Expected credential revision")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string, options: { revision: string }) =>
         output(
@@ -157,6 +165,7 @@ export function registerServerMcpCommands(
     );
   mcp
     .command("connections <project-id>")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (projectId: string) =>
         output(await client().mcp.connections(projectId)),
@@ -168,6 +177,7 @@ export function registerServerMcpCommands(
       "--connection-stdin",
       "Read connectorId, connectorRevision and expectedRevision JSON from stdin",
     )
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(
         async (projectId: string, options: { connectionStdin?: boolean }) =>
@@ -190,6 +200,7 @@ export function registerServerMcpCommands(
   mcp
     .command("remove <project-id> <connection-id>")
     .requiredOption("--revision <number>", "Expected connection revision")
+    .option("--json", "Print machine-readable JSON output")
     .action(
       action(
         async (projectId: string, id: string, options: { revision: string }) =>

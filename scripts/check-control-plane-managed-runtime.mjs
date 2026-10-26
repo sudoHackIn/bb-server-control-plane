@@ -17,6 +17,7 @@ import WebSocket from "ws";
 
 export async function verifyManagedRuntime({
   launch,
+  command,
   signal,
   password,
   nativeMaintenanceOnly = false,
@@ -600,11 +601,69 @@ export async function verifyManagedRuntime({
           (grant) => grant.userId === aliceUserId && grant.role === "runner",
         ),
       );
+      const cli = ["apps/cli/dist/index.js", "server", "access"];
+      const cliEnv = {
+        ...process.env,
+        HOME: "/tmp/bb-role-cli",
+        BB_SERVER_URL: config.publicOrigin,
+        NODE_EXTRA_CA_CERTS: config.users.tls.clientCaFile,
+        BB_CLI: "",
+        BB_CLI_ERROR_LOG: "0",
+      };
+      await command(
+        [...cli, "login", "--login", "operator", "--password-stdin"],
+        password,
+        { env: cliEnv },
+      );
+      const listed = JSON.parse(
+        await command(
+          [...cli, "projects", "roles", bobProjectId, "--json"],
+          "",
+          { env: cliEnv },
+        ),
+      );
+      assert.equal(listed.revision, afterRole.body.revision);
+      const sameRole = JSON.parse(
+        await command(
+          [
+            ...cli,
+            "projects",
+            "set-role",
+            bobProjectId,
+            aliceUserId,
+            "--role",
+            "runner",
+            "--revision",
+            String(listed.revision),
+            "--json",
+          ],
+          "",
+          { env: cliEnv },
+        ),
+      );
+      assert.equal(sameRole.changed, false);
+      const inspected = JSON.parse(
+        await command(
+          [
+            ...cli,
+            "projects",
+            "role-operation",
+            bobProjectId,
+            granted.body.operationId,
+            "--json",
+          ],
+          "",
+          { env: cliEnv },
+        ),
+      );
+      assert.equal(inspected.phase, "complete");
+      await command([...cli, "logout"], "", { env: cliEnv });
       stage("admin-role-maintenance-complete");
       verified = true;
       return {
         ...nativeMaintenanceVerification,
         adminRoleApiRequiresAuthenticationAndReconcilesRunnerGrant: true,
+        adminRoleSdkAndCliReadSetAndInspectSavedOperation: true,
       };
     }
 

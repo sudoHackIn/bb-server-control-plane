@@ -35,6 +35,7 @@ Complete each implementation stage with relevant tests, a deployment check again
 - [x] Connect private project maintenance to native BB lifecycle settlement, preserve intentional queue pauses, defer owned workflow/schedule dispatch and recover saved operations through periodic reconciliation after restart. Public atomic role mutation and shared native project execution remain pending.
 - [x] Make one private project role change and all affected UID admission reservations a single SQLite transaction, then resume the saved maintenance operation through the coordinator. Verify the real three-UID grant and ACL application in Docker. Administrative API/SDK/CLI/UI controls and shared native execution remain pending.
 - [x] Expose a limited administrator HTTP route to inspect project grants, change one runner/viewer role with an expected revision, and inspect the saved maintenance operation. Require an active administrator session; keep personal credentials and the central BB API outside this route. SDK/CLI/UI controls and shared native execution remain pending.
+- [x] Expose the administrator project-role route through the limited SDK and CLI, including revision-checked grant/remove, grant listing and saved-operation inspection. Keep these commands on the same authenticated control-plane transport; UI controls and shared native execution remain pending.
 - [ ] Add project-level MCP connections from a centrally installed connector catalog, with per-user credential bindings and server-resolved provider configuration for ordinary project threads. Agent selection is not required. See [project MCP connections](#project-mcp-connections).
 - [x] Add the project MCP management foundation: central connector grants, revision-bound disabled connection records, encrypted personal credentials, CAS/revocation tombstones and API/SDK/CLI configuration. Verify two-user metadata/secret isolation and restart in Docker. See [configuration](control-plane-project-mcp.md); execution and UI are covered by subsequent increments 62–63.
 - [x] Activate approved project MCP connections through API/SDK/CLI and execute profile-selected remote tools through the server-owned gateway, keeping personal credentials out of Qwen/daemon payloads. Verify real two-user native Qwen round trips and same-session restart in Docker; shared-project execution remains pending.
@@ -3364,3 +3365,30 @@ composite now uses the pre-existing browser-mode 660/690-second inner/outer
 budget with identical assertions. The optional external production-browser
 verification failed separately and is not counted as a pass. See [the
 verification record](control-plane-phase-74-verification.json).
+
+
+## Seventy-fifth increment: limited project-role SDK and CLI
+
+The limited SDK exposes typed administrator project-role listing, revision-checked
+runner/viewer grant and removal, and saved maintenance-operation inspection. The
+CLI adds `bb server access projects roles`, `set-role`, `remove-role` and
+`role-operation`. The commands use the same protected control-plane origin and
+administrator session as the existing limited API. They do not expose the
+unrestricted BB API or a root-helper operation.
+
+The focused deployment exercises a real CLI administrator login, lists the
+postgrant project policy, submits a revision-checked no-op role update, inspects
+the completed saved operation and signs out. The existing server route test also
+checks the SDK's typed response and stale-revision refusal. Native role UI,
+client-supplied mutation idempotency and shared-project Qwen execution remain
+open. See [the role contract](control-plane-project-access.md#administrator-role-sdk-and-cli-increment-75).
+
+Verification passes 3846 server tests in 395 files, 137 SDK tests in 18 files
+and 886 CLI tests in 78 files; existing skips are unchanged. Eight typecheck
+tasks, strict lint/formatting of eight code files and `git diff --check` pass.
+The rebuilt Docker image passes the focused native/admin/CLI suite in 106.624s
+and the complete composite in 562.841s: 63/63 Turbo tasks pass in 11m45.09s.
+The server entry, CLI entry and both deployment scripts match their image
+copies. The process-lifecycle CLI test and server plugin-packaging tests required
+access outside the filesystem sandbox to inspect their fixture process and use
+the existing npm cache. See [the verification record](control-plane-phase-75-verification.json).

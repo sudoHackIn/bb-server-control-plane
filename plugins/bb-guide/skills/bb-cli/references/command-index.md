@@ -102,21 +102,29 @@ This index lists every command path that the core CLI registers, including alias
 
 ## server
 
+- `bb server access`
 - `bb server access login`
 - `bb server access authorize`
 - `bb server access environment`
-- `bb server access browser` — certificate sign-in URL; opens personal project/thread navigation after login
+- `bb server access browser`
 - `bb server access browser-context`
 - `bb server access bootstrap`
+- `bb server access projects`
 - `bb server access projects list`
 - `bb server access projects get`
 - `bb server access projects create`
+- `bb server access projects roles`
+- `bb server access projects set-role`
+- `bb server access projects remove-role`
+- `bb server access projects role-operation`
+- `bb server access workflows`
 - `bb server access workflows start`
 - `bb server access workflows list`
 - `bb server access workflows get`
 - `bb server access workflows result`
 - `bb server access workflows history`
 - `bb server access workflows stop`
+- `bb server access workflows definitions`
 - `bb server access workflows definitions create`
 - `bb server access workflows definitions list`
 - `bb server access workflows definitions get`
@@ -125,6 +133,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access workflows definitions disable`
 - `bb server access workflows definitions run`
 - `bb server access workflows definitions delete`
+- `bb server access threads`
 - `bb server access threads list`
 - `bb server access threads start`
 - `bb server access threads get`
@@ -137,10 +146,12 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access threads timeline`
 - `bb server access threads timeline-details`
 - `bb server access threads result`
+- `bb server access threads interactions`
 - `bb server access threads interactions list`
 - `bb server access threads interactions approve`
 - `bb server access threads interactions deny`
 - `bb server access threads interactions resolve`
+- `bb server access mcp`
 - `bb server access mcp list`
 - `bb server access mcp get`
 - `bb server access mcp create`
@@ -152,6 +163,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access mcp connections`
 - `bb server access mcp configure`
 - `bb server access mcp remove`
+- `bb server access profiles`
 - `bb server access profiles list`
 - `bb server access profiles get`
 - `bb server access profiles versions`
@@ -162,6 +174,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access profiles grant`
 - `bb server access profiles revoke`
 - `bb server access profiles access`
+- `bb server access automations`
 - `bb server access automations list`
 - `bb server access automations get`
 - `bb server access automations output`

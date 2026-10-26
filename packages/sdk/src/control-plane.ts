@@ -1,4 +1,5 @@
 import { createControlPlaneMcpClient } from "./control-plane-mcp.js";
+import { createControlPlaneProjectRoleClient } from "./control-plane-project-roles.js";
 import { createControlPlaneAutomationClient } from "./control-plane-automations.js";
 import { createControlPlaneWorkflowClient } from "./control-plane-workflows.js";
 import { z } from "zod";
@@ -218,6 +219,7 @@ export function createControlPlaneClient(args: {
     mcp: mcp.user,
     admin: {
       mcp: mcp.admin,
+      projectRoles: createControlPlaneProjectRoleClient(request),
       profiles: {
         ...profileReader(adminProfiles),
         async create(

@@ -1,0 +1,87 @@
+{
+  "scope": "Limited administrator SDK and CLI for project-role policy and saved maintenance operations",
+  "previousStageCommit": "0ce86e13c",
+  "roleSdkCliEnabled": true,
+  "roleUiEnabled": false,
+  "personalRoleMutationEnabled": false,
+  "sharedNativeExecutionEnabled": false,
+  "databaseSchemaChanged": false,
+  "contracts": {
+    "typedSdkListsAndParsesRolesAndOperations": true,
+    "sdkAndCliRequireExpectedRevisionForMutation": true,
+    "cliUsesExistingAdministratorControlPlaneSession": true,
+    "cliDoesNotExposeGeneralBbApiOrRootHelper": true,
+    "dockerCliReadsGrantedRoleAndSavedCompletedOperation": true,
+    "staleRevisionIsRejectedThroughSdkRoute": true
+  },
+  "verification": {
+    "server": {
+      "testsPassed": 3846,
+      "filesPassed": 395,
+      "filesSkipped": 3,
+      "testsSkipped": 1,
+      "duration": "134.51s",
+      "unsandboxedForNpmCache": true
+    },
+    "sdk": {
+      "testsPassed": 137,
+      "filesPassed": 18
+    },
+    "cli": {
+      "testsPassed": 886,
+      "filesPassed": 78,
+      "testsSkipped": 1,
+      "processLifecycleTestUnsandboxed": true
+    },
+    "typecheckTasks": 8,
+    "docker": {
+      "nativeMaintenanceSuite": {
+        "passed": true,
+        "durationMs": 106624,
+        "adminRoleSdkAndCliReadSetAndInspectSavedOperation": true
+      },
+      "compositeSuite": {
+        "passed": true,
+        "durationMs": 562841,
+        "startupRecoveryAndCrashCleanup": true
+      },
+      "turboTasksPassed": 63,
+      "turboTasksTotal": 63,
+      "turboDuration": "11m45.09s",
+      "hostExitCode": 0,
+      "focusedInnerDeadlineMs": 150000,
+      "focusedOuterDeadlineMs": 180000,
+      "compositeInnerDeadlineMs": 660000,
+      "compositeOuterDeadlineMs": 690000
+    },
+    "hostAndImageArtifacts": {
+      "apps/server/dist/start-server.js": {
+        "imagePath": "/opt/bb/apps/server/dist/start-server.js",
+        "sha256HostAndImage": "a0efa328543ef80f7bdd36a6acfc4b1c470965098d97d18e7fa71a6ed9f46105"
+      },
+      "apps/cli/dist/index.js": {
+        "imagePath": "/opt/bb/apps/cli/dist/index.js",
+        "sha256HostAndImage": "6d9c50f977bcba35400a4c6dec90e27092ffd16e878fa1e52766207f389fe927"
+      },
+      "scripts/check-control-plane-deployment.mjs": {
+        "imagePath": "/opt/bb/deployment-check.mjs",
+        "sha256HostAndImage": "8190b77f567846e3c4dd65480d3f207fcf45c9b034629d110bef2affb5fda9c3"
+      },
+      "scripts/check-control-plane-managed-runtime.mjs": {
+        "imagePath": "/opt/bb/check-control-plane-managed-runtime.mjs",
+        "sha256HostAndImage": "53d99e67099825e3274d757c6b59440c49f316b177228e8cb3fecd703d9e013d"
+      }
+    },
+    "strictLintAndFormattingCodeFiles": 8,
+    "newSkips": 0
+  },
+  "developmentFixes": [
+    "The existing CLI machine-service fixture cannot inspect its own child process inside the filesystem sandbox; it passes unsandboxed without a product change.",
+    "The full CLI suite exposed missing --json flags on eleven existing MCP subcommands. Those flags were added without changing their payloads."
+  ],
+  "limitations": [
+    "Project-role mutation remains administrator-only; native role UI and personal role management are not implemented.",
+    "Actual shared-project Qwen execution remains closed.",
+    "A lost mutation response can be reconciled by reading policy and pending operation, but there is no client-supplied idempotency key."
+  ]
+}
