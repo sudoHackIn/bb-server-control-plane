@@ -2,6 +2,26 @@
 
 This fork has two target experiences: an administrator signs in with a login and password and can use the full BB UI, including every project and conversation; a user signs in through our certificate flow and sees only authorized projects, conversations, agents and models. The central BB and its plugin administration are not an anonymous public API.
 
+## Current delivery goal: complete user journey
+
+A user signs in with a client certificate, sees only authorized projects,
+selects a centrally approved agent version, chats with that agent, starts an
+automation from the conversation and sees the run result. Another user cannot
+read or act on that user's project, conversation, automation or result. This is
+the acceptance target for the current goal; the longer feature sequence below
+remains the implementation history and backlog.
+
+- [x] Certificate login, personal project navigation and access-scoped browser bootstrap exist.
+- [x] The native personal composer selects an approved profile version and renders a real Qwen conversation.
+- [x] Personal automation creation from a conversation, manual execution, history and result UI exist.
+- [ ] Verify the complete path as one production-browser flow starting at login: choose a project and ready agent, exchange messages, create an automation using the same pinned agent version, run it and inspect its result.
+- [ ] In that flow, verify Alice/Bob isolation for project and agent catalogs, conversation, automation definition, run and result through the UI and limited API/CLI, including direct foreign-ID requests.
+- [ ] Verify that the saved agent version and user authority are used at automation execution after a restart, and that loss of project/profile access prevents another run without revealing prior private results.
+
+Each completed implementation slice needs focused tests, a real Docker
+deployment check and its own commit. Do not mark the journey complete from
+independent component tests alone.
+
 ## Feature sequence
 
 Complete each implementation stage with relevant tests, a deployment check against the real fork in Docker and a separate commit. Record the verified scope and leave later features unchecked; an access-module smoke test alone does not verify a deployment.
