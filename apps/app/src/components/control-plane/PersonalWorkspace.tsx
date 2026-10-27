@@ -13,6 +13,7 @@ import { PersonalTimeline } from "./PersonalTimeline";
 import { PersonalAutomations } from "./PersonalAutomations";
 import { PersonalWorkflows } from "./PersonalWorkflows";
 import { PersonalConversationComposer } from "./PersonalConversationComposer";
+import { PersonalAgents } from "./PersonalAgents";
 import {
   Sidebar,
   SidebarContent,
@@ -71,6 +72,8 @@ function WorkspaceNavigation({
   const navigate = useNavigate();
   const location = useLocation();
   const view = new URLSearchParams(location.search).get("view");
+  const preferredAgentId = new URLSearchParams(location.search).get("agent");
+  const agentView = view === "agents";
   const workflowView = view === "workflows";
   const automationView = view === "automations";
   const integrationView = view === "integrations";
@@ -198,11 +201,77 @@ function WorkspaceNavigation({
       setLoggingOut(false);
     }
   }
+  function openView(
+    next: "agents" | "workflows" | "automations" | "integrations",
+  ) {
+    navigate({
+      pathname: location.pathname,
+      search: `?view=${next}`,
+    });
+    closeSidebar();
+  }
   return (
     <>
       <Sidebar aria-label="Projects and threads">
-        <div className="px-4 py-3 text-sm font-medium">BB</div>
+        <div className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold">
+          <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            bb
+          </span>
+          <span>Workspace</span>
+        </div>
         <SidebarContent>
+          <p className="px-4 pt-3 pb-1 text-xs font-medium text-muted-foreground">
+            Workspace
+          </p>
+          <SidebarMenu aria-label="Workspace tools" className="px-2">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                aria-current={agentView ? "page" : undefined}
+                className="aria-[current=page]:bg-sidebar-accent"
+                onClick={() => openView("agents")}
+              >
+                <Icon name="Bot" />
+                <span>Agents</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            {selectedProject && !project.isError && (
+              <>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    aria-current={workflowView ? "page" : undefined}
+                    className="aria-[current=page]:bg-sidebar-accent"
+                    onClick={() => openView("workflows")}
+                  >
+                    <Icon name="Workflow" />
+                    <span>Workflows</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    aria-current={automationView ? "page" : undefined}
+                    className="aria-[current=page]:bg-sidebar-accent"
+                    onClick={() => openView("automations")}
+                  >
+                    <Icon name="CalendarClock" />
+                    <span>Automations</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    aria-current={integrationView ? "page" : undefined}
+                    className="aria-[current=page]:bg-sidebar-accent"
+                    onClick={() => openView("integrations")}
+                  >
+                    <Icon name="Puzzle" />
+                    <span>Integrations</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </>
+            )}
+          </SidebarMenu>
+          <p className="px-4 pt-4 pb-1 text-xs font-medium text-muted-foreground">
+            Projects
+          </p>
           <SidebarMenu aria-label="Projects" className="px-2">
             {navigableProjects.map((item) => (
               <SidebarMenuItem key={item.projectId}>
@@ -319,46 +388,11 @@ function WorkspaceNavigation({
               variant="ghost"
               size="sm"
               onClick={() => {
-                navigate({
-                  pathname: location.pathname,
-                  search: workflowView ? "" : "?view=workflows",
-                });
+                navigate({ pathname: location.pathname, search: "" });
                 closeSidebar();
               }}
             >
-              {workflowView ? "Conversation" : "Workflows"}
-            </Button>
-          )}
-          {selectedProject && !project.isError && (
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={automationView}
-              onClick={() => {
-                navigate({
-                  pathname: location.pathname,
-                  search: automationView ? "" : "?view=automations",
-                });
-                closeSidebar();
-              }}
-            >
-              {automationView ? "Conversation" : "Automations"}
-            </Button>
-          )}
-          {selectedProject && !project.isError && (
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-pressed={integrationView}
-              onClick={() => {
-                navigate({
-                  pathname: location.pathname,
-                  search: integrationView ? "" : "?view=integrations",
-                });
-                closeSidebar();
-              }}
-            >
-              {integrationView ? "Conversation" : "Integrations"}
+              Conversation
             </Button>
           )}
         </header>
@@ -371,6 +405,17 @@ function WorkspaceNavigation({
               void project.refetch();
               void threads.refetch();
               if (threadId) void detail.refetch();
+            }}
+          />
+        ) : agentView ? (
+          <PersonalAgents
+            client={client}
+            canStart={selectedProject?.canRun === true}
+            onStart={(agentId) => {
+              if (!selectedProject?.canRun) return;
+              navigate(
+                `${getControlPlaneProjectPath(selectedProject.projectId)}?agent=${encodeURIComponent(agentId)}`,
+              );
             }}
           />
         ) : integrationView && selectedProject ? (
@@ -440,6 +485,7 @@ function WorkspaceNavigation({
           </section>
         )}
         {selectedProject &&
+          !agentView &&
           !workflowView &&
           !automationView &&
           !integrationView &&
@@ -454,6 +500,7 @@ function WorkspaceNavigation({
               client={client}
               project={project.data}
               thread={selectedThread ? (detail.data ?? null) : null}
+              preferredProfileId={preferredAgentId}
               onCreated={(created) =>
                 navigate(
                   getControlPlaneThreadPath(created.projectId, created.id),

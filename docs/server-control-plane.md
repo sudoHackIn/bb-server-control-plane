@@ -43,6 +43,17 @@ result. A separate shared-project case revokes the runner role and confirms no
 new run starts and another user cannot read the earlier result. See
 [phase 82 verification](control-plane-phase-82-verification.json).
 
+The personal workspace now keeps Agents, Workflows, Automations and
+Integrations in the BB left navigation beside projects and conversations. The
+Agents screen shows only granted profiles and starts a conversation with the
+selected version. Administrators create profiles, publish new versions,
+enable or disable agents and grant or revoke user access from the full BB
+Projects settings. These controls use the existing limited control-plane SDK;
+the personal browser never receives administrative profile actions. Workflow
+definitions and run history remain in the project-scoped Workflows screen.
+The [phase 83 verification](control-plane-phase-83-verification.json) covers
+the navigation, agent editor and a production browser catalog-to-chat path.
+
 ## Feature sequence
 
 Complete each implementation stage with relevant tests, a deployment check against the real fork in Docker and a separate commit. Record the verified scope and leave later features unchecked; an access-module smoke test alone does not verify a deployment.

@@ -1,0 +1,41 @@
+{
+  "scope": "BB-style personal navigation, approved agent catalog and administrative agent publishing UI",
+  "previousStageCommit": "36545ce27",
+  "contracts": {
+    "personalNavigationIncludesAgentsWorkflowsAutomationsAndIntegrations": true,
+    "personalCatalogShowsOnlyGrantedAgents": true,
+    "selectedAgentCarriesIntoNewConversation": true,
+    "administrativeEditorCreatesPublishesAndGrantsThroughLimitedApi": true,
+    "browserJourneyPreservesTwoUserIsolation": true
+  },
+  "verification": {
+    "appTypecheck": true,
+    "personalControlPlaneUiTests": {
+      "passed": 48,
+      "total": 48
+    },
+    "adminAgentUiTest": {
+      "passed": 1,
+      "total": 1
+    },
+    "deploymentCommand": "pnpm exec turbo run test:control-plane-browser --filter=@bb/server",
+    "nativeMaintenanceSuite": {
+      "passed": true,
+      "durationMs": 110153
+    },
+    "compositeSuite": {
+      "passed": true,
+      "durationMs": 665548,
+      "browserAgentCatalogAndChat": true,
+      "restartAndCrashRecovery": true
+    },
+    "turboTasksPassed": 63,
+    "turboTasksTotal": 63,
+    "turboDuration": "13m5.12s",
+    "strictLintPrettierAndDiffCheck": true
+  },
+  "limitations": [
+    "Administrative editor interactions are covered by UI tests against the limited API; the Docker browser journey exercises the personal catalog and chat.",
+    "Docker uses deterministic model and integration fixtures; corporate Qwen authentication is outside this test."
+  ]
+}

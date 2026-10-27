@@ -28,11 +28,13 @@ export function PersonalConversationComposer({
   client,
   project,
   thread,
+  preferredProfileId,
   onCreated,
 }: {
   client: PersonalWorkspaceClient;
   project: Project;
   thread: Thread | null;
+  preferredProfileId?: string | null;
   onCreated: (thread: Thread) => void;
 }) {
   const queries = useQueryClient();
@@ -49,7 +51,9 @@ export function PersonalConversationComposer({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [profileId, setProfileId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(
+    preferredProfileId ?? null,
+  );
   const draft = usePromptDraftStorage(
     thread
       ? { kind: "thread", projectId: project.projectId, threadId: thread.id }

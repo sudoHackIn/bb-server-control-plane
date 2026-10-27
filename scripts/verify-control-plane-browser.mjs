@@ -188,6 +188,29 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     await alice.page.waitForURL(
       `${ready.origin}/projects/${aliceUser.projectId}`,
     );
+    await alice.page
+      .getByRole("button", { name: "Agents", exact: true })
+      .click();
+    await visible(
+      alice.page.getByRole("heading", { name: "Agents", exact: true }),
+    );
+    const agentCatalog = alice.page.getByRole("list", {
+      name: "Agent catalog",
+    });
+    assert.equal(
+      await agentCatalog.getByRole("button", { name: /Personal bob/u }).count(),
+      0,
+    );
+    await agentCatalog.getByRole("button", { name: /Personal alice/u }).click();
+    await visible(
+      alice.page.getByRole("button", { name: "Start conversation" }),
+    );
+    await alice.page
+      .getByRole("button", { name: "Start conversation" })
+      .click();
+    await alice.page.waitForURL(
+      `${ready.origin}/projects/${aliceUser.projectId}?agent=*`,
+    );
     const unauthorizedRequests = requests.filter(
       (request) =>
         request.path.startsWith("/api/") ||

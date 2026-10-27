@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { afterEach, expect, it } from "vitest";
 import { PersonalWorkspace } from "./PersonalWorkspace";
-import { MemoryRouter, useNavigate } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { installPluginRuntime } from "@/lib/plugin-frontend";
 
 const queries: QueryClient[] = [];
@@ -71,6 +71,14 @@ function HistoryControls() {
     </>
   );
 }
+function CurrentLocation() {
+  const location = useLocation();
+  return (
+    <output data-testid="current-location">
+      {location.pathname + location.search}
+    </output>
+  );
+}
 function mount(fetcher: typeof fetch, entry = "/control-plane/app") {
   installPluginRuntime();
   const query = new QueryClient({
@@ -85,6 +93,7 @@ function mount(fetcher: typeof fetch, entry = "/control-plane/app") {
     <QueryClientProvider client={query}>
       <MemoryRouter initialEntries={[entry]}>
         <HistoryControls />
+        <CurrentLocation />
         <PersonalWorkspace client={client} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -236,6 +245,69 @@ it.each(["/projects/off-page/threads/direct", "/threads/direct"])(
     );
   },
 );
+
+it("opens an approved agent from the BB sidebar and carries it into a new conversation", async () => {
+  const agentId = "11111111-1111-4111-8111-111111111111";
+  const versionId = "22222222-2222-4222-8222-222222222222";
+  const agent = {
+    id: agentId,
+    slug: "research",
+    name: "Research agent",
+    enabled: true,
+    createdAt: 1,
+    latestVersionId: versionId,
+    latestVersion: 3,
+  };
+  const paths: string[] = [];
+  mount(async (input) => {
+    const url = new URL(input.toString());
+    paths.push(url.pathname);
+    if (url.pathname.endsWith("/bootstrap")) return Response.json(bootstrap);
+    if (url.pathname.endsWith("/projects/a"))
+      return Response.json(project("a"));
+    if (url.pathname.endsWith("/threads"))
+      return Response.json({ threads: [], nextCursor: null });
+    if (url.pathname.endsWith("/profiles"))
+      return Response.json({ profiles: [agent], nextCursor: null });
+    if (url.pathname.endsWith(`/profiles/${agentId}/versions/${versionId}`))
+      return Response.json({
+        profile: agent,
+        version: {
+          id: versionId,
+          profileId: agentId,
+          version: 3,
+          enabled: true,
+          createdAt: 1,
+          definition: {
+            prompt: "Research carefully",
+            providerId: "qwen-server",
+            model: "qwen-test",
+            reasoningLevel: "medium",
+            permissionMode: "accept-edits",
+            tools: [],
+            mcpServers: [],
+          },
+        },
+      });
+    throw new Error(`Unexpected request ${url.pathname}`);
+  }, "/projects/a");
+  fireEvent.click(await screen.findByRole("button", { name: "Agents" }));
+  await screen.findByRole("heading", { name: "Agents" });
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Research agent/u }),
+  );
+  await screen.findByText("qwen-test");
+  fireEvent.click(screen.getByRole("button", { name: "Start conversation" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("current-location").textContent).toBe(
+      `/projects/a?agent=${agentId}`,
+    ),
+  );
+  await screen.findByRole("combobox", { name: "Agent profile" });
+  expect(paths.every((path) => path.startsWith("/control-plane/user/"))).toBe(
+    true,
+  );
+});
 
 it.each([
   "/projects/a/threads/foreign",

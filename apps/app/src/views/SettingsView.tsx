@@ -73,6 +73,8 @@ import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsS
 import { BrowserSettingsSection } from "@/components/settings/BrowserSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ProjectsSettingsSection } from "@/components/settings/ProjectsSettingsSection";
+import { AdminAgentProfiles } from "@/components/settings/AdminAgentProfiles";
+import { createControlPlaneClient } from "@bb/sdk/browser";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliCommandSettingsSection } from "@/components/settings/CliCommandSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
@@ -1384,7 +1386,14 @@ export function SettingsView() {
       </>
     );
   } else if (activeSection === "projects") {
-    content = <ProjectsSettingsSection />;
+    content = (
+      <>
+        <ProjectsSettingsSection />
+        <AdminAgentProfiles
+          client={createControlPlaneClient({ origin: window.location.origin })}
+        />
+      </>
+    );
   } else if (activeSection === "machines") {
     content = (
       <>
