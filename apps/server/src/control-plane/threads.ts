@@ -324,9 +324,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
           job.binding.kind !== "automation-worker") ||
           job.user.id !== userId ||
           job.project.projectId !== input.projectId ||
-          job.profileVersion.id !== input.profileVersionId ||
-          (job.binding.kind === "workflow-worker" &&
-            job.binding.originThreadId === null))
+          job.profileVersion.id !== input.profileVersionId)
       )
         throw new ControlPlaneThreadError();
       const parent = job?.binding.sourceBindingId
@@ -343,8 +341,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       if (
         job &&
         (!parent ||
-          (job.binding.kind === "workflow-worker" &&
-            (!originThreadId || !jobOrigin?.thread.environmentId)))
+          (originThreadId !== null && !jobOrigin?.thread.environmentId))
       )
         throw new ControlPlaneThreadError();
       const project = getControlPlaneProject(deps.db, userId, input.projectId);

@@ -478,6 +478,23 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
           .count(),
         0,
       );
+      if (user.login === "alice") {
+        await page.goto(
+          `${ready.origin}/projects/${user.projectId}?view=workflows`,
+        );
+        const selector = page.getByRole("combobox", {
+          name: "Execution agent",
+        });
+        await visible(selector);
+        await page
+          .getByRole("option", { name: /Personal alice/ })
+          .waitFor({ state: "attached" });
+        const version = await page
+          .getByRole("option", { name: /Personal alice/ })
+          .getAttribute("value");
+        assert.ok(version);
+        await selector.selectOption(version);
+      }
       const source = page.getByRole("textbox", {
         name: "Workflow source",
         exact: true,
@@ -491,6 +508,26 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
           exact: true,
         })
         .fill(JSON.stringify({ owner: user.login }));
+      if (
+        user.login === "alice" &&
+        process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS
+      ) {
+        await mkdir(process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS, {
+          recursive: true,
+          mode: 0o700,
+        });
+        await page
+          .locator("form")
+          .filter({
+            has: page.getByRole("combobox", { name: "Execution agent" }),
+          })
+          .screenshot({
+            path: join(
+              process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS,
+              "project-workflow-form.png",
+            ),
+          });
+      }
       const started = page.waitForResponse(
         (reply) =>
           reply.url().endsWith("/control-plane/user/workflows") &&
@@ -503,6 +540,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       assert.equal(startedResponse.status(), 201);
       const workflow = await startedResponse.json();
       assert.equal(workflow.projectId, user.projectId);
+      if (user.login === "alice") assert.equal(workflow.originThreadId, null);
       browserWorkflowIds.push(workflow.id);
       await visible(page.getByText(`Run ${workflow.id}`, { exact: true }));
       await visible(page.getByLabel("Workflow result", { exact: true }));
@@ -590,6 +628,16 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
           .count(),
         0,
       );
+      if (user.login === "alice") {
+        const selector = page.getByRole("combobox", {
+          name: "Execution agent",
+        });
+        const version = await page
+          .getByRole("option", { name: /Personal alice/ })
+          .getAttribute("value");
+        assert.ok(version);
+        await selector.selectOption(version);
+      }
       await source.fill(
         `export const meta={name:"browser-cancel-${user.login}",description:"Browser cancellation"}; phase("waiting"); return await new Promise(()=>{});`,
       );
@@ -619,6 +667,14 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
           .getByRole("status")
           .filter({ hasText: /^cancelled(?: ·|$)/u }),
       );
+      if (user.login === "alice") {
+        await page.goto(
+          `${ready.origin}/projects/${user.projectId}/threads/${user.threadId}?view=workflows`,
+        );
+        await visible(
+          page.getByRole("textbox", { name: "Workflow source", exact: true }),
+        );
+      }
       await verifyBrowserDefinitions(
         page,
         user.login === "alice" ? bob : alice,

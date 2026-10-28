@@ -230,9 +230,6 @@ export function createControlPlaneWorkflowWorkers(
             eq(parent.ownerUserId, controlPlaneJobBindings.ownerUserId),
             eq(parent.projectId, controlPlaneJobBindings.projectId),
             sql`${parent.originThreadId} IS ${controlPlaneJobBindings.originThreadId}`,
-            pluginId === "workflows"
-              ? isNotNull(parent.originThreadId)
-              : undefined,
             eq(
               controlPlaneThreads.ownerUserId,
               controlPlaneJobBindings.ownerUserId,
@@ -270,8 +267,6 @@ export function createControlPlaneWorkflowWorkers(
             .safeParse(
               getThreadPluginMetadata(deps.db, row.threadId, pluginId).metadata,
             );
-          if (pluginId === "workflows" && row.originThreadId === null)
-            return denied();
           return {
             threadId: row.threadId,
             parentBindingId: row.parentBindingId,
@@ -294,11 +289,7 @@ export function createControlPlaneWorkflowWorkers(
       if (signal?.aborted)
         throw new Error("Workflow worker cancelled before creation");
       return withControlPlaneJobAuthority(deps.db, parentId, async (parent) => {
-        if (
-          parent.binding.kind !== parentKind ||
-          (pluginId === "workflows" && parent.binding.originThreadId === null)
-        )
-          return denied();
+        if (parent.binding.kind !== parentKind) return denied();
         const binding = createControlPlaneJobBinding(deps.db, {
           kind: workerKind,
           objectId: randomUUID(),

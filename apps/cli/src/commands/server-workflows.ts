@@ -39,7 +39,15 @@ export function registerServerWorkflowCommands(
       ),
     );
   workflows
-    .command("start <origin-thread-id>")
+    .command("start [origin-thread-id]")
+    .option(
+      "--project <id>",
+      "Run directly in an authorized project without a conversation",
+    )
+    .option(
+      "--profile-version <id>",
+      "Pinned approved profile for project execution",
+    )
     .option("--json", "Print JSON")
     .option("--script <source>", "Inline workflow script")
     .option("--script-stdin", "Read the script from stdin")
@@ -52,8 +60,10 @@ export function registerServerWorkflowCommands(
     .action(
       action(
         async (
-          originThreadId: string,
+          originThreadId: string | undefined,
           options: {
+            project?: string;
+            profileVersion?: string;
             script?: string;
             scriptStdin?: boolean;
             file?: string;
@@ -63,7 +73,11 @@ export function registerServerWorkflowCommands(
         ) => {
           const script = await readWorkflowScript(options);
           const input = controlPlaneWorkflowStartSchema.parse({
-            originThreadId,
+            originThreadId: originThreadId ?? null,
+            ...(options.project ? { projectId: options.project } : {}),
+            ...(options.profileVersion
+              ? { profileVersionId: options.profileVersion }
+              : {}),
             script,
             args: options.args === undefined ? null : JSON.parse(options.args),
             resumeRunId: options.resume ?? null,

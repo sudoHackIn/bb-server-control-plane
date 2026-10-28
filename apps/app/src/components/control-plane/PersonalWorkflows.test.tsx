@@ -36,6 +36,7 @@ function run(id: string, status = "succeeded", projectId = "a") {
 function mount(
   fetcher: typeof fetch,
   originThreadId: string | null = "origin-a",
+  canExecute = originThreadId !== null,
 ) {
   const cache = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -55,7 +56,7 @@ function mount(
         client={client}
         projectId={projectId}
         originThreadId={originThreadId}
-        canExecute={originThreadId !== null}
+        canExecute={canExecute}
       />
     </QueryClientProvider>
   );
@@ -261,4 +262,56 @@ it("allows viewing without execution permission and requires a conversation befo
   expect(screen.queryByLabelText("Workflow source")).toBeNull();
   expect(screen.queryByRole("button", { name: "Run workflow" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Prepare replay" })).toBeNull();
+});
+
+it("starts a project workflow with a selected immutable approved profile without an origin", async () => {
+  const versionId = "00000000-0000-4000-8000-000000000001";
+  const writes: unknown[] = [];
+  mount(
+    async (input, init) => {
+      const url = new URL(input.toString());
+      if (url.pathname.endsWith("/profiles"))
+        return Response.json({
+          profiles: [
+            {
+              id: "00000000-0000-4000-8000-000000000002",
+              slug: "review",
+              name: "Review",
+              enabled: true,
+              createdAt: 1,
+              latestVersionId: versionId,
+              latestVersion: 2,
+            },
+          ],
+          nextCursor: null,
+        });
+      if (init?.method === "POST") {
+        writes.push(JSON.parse(String(init.body)));
+        return Response.json(
+          { ...run("one"), originThreadId: null },
+          { status: 201 },
+        );
+      }
+      return read(url);
+    },
+    null,
+    true,
+  );
+  await screen.findByRole("option", { name: "Review · v2" });
+  fireEvent.change(screen.getByLabelText("Execution agent"), {
+    target: { value: versionId },
+  });
+  fireEvent.change(screen.getByLabelText("Workflow source"), {
+    target: {
+      value:
+        'export const meta={name:"test",description:"Project"}; return null;',
+    },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toMatchObject({
+    projectId: "a",
+    profileVersionId: versionId,
+    originThreadId: null,
+  });
 });

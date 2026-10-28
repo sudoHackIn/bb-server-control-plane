@@ -51,6 +51,7 @@ function fixture() {
     },
     canReadProject: (id) => id === origin.projectId,
     readOrigin: () => origin,
+    internal_DO_NOT_USE_workflowEnvironment: () => origin,
     async bind(input) {
       const binding = {
         ...input,
@@ -468,6 +469,44 @@ it("keeps owned notifications pending without attempts until maintenance release
       ),
     );
     expect(notify).toHaveBeenCalledTimes(1);
+  } finally {
+    controller.abort();
+    await worker;
+    await test.harness.dispose();
+  }
+});
+
+it("runs without an origin under pinned managed authority and settles notifications without sending", async () => {
+  const test = fixture();
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  try {
+    const notify = vi.spyOn(test.authority, "notifyOrigin");
+    const readOrigin = vi.spyOn(test.authority, "readOrigin");
+    const evaluate = vi
+      .spyOn(test.authority, "evaluateWorkflow")
+      .mockResolvedValue({ value: 42 });
+    const run = await test.service.start({
+      ...test.input,
+      originThreadId: null,
+      profileVersionId: test.profileVersionId,
+    });
+    expect(run.originThreadId).toBeNull();
+    expect(run.ownerUserId).toBe(test.owner);
+    test.setCaller(null);
+    worker = test.service.runWorker(controller.signal);
+    await vi.waitFor(() =>
+      expect(getRunRequired(test.db, run.id).notificationOutcome).toBe(
+        "abandoned",
+      ),
+    );
+    expect(getRunRequired(test.db, run.id).status).toBe("succeeded");
+    expect(evaluate).toHaveBeenCalled();
+    expect(readOrigin).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+    await expect(
+      test.service.start({ ...test.input, originThreadId: null }),
+    ).rejects.toThrow("pinned profile");
   } finally {
     controller.abort();
     await worker;

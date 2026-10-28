@@ -10,6 +10,10 @@ import {
   controlPlaneJobListSchema,
 } from "@bb/domain";
 import {
+  environments,
+  createEnvironment,
+  noopNotifier,
+  type DbNotifier,
   controlPlaneThreads,
   controlPlaneUidMaintenance,
   controlPlaneJobBindings,
@@ -62,6 +66,7 @@ export function createControlPlaneBackgroundJobs(
     | "releaseWorker"
     | "listWorkers"
   > | null = null,
+  notifier: DbNotifier = noopNotifier,
 ): InternalDoNotUseBackgroundJobs {
   const kinds: InternalDoNotUseBackgroundJobBinding["kind"][] =
     pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -143,6 +148,53 @@ export function createControlPlaneBackgroundJobs(
         reasoningLevel: context.profileVersion.definition.reasoningLevel,
         permissionMode: context.profileVersion.definition.permissionMode,
       };
+    },
+    internal_DO_NOT_USE_workflowEnvironment(id) {
+      assertExecutionAdmission(db);
+      if (
+        pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID ||
+        required(id).kind !== "workflow-run"
+      )
+        return denied();
+      return withControlPlaneJobAuthority(db, id, (context) => {
+        const selected = db.transaction(
+          (tx) => {
+            const existing = tx
+              .select({ id: environments.id })
+              .from(environments)
+              .where(
+                and(
+                  eq(environments.projectId, context.project.projectId),
+                  eq(environments.hostId, context.project.hostId),
+                  eq(environments.path, context.project.cwd),
+                  eq(environments.status, "ready"),
+                ),
+              )
+              .get();
+            if (existing) return { environment: existing, created: false };
+            const environment = createEnvironment(tx, noopNotifier, {
+              projectId: context.project.projectId,
+              hostId: context.project.hostId,
+              path: context.project.cwd,
+              providerOwnsPath: false,
+              status: "ready",
+            });
+            return { environment, created: true };
+          },
+          { behavior: "immediate" },
+        );
+        const environment = selected.environment;
+        if (selected.created)
+          notifier.notifyEnvironment(environment.id, ["environment-created"]);
+        const definition = context.profileVersion.definition;
+        return {
+          environmentId: environment.id,
+          providerId: definition.providerId,
+          model: definition.model,
+          reasoningLevel: definition.reasoningLevel,
+          permissionMode: definition.permissionMode,
+        };
+      });
     },
     async bind(input) {
       assertExecutionAdmission(db);

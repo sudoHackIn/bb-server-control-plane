@@ -879,6 +879,7 @@ export function createApp(
             pluginId,
             builtin,
             pluginId === "automations" ? automationWorkers : workflowWorkers,
+            deps.hub,
           )
         : null,
     sharedPorts: deps.sharedPorts,

@@ -3639,3 +3639,43 @@ exposed two test setup mistakes: expecting 200 instead of 201 on creation and
 using an intentionally revoked Bob token to prepare the offline fixture. The
 fixture now uses administrative setup for that owner; authentication remains
 strict. See [the verification record](control-plane-phase-87-verification.json).
+
+
+## P3.1 — Project workflow execution without an origin conversation
+
+The limited workflow API/SDK accepts either the existing owned origin thread or
+`{projectId, profileVersionId, script, args}`. The CLI exposes the second mode as
+`bb server access workflows start --project ... --profile-version ...`; the
+advanced Workflows screen selects an approved agent profile when no conversation
+is selected. This is execution groundwork, not workflow-agent publication.
+
+The server resolves a ready environment matching the registered project host and
+cwd under saved owner/profile authority, registering one for a fresh project.
+Callers cannot choose UID, HOME or a filesystem path. Workflow workers inherit the parent user/project authority and
+retain current grant checks, cancellation and isolated Qwen dispatch. Replay
+cannot change the pinned profile, environment or switch between origin-free and
+conversation execution. Conversation-based workflows keep their existing
+lifecycle behavior.
+
+Native Workflows SQLite migrates run and worker origin columns to nullable while
+preserving existing history and ownership. Origin-free completions retain their
+results and settle notification delivery without sending a message to a chat.
+The personal screen continues to poll scoped progress/history. No duplicate
+history store or daemon protocol change was introduced.
+
+Remaining P3 work: publish an immutable agent with an approved workflow revision,
+then route agent task admission and progress through that strategy. This increment
+does not mark P3 complete.
+
+
+Verification passes 28 focused server/security and plugin-facade tests, 13 database
+authority tests, 7 personal workflow UI tests and 283 Workflows tests (including
+the legacy SQLite migration). Twelve typecheck tasks and changed-file lint pass.
+The final Docker composite passes all 63 Turbo tasks in 695021 ms, including two
+fresh projects without environments or conversations, actual Qwen UID/HOME/cwd,
+replay, browser create/cancel, saved definitions, restart and crash recovery.
+The project launch form was also visually inspected. Docker caught missing
+forwarding through the plugin lifecycle facade; the fix has a regression test.
+The browser fixture reselects its approved profile after reload and returns to a
+conversation for saved-definition authoring. See the
+[P3.1 verification record](control-plane-phase-88-verification.json).

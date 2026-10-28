@@ -17,7 +17,7 @@ const run = z
   .object({
     id: z.string(),
     projectId: z.string(),
-    originThreadId: z.string(),
+    originThreadId: z.string().nullable(),
     name: z.string(),
     status,
     phase: z.string().nullable(),
@@ -37,7 +37,8 @@ const contract = defineRpcContract({
     input: z
       .object({
         projectId: id,
-        originThreadId: id,
+        originThreadId: id.nullable(),
+        profileVersionId: z.string().uuid().optional(),
         script: z.string().min(1).max(524288),
         args: z.unknown(),
         resumeRunId: id.nullable(),
@@ -133,6 +134,9 @@ export function registerManagedWorkflowApi(
         await service.start({
           projectId: input.projectId,
           originThreadId: input.originThreadId,
+          ...(input.profileVersionId
+            ? { profileVersionId: input.profileVersionId }
+            : {}),
           source: input.script,
           args: toJsonValue(input.args, "args"),
           resumedFromRunId: input.resumeRunId,

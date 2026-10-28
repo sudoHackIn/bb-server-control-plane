@@ -400,8 +400,20 @@ describe("plugin bb.sdk bind gate", () => {
     expect(
       await withControlPlaneUser(bob.user.id, () => jobs.get(a.id)),
     ).toBeNull();
+    const environment = jobs.internal_DO_NOT_USE_workflowEnvironment;
+    if (!environment) throw new Error("Missing workflow environment adapter");
+    expect(
+      withControlPlaneUser(alice.user.id, () => environment(a.id)),
+    ).toMatchObject({
+      environmentId: alice.environment.id,
+      providerId: "qwen-server",
+    });
+    expect(() =>
+      withControlPlaneUser(bob.user.id, () => environment(a.id)),
+    ).toThrow();
     await service.quiesceBackgroundServices();
     expect(jobs.get(a.id)?.id).toBe(a.id);
+    expect(() => environment(a.id)).toThrow("stopping");
     expect(() => jobs.bind(alice.input)).toThrow("stopping");
     expect(jobs.withAuthority(a.id, () => a.id)).toBe(a.id);
     expect(() => jobs.setEnabled(a.id, true)).toThrow("stopping");
@@ -427,6 +439,7 @@ describe("plugin bb.sdk bind gate", () => {
     await service.setEnabled("jobs-lifecycle", false);
     expect(() => jobs.userId).toThrow();
     expect(() => jobs.readOrigin(alice.thread.id)).toThrow();
+    expect(() => environment(a.id)).toThrow();
     expect(() => jobs.get(a.id)).toThrow();
     expect(() => jobs.withAuthority(a.id, () => a)).toThrow();
     expect(() => api.server.internal_DO_NOT_USE_backgroundJobs).toThrow();

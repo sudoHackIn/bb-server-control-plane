@@ -948,3 +948,38 @@ describe("workflow durable data", () => {
     expect(() => getRunRequired(db, child.id)).toThrow("Unknown workflow run");
   });
 });
+
+it("migrates existing workflow history and worker ownership before allowing a missing origin", () => {
+  const legacy = new Database(":memory:");
+  try {
+    legacy.pragma("foreign_keys = ON");
+    legacy.exec(migrations.slice(0, -1).join("\n"));
+    const before = createRun(legacy, {
+      projectId: "project",
+      originThreadId: "origin",
+      environmentId: "environment",
+      originProvider: "qwen-server",
+      originModel: "pinned",
+      originReasoningLevel: "none",
+      originPermissionMode: "full",
+      name: "existing",
+      source: "return null",
+      sourceHash: "hash",
+      argsJson: "null",
+      settingsJson: JSON.stringify(DEFAULT_WORKFLOW_SETTINGS),
+      resumedFromRunId: null,
+    });
+    ownWorker(legacy, "worker", before.id, "call", "origin", "binding");
+    legacy.exec(migrations.at(-1) ?? "");
+    expect(getRunRequired(legacy, before.id)).toEqual(before);
+    expect(workerParentBindingId(legacy, "worker")).toBe("binding");
+    legacy
+      .prepare("UPDATE workflow_runs SET origin_thread_id=NULL WHERE id=?")
+      .run(before.id);
+    ownWorker(legacy, "project-worker", before.id, "call-2", null, "binding");
+    expect(getRunRequired(legacy, before.id).originThreadId).toBeNull();
+    expect(legacy.pragma("foreign_key_check")).toEqual([]);
+  } finally {
+    legacy.close();
+  }
+});

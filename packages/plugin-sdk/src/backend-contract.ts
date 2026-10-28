@@ -1937,6 +1937,14 @@ export interface InternalDoNotUseBackgroundJobs {
     reasoningLevel: string;
     permissionMode: string;
   };
+  /** Resolves or registers the unmanaged project environment under persisted workflow authority. */
+  internal_DO_NOT_USE_workflowEnvironment?(bindingId: string): {
+    environmentId: string;
+    providerId: string;
+    model: string;
+    reasoningLevel: string;
+    permissionMode: string;
+  };
   bind(
     input: Pick<
       InternalDoNotUseBackgroundJobBinding,

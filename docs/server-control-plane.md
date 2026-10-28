@@ -31,6 +31,11 @@ Scheduled and manual work share the agent task list and BB result history.
 See the [delivery history](server-control-plane-history.md#p2--time-triggers-for-published-agents)
 and [P2 verification](control-plane-phase-87-verification.json).
 
+Project workflow execution now has an origin-free path with an explicit pinned
+profile, the registered project environment, and scoped history/replay. It is an
+advanced authoring path; publishing workflow-backed agents remains P3 below.
+See the [P3.1 verification record](control-plane-phase-88-verification.json).
+
 ### P3 — Workflow as an agent execution strategy
 
 Goal: an administrator publishes an agent whose background task uses a versioned workflow. Users still invoke an agent.

@@ -23,6 +23,12 @@ export function PersonalWorkflows({
 }) {
   const cache = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
+  const [profileVersionId, setProfileVersionId] = useState("");
+  const profiles = useQuery({
+    queryKey: ["personal", "workflow-profiles", projectId],
+    queryFn: ({ signal }) => client.profiles.list({ limit: 100, signal }),
+    enabled: canExecute && originThreadId === null,
+  });
   const [script, setScript] = useState("");
   const [args, setArgs] = useState("null");
   const [resumeRunId, setResumeRunId] = useState<string | null>(null);
@@ -83,11 +89,12 @@ export function PersonalWorkflows({
   });
   const start = useMutation({
     mutationFn: async () => {
-      if (!originThreadId) throw new Error("Choose an origin conversation");
+      if (!canExecute) throw new Error("Project execution is unavailable");
       const value: unknown = JSON.parse(args);
       return client.workflows.start(
         controlPlaneWorkflowStartSchema.parse({
           originThreadId,
+          ...(originThreadId === null ? { projectId, profileVersionId } : {}),
           script,
           args: value,
           resumeRunId,
@@ -213,7 +220,7 @@ export function PersonalWorkflows({
                   Stop workflow
                 </Button>
               ) : (
-                originThreadId && (
+                canExecute && (
                   <Button
                     variant="outline"
                     onClick={() => setResumeRunId(run.id)}
@@ -272,7 +279,7 @@ export function PersonalWorkflows({
           )}
         </>
       )}
-      {originThreadId ? (
+      {canExecute ? (
         <form
           className="space-y-3 border-t pt-4"
           onSubmit={(event) => {
@@ -284,10 +291,34 @@ export function PersonalWorkflows({
             {resumeRunId ? "Replay workflow" : "Start workflow"}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Runs in the current conversation's server environment. Replay
-            requires source and arguments and reuses only the unchanged
-            successful prefix.
+            {originThreadId
+              ? "Runs in the current conversation’s server environment."
+              : "Runs in this project with the selected agent’s pinned profile."}{" "}
+            Replay requires the same execution context, source and arguments and
+            reuses only the unchanged successful prefix.
           </p>
+          {originThreadId === null && (
+            <label className="block text-sm">
+              Execution agent
+              <select
+                className="mt-1 block w-full rounded border bg-background p-2 text-sm"
+                value={profileVersionId}
+                onChange={(event) => setProfileVersionId(event.target.value)}
+                required
+                disabled={profiles.isPending || profiles.isError}
+              >
+                <option value="">Choose an approved agent</option>
+                {profiles.data?.profiles.map((profile) => (
+                  <option key={profile.id} value={profile.latestVersionId}>
+                    {profile.name} · v{profile.latestVersion}
+                  </option>
+                ))}
+              </select>
+              {profiles.isError && (
+                <span role="alert">Unable to load approved agents.</span>
+              )}
+            </label>
+          )}
           <label className="block text-sm">
             Workflow source
             <textarea
@@ -306,7 +337,14 @@ export function PersonalWorkflows({
               required
             />
           </label>
-          <Button type="submit" disabled={start.isPending || !script.trim()}>
+          <Button
+            type="submit"
+            disabled={
+              start.isPending ||
+              !script.trim() ||
+              (originThreadId === null && !profileVersionId)
+            }
+          >
             {resumeRunId ? "Resume workflow" : "Run workflow"}
           </Button>
           {resumeRunId && (
@@ -327,7 +365,7 @@ export function PersonalWorkflows({
         </form>
       ) : (
         <p className="text-sm text-muted-foreground">
-          Open a conversation to start a workflow.
+          Execution access to this project is required to start a workflow.
         </p>
       )}
     </section>

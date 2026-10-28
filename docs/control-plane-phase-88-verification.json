@@ -1,0 +1,44 @@
+{
+  "scope": "P3.1: project workflow execution without an origin conversation",
+  "contracts": {
+    "projectAndPinnedProfileStart": true,
+    "registeredUidHomeCwd": true,
+    "nativeWorkflowHistoryAndReplay": true,
+    "replayRetainsProfileEnvironmentAndExecutionMode": true,
+    "workerOwnerProjectAndCurrentGrants": true,
+    "legacyHistoryMigrationPreserved": true,
+    "pluginFacadeLifecycleScoped": true,
+    "limitedApiSdkCliAndAdvancedUi": true,
+    "publishedWorkflowAgentCatalog": false,
+    "freshProjectRegistersEnvironmentWithoutThreads": true
+  },
+  "verification": {
+    "serverSecurityTestsPassed": 10,
+    "pluginFacadeTestsPassed": 18,
+    "databaseAuthorityTestsPassed": 13,
+    "personalUiTestsPassed": 7,
+    "workflowTestsPassed": 283,
+    "typecheckTasksPassed": 12,
+    "changedFileLintPassed": true,
+    "dockerStatus": "passed",
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 695021,
+    "productionBrowserPassed": true,
+    "freshProjectsWithoutEnvironmentsOrThreadsPassed": true,
+    "twoUserUidHomeCwdAndReplayPassed": true,
+    "restartAndCrashRecoveryPassed": true,
+    "projectWorkflowFormVisuallyReviewed": true
+  },
+  "limitations": [
+    "Workflow-backed published agents and unified agent task progress remain in P3.",
+    "Saved workflow definitions still require an origin conversation; project launches use supplied source.",
+    "Docker uses deterministic model/integration fixtures, not corporate Qwen certificate authorization."
+  ],
+  "verificationNotes": [
+    "An interrupted initial run was discarded and its temporary container removed.",
+    "Docker exposed a missing lifecycle facade forwarding method; it was fixed and covered by a real plugin facade test.",
+    "Browser project-mode cancellation after reload now reselects its approved profile; saved-definition checks return to an origin conversation.",
+    "Fresh-project coverage exposed the need to register an unmanaged environment without creating an origin thread; API and Docker tests now exercise this path."
+  ]
+}

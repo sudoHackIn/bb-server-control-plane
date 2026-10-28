@@ -259,7 +259,8 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 interface StartWorkflowInput {
   sourceBindingId?: string;
   projectId: string;
-  originThreadId: string;
+  originThreadId: string | null;
+  profileVersionId?: string;
   source: string;
   args: JsonValue;
   resumedFromRunId: string | null;
@@ -380,7 +381,8 @@ export function createWorkflowService(
     if (signal.aborted) throw new Error("Workflow cancelled");
   }
 
-  function publishRunsChanged(originThreadId: string): void {
+  function publishRunsChanged(originThreadId: string | null): void {
+    if (originThreadId === null) return;
     bb.realtime.publish(WORKFLOW_RUNS_REALTIME_CHANNEL, {
       threadId: originThreadId,
     });
@@ -463,8 +465,6 @@ export function createWorkflowService(
           includeArchived,
         });
         for (const worker of page.workers) {
-          if (worker.originThreadId === null)
-            throw new Error("Workflow worker has no origin");
           ownWorker(
             db,
             worker.threadId,
@@ -565,6 +565,10 @@ export function createWorkflowService(
   }
 
   async function resolveOrigin(input: StartWorkflowInput) {
+    if (input.originThreadId === null)
+      throw new Error(
+        "Workflow origin is required outside managed project execution",
+      );
     if (backgroundJobs) {
       const origin = backgroundJobs.readOrigin(input.originThreadId);
       if (origin.projectId !== input.projectId)
@@ -612,7 +616,15 @@ export function createWorkflowService(
     if (input.sourceBindingId !== undefined && !backgroundJobs)
       throw new Error("Managed source authority is required");
     let sourceBindingId = input.sourceBindingId ?? null;
-    const origin = await resolveOrigin(input);
+    if (
+      input.originThreadId === null &&
+      (!backgroundJobs || !input.profileVersionId)
+    )
+      throw new Error(
+        "Project workflows require a pinned profile and managed authority",
+      );
+    const originFromThread =
+      input.originThreadId === null ? null : await resolveOrigin(input);
     let resumedOwnerUserId: string | null = null;
     if (input.resumedFromRunId !== null) {
       const previous = visibleRun(input.resumedFromRunId);
@@ -640,7 +652,12 @@ export function createWorkflowService(
           `Cannot resume workflow run ${input.resumedFromRunId} before it is terminal`,
         );
       }
-      if (previous.environmentId !== origin.environmentId) {
+      if (
+        (previous.originThreadId === null) !==
+          (input.originThreadId === null) ||
+        (originFromThread &&
+          previous.environmentId !== originFromThread.environmentId)
+      ) {
         throw new Error(
           `Cannot resume workflow run ${input.resumedFromRunId} from a different environment or workspace`,
         );
@@ -653,13 +670,33 @@ export function createWorkflowService(
           objectId: runId,
           revision: 1,
           projectId: input.projectId,
-          profileVersionId: null,
+          profileVersionId: input.profileVersionId ?? null,
           originThreadId: input.originThreadId,
           sourceBindingId,
         })
       : null;
     let created: WorkflowRunRow;
     try {
+      const origin =
+        originFromThread ??
+        (binding &&
+          backgroundJobs?.internal_DO_NOT_USE_workflowEnvironment?.(
+            binding.id,
+          ));
+      if (!origin)
+        throw new Error("Workflow project environment is unavailable");
+      if (input.resumedFromRunId !== null) {
+        const previous = getRunRequired(db, input.resumedFromRunId);
+        const previousBinding = bindingFor(previous);
+        if (
+          previous.environmentId !== origin.environmentId ||
+          (binding &&
+            previousBinding?.profileVersionId !== binding.profileVersionId)
+        )
+          throw new Error(
+            "Cannot replace workflow environment or pinned profile during replay",
+          );
+      }
       if (
         binding &&
         input.resumedFromRunId !== null &&
@@ -1039,7 +1076,10 @@ export function createWorkflowService(
     while (true) {
       try {
         throwIfCancelled(signal);
-        if (await waitForOrigin(run.originThreadId, signal)) {
+        if (
+          run.originThreadId !== null &&
+          (await waitForOrigin(run.originThreadId, signal))
+        ) {
           await onOriginUnavailable(run.originThreadId);
           throw new Error("Workflow origin is archived or deleted");
         }
@@ -1060,7 +1100,9 @@ export function createWorkflowService(
                 )
                 .then((worker) => ({ id: worker.threadId }))
             : await bb.sdk.threads.spawn({
-                lifecycleOwnerThreadId: run.originThreadId,
+                ...(run.originThreadId
+                  ? { lifecycleOwnerThreadId: run.originThreadId }
+                  : {}),
                 pluginMetadata: {
                   workflowWorker: 1,
                   runId: run.id,
@@ -1479,6 +1521,14 @@ export function createWorkflowService(
   async function notify(run: WorkflowRunRow): Promise<void> {
     const latest = getRunRequired(db, run.id);
     if (latest.notificationSent) return;
+    if (latest.originThreadId === null) {
+      settleNotificationUndeliverable(
+        db,
+        latest.id,
+        "Project workflow has no origin conversation",
+      );
+      return;
+    }
     if (
       backgroundJobs
         ?.internal_DO_NOT_USE_executionPausedUserIds()
@@ -1740,6 +1790,7 @@ export function createWorkflowService(
     try {
       if (
         !backgroundJobs &&
+        run.originThreadId !== null &&
         (await waitForOrigin(run.originThreadId, signal))
       ) {
         await onOriginUnavailable(run.originThreadId);

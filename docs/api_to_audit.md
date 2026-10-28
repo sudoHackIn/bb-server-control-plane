@@ -3965,9 +3965,14 @@ internal quiescence getter only to `createPluginService`, whose trusted cron swe
 checks it before each claim, including after an awaiting callback. This does not
 expose centrally installed plugin schedules as personal automation definitions.
 
-
 ### Published agent schedule targets (P2)
 
-Builtin Automations also uses `internal_DO_NOT_USE_backgroundJobs.resolveWorkerProfile` on an `automation` definition to validate its pinned agent configuration, including while paused. It checks current grants without starting work; execution still requires enabled durable authority. Automation-run resolution cannot select another version. `listWorkers` now returns nullable `originThreadId` for automation workers without a conversation; Workflows still requires a non-null origin. Only builtin Automations and Workflows call this internal facade. No host protocol or new public plugin API changes.
+Builtin Automations also uses `internal_DO_NOT_USE_backgroundJobs.resolveWorkerProfile` on an `automation` definition to validate its pinned agent configuration, including while paused. It checks current grants without starting work; execution still requires enabled durable authority. Automation-run resolution cannot select another version. `listWorkers` returns nullable `originThreadId` for automation and workflow workers without a conversation. Only builtin Automations and Workflows call this internal facade. No host protocol or new public plugin API changes.
 
 Managed agent definitions migrate to an explicit profile version in a new revision, preserving the old immutable snapshots, owner and pinned binding. Scheduled workers use the registered project environment and have no lifecycle parent conversation. Authority checks validate legacy origin ownership but do not require an active origin session. Verification covers null-origin creation/dispatch, version preservation, current grants, owner scoping, existing scripts/workflows and Docker recovery.
+
+### Project workflow execution context
+
+Builtin Workflows alone calls `internal_DO_NOT_USE_backgroundJobs.internal_DO_NOT_USE_workflowEnvironment(bindingId)` for origin-free workflow runs. It resolves a ready environment matching the authorized project's registered host and cwd under the saved owner/profile and current grants, registering an unmanaged environment when the project has none. It accepts no caller paths or UID. The optional capability fails closed when absent on an older server. The plugin lifecycle facade gates environment registration during shutdown. Managed worker creation/listing supports null origin with the existing parent binding checks; interactive origin lifecycle behavior is retained. No daemon wire change.
+
+The limited workflow start API/SDK accepts either an owned origin thread or projectId plus immutable profileVersionId. Native plugin SQLite migrates origin columns to nullable without changing stored history. Project replay must retain environment/profile and origin-free mode. No-origin completion is settled without a chat notification. This is a foundation for published workflow agents, not a new delegation grant or workflow publication API.

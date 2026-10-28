@@ -128,7 +128,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access agent-runs events`
 - `bb server access agent-runs result`
 - `bb server access agent-runs cancel`
-- `bb server access workflows start`
+- `bb server access workflows start [origin-thread-id]` (or `--project <id> --profile-version <id>`)
 - `bb server access workflows list`
 - `bb server access workflows get`
 - `bb server access workflows result`

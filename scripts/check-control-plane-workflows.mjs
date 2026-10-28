@@ -352,6 +352,82 @@ export async function verifyNativeWorkflows({
   }
   try {
     for (const subject of subjects) {
+      const project = await userCommand(subject.user.login, [
+        "projects",
+        "create",
+        "workflow-project",
+        "--name",
+        "Fresh workflow project",
+        "--json",
+      ]);
+      assert.equal(
+        db
+          .prepare(
+            "SELECT count(*) AS count FROM environments WHERE project_id=?",
+          )
+          .get(project.projectId).count,
+        0,
+      );
+      assert.equal(
+        db
+          .prepare("SELECT count(*) AS count FROM threads WHERE project_id=?")
+          .get(project.projectId).count,
+        0,
+      );
+      const script = `export const meta = {name: "project-agent", description: "Origin-free isolated worker"}; return await agent("BB_PERSONAL_project-workflow-${subject.user.login}");`;
+      const run = await userCommand(
+        subject.user.login,
+        [
+          "workflows",
+          "start",
+          "--project",
+          project.projectId,
+          "--profile-version",
+          subject.profile.body.version.id,
+          "--script-stdin",
+          "--json",
+        ],
+        script,
+      );
+      assert.equal(run.originThreadId, null);
+      const row = await waitAgent(run.id);
+      assert.equal(row.origin_thread_id, null);
+      const proof = JSON.parse(
+        await readFile(
+          `${subject.user.home}/bb-personal-project-workflow-${subject.user.login}.json`,
+          "utf8",
+        ),
+      );
+      assert.deepEqual(proof, {
+        uid: subject.user.uid,
+        home: subject.user.home,
+        cwd: project.cwd,
+      });
+      const replay = await userCommand(
+        subject.user.login,
+        [
+          "workflows",
+          "start",
+          "--project",
+          project.projectId,
+          "--profile-version",
+          subject.profile.body.version.id,
+          "--resume",
+          run.id,
+          "--script-stdin",
+          "--json",
+        ],
+        script,
+      );
+      await waitAgent(replay.id);
+      const call = agentStorage
+        .prepare(
+          "SELECT replayed_from_call_id FROM workflow_calls WHERE run_id = ?",
+        )
+        .get(replay.id);
+      assert.ok(call.replayed_from_call_id);
+    }
+    for (const subject of subjects) {
       const script = `export const meta = {name: "isolated-agent", description: "Real controlled Qwen worker"}; return await agent("BB_PERSONAL_workflow-agent-${subject.user.login}");`;
       const run = await personalStart(subject, script);
       const row = await waitAgent(run.runId);

@@ -17,7 +17,7 @@ export interface WorkflowRunRow {
   projectId: string;
   ownerUserId: string | null;
   authorityBindingId: string | null;
-  originThreadId: string;
+  originThreadId: string | null;
   environmentId: string;
   originProvider: string;
   originModel: string;
@@ -250,6 +250,18 @@ export const migrations = [
      revision INTEGER NOT NULL, name TEXT NOT NULL, script TEXT NOT NULL, args_json TEXT NOT NULL,
      PRIMARY KEY(definition_id,revision)
    );`,
+  `DROP INDEX workflow_runs_origin_created_idx;
+   DROP INDEX workflow_runs_owner_origin_created_idx;
+   ALTER TABLE workflow_runs ADD COLUMN origin_thread_id_nullable TEXT;
+   UPDATE workflow_runs SET origin_thread_id_nullable = origin_thread_id;
+   ALTER TABLE workflow_runs DROP COLUMN origin_thread_id;
+   ALTER TABLE workflow_runs RENAME COLUMN origin_thread_id_nullable TO origin_thread_id;
+   CREATE INDEX workflow_runs_origin_created_idx ON workflow_runs(origin_thread_id, created_at DESC);
+   CREATE INDEX workflow_runs_owner_origin_created_idx ON workflow_runs(owner_user_id, origin_thread_id, created_at DESC);
+   ALTER TABLE workflow_workers ADD COLUMN origin_thread_id_nullable TEXT;
+   UPDATE workflow_workers SET origin_thread_id_nullable = origin_thread_id;
+   ALTER TABLE workflow_workers DROP COLUMN origin_thread_id;
+   ALTER TABLE workflow_workers RENAME COLUMN origin_thread_id_nullable TO origin_thread_id;`,
 ];
 
 export function createWorkflowRunId() {
@@ -933,7 +945,7 @@ export function ownWorker(
   threadId: string,
   runId: string,
   callId: string,
-  originThreadId: string,
+  originThreadId: string | null,
   parentBindingId: string | null = null,
 ): void {
   db.prepare(`INSERT INTO workflow_workers(thread_id, run_id, call_id, origin_thread_id, parent_binding_id)
@@ -949,8 +961,8 @@ export function ownWorker(
 export function workerOrigins(db: Db, now: number): string[] {
   return (
     db
-      .prepare(`SELECT origin_thread_id AS id FROM workflow_runs WHERE status IN ('queued', 'running')
-    UNION SELECT origin_thread_id AS id FROM workflow_workers WHERE archived_at IS NULL AND next_cleanup_at <= ?`)
+      .prepare(`SELECT origin_thread_id AS id FROM workflow_runs WHERE origin_thread_id IS NOT NULL AND status IN ('queued', 'running')
+    UNION SELECT origin_thread_id AS id FROM workflow_workers WHERE origin_thread_id IS NOT NULL AND archived_at IS NULL AND next_cleanup_at <= ?`)
       .all(now) as Array<{ id: string }>
   ).map((row) => row.id);
 }

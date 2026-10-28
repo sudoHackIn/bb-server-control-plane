@@ -687,3 +687,56 @@ it("runs pinned automation workers without a conversation and rejects a differen
     db.$client.close();
   }
 });
+
+it("keeps origin-free workflow worker authority in its owner's project and revokes descendants", () => {
+  const { db, alice, bob } = fixture();
+  try {
+    const parent = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      kind: "workflow-run",
+      originThreadId: null,
+    });
+    const input = {
+      ...alice.input,
+      kind: "workflow-worker" as const,
+      originThreadId: null,
+      objectId: randomUUID(),
+      sourceBindingId: parent.id,
+    };
+    const worker = createControlPlaneJobBinding(db, input);
+    expect(requireControlPlaneJobDispatch(db, worker.id).user.uid).toBe(
+      alice.user.uid,
+    );
+    for (const altered of [
+      { userId: bob.user.id },
+      { projectId: bob.project.id },
+      { profileVersionId: bob.profile.versionId },
+      { originThreadId: alice.origin.id },
+      { sourceBindingId: null },
+    ]) {
+      expect(() =>
+        createControlPlaneJobBinding(db, {
+          ...input,
+          ...altered,
+          objectId: randomUUID(),
+        }),
+      ).toThrow(ControlPlaneJobError);
+    }
+    setControlPlaneJobEnabled(db, alice.user.id, parent.id, false);
+    expect(() => requireControlPlaneJobDispatch(db, worker.id)).toThrow(
+      ControlPlaneJobError,
+    );
+    setControlPlaneJobEnabled(db, alice.user.id, parent.id, true);
+    setControlPlaneProfileAccess(
+      db,
+      alice.profile.profileId,
+      alice.user.id,
+      false,
+    );
+    expect(() => requireControlPlaneJobDispatch(db, worker.id)).toThrow(
+      ControlPlaneJobError,
+    );
+  } finally {
+    db.$client.close();
+  }
+});

@@ -705,6 +705,7 @@ credential does not grant the unrestricted `bb workflows` command or plugin RPC.
 
 ```bash
 bb server access workflows start <origin-thread-id> --file ./review.js --args '{"branch":"main"}' --json
+bb server access workflows start --project <project-id> --profile-version <version-id> --file ./review.js --json
 bb server access workflows list --project <project-id> --limit 20 --json
 bb server access workflows get <run-id> --json
 bb server access workflows result <run-id> --json
@@ -719,6 +720,17 @@ Scripts are limited to 512 KiB. `--args` is bounded JSON, at most 128 KiB,
 run's unchanged prefix using the supplied source. The server derives project,
 UID, HOME, cwd and approved profile from the owned origin thread. Source scripts
 can select other approved immutable worker profiles with the existing DSL.
+
+Without an origin conversation, supply both `--project` and `--profile-version`.
+Do not combine them with the origin-thread argument. The limited SDK equivalent
+is `workflows.start({ projectId, profileVersionId, script, args })`. The server
+resolves the registered project environment and its owner's UID/HOME/cwd; callers
+cannot supply paths or a UID. Project runs return `originThreadId: null`, keep
+normal workflow history, and send no completion message to a conversation.
+Replay retains the pinned profile, environment and origin-free execution mode.
+The advanced Workflows screen offers the same project launch with an approved
+agent selector. This is workflow authoring, not published workflow-agent catalog
+execution.
 
 Lists contain personal runs, including within shared projects. Continue with
 `--cursor <nextCursor>` until it is null; a page can be empty when native run

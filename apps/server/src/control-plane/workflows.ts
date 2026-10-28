@@ -7,6 +7,7 @@ import {
   listControlPlaneJobBindings,
   getControlPlaneProject,
   requireControlPlaneThreadDispatch,
+  requireControlPlaneThreadOwner,
   getInstalledPluginRegistration,
   type DbConnection,
 } from "@bb/db";
@@ -158,10 +159,16 @@ export function createControlPlaneWorkflowService(
     definitions: createControlPlaneWorkflowDefinitions(db, rpc),
     get,
     async start(userId: string, input: ControlPlaneWorkflowStart) {
-      const context = requireControlPlaneThreadDispatch(
-        db,
-        input.originThreadId,
-      );
+      const context =
+        input.originThreadId === null
+          ? requireControlPlaneThreadOwner(db, {
+              projectId: input.projectId,
+              ownerUserId: userId,
+              profileVersionId: input.profileVersionId,
+              providerId: "qwen-server",
+              relatedThreadIds: [],
+            })
+          : requireControlPlaneThreadDispatch(db, input.originThreadId);
       if (!context || context.user.id !== userId) return notFound();
       if (input.resumeRunId !== null) await get(userId, input.resumeRunId);
       const row = controlPlaneWorkflowRunSchema.parse(

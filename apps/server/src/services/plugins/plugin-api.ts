@@ -1079,6 +1079,14 @@ export function createPluginApi(options: {
         assertLive();
         return source.readOrigin(id);
       },
+      internal_DO_NOT_USE_workflowEnvironment(id) {
+        assertBackgroundAdmission();
+        if (!source.internal_DO_NOT_USE_workflowEnvironment)
+          throw new Error(
+            "Workflow project environment resolution is unavailable",
+          );
+        return source.internal_DO_NOT_USE_workflowEnvironment(id);
+      },
       bind(input) {
         assertBackgroundAdmission();
         return source.bind(input);

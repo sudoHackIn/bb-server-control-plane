@@ -52,7 +52,7 @@ const workflowArgs = z.custom<JsonValue>((input) => {
   }
   return new TextEncoder().encode(JSON.stringify(input)).byteLength <= 131072;
 }, "Workflow args must be bounded JSON");
-export const controlPlaneWorkflowStartSchema = z
+const conversationStartSchema = z
   .object({
     originThreadId: z.string().min(1).max(200),
     script: z
@@ -67,6 +67,17 @@ export const controlPlaneWorkflowStartSchema = z
     resumeRunId: z.string().min(1).max(200).nullable().default(null),
   })
   .strict();
+export const controlPlaneWorkflowStartSchema = z.union([
+  conversationStartSchema,
+  conversationStartSchema
+    .omit({ originThreadId: true })
+    .extend({
+      originThreadId: z.null().default(null),
+      projectId: z.string().min(1).max(200),
+      profileVersionId: z.string().uuid(),
+    })
+    .strict(),
+]);
 export const controlPlaneWorkflowStatusSchema = z.enum([
   "queued",
   "running",
@@ -78,7 +89,7 @@ export const controlPlaneWorkflowRunSchema = z
   .object({
     id: z.string(),
     projectId: z.string(),
-    originThreadId: z.string(),
+    originThreadId: z.string().nullable(),
     name: z.string().max(1024),
     status: controlPlaneWorkflowStatusSchema,
     phase: z.string().max(1024).nullable(),
@@ -135,7 +146,7 @@ export type ControlPlaneWorkflowStart = z.infer<
 >;
 
 export const controlPlaneWorkflowDefinitionCreateSchema =
-  controlPlaneWorkflowStartSchema.omit({ resumeRunId: true });
+  conversationStartSchema.omit({ resumeRunId: true });
 export const controlPlaneWorkflowDefinitionUpdateSchema =
   controlPlaneWorkflowDefinitionCreateSchema
     .omit({ originThreadId: true })
@@ -164,7 +175,7 @@ export const controlPlaneWorkflowDefinitionSummarySchema = z
 export const controlPlaneWorkflowDefinitionSchema =
   controlPlaneWorkflowDefinitionSummarySchema
     .extend({
-      script: controlPlaneWorkflowStartSchema.shape.script,
+      script: conversationStartSchema.shape.script,
       args: workflowArgs,
     })
     .strict();

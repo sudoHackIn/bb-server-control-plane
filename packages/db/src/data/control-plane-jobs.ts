@@ -118,8 +118,6 @@ function lineage(db: DbQueryConnection, job: Job, allowDisabled = false) {
           (current.kind === "workflow-worker"
             ? "workflow-run"
             : "automation-run") ||
-        (current.kind === "workflow-worker" &&
-          current.originThreadId === null) ||
         parent.originThreadId !== current.originThreadId ||
         (current.kind === "automation-worker" &&
           parent.profileVersionId !== current.profileVersionId)

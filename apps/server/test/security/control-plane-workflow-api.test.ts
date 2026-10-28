@@ -6,6 +6,8 @@ import { and, eq, count } from "drizzle-orm";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import {
   ControlPlaneRegistry,
+  createControlPlaneProject,
+  environments,
   controlPlaneUserSessions,
   setControlPlaneProfileAccess,
   controlPlaneJobBindings,
@@ -547,6 +549,96 @@ it("runs the limited SDK against native plugin SQLite with owner-scoped paginati
         (await client(bob.user.id).workflows.definitions.get(bobDefinition.id))
           .id,
       ).toBe(bobDefinition.id);
+      const fresh = createControlPlaneProject(harness.db, harness.hub, {
+        userId: alice.user.id,
+        hostId: alice.environment.hostId,
+        name: "Fresh workflow",
+        slug: "fresh-workflow",
+      }).project;
+      const projectEnvironments = () =>
+        harness.db
+          .select()
+          .from(environments)
+          .where(eq(environments.projectId, fresh.id))
+          .all();
+      expect(projectEnvironments()).toHaveLength(0);
+      const freshRun = await client(alice.user.id).workflows.start({
+        projectId: fresh.id,
+        profileVersionId: alice.profile.versionId,
+        script,
+      });
+      expect(freshRun.originThreadId).toBeNull();
+      const registered = projectEnvironments();
+      expect(registered).toHaveLength(1);
+      expect(registered[0]).toMatchObject({
+        path: `${alice.user.projectsRoot}/fresh-workflow`,
+        hostId: alice.environment.hostId,
+        providerOwnsPath: false,
+        status: "ready",
+      });
+      await client(alice.user.id).workflows.start({
+        projectId: fresh.id,
+        profileVersionId: alice.profile.versionId,
+        script,
+      });
+      expect(projectEnvironments().map((row) => row.id)).toEqual(
+        registered.map((row) => row.id),
+      );
+      const projectRun = await client(alice.user.id).workflows.start({
+        projectId: alice.project.id,
+        profileVersionId: alice.profile.versionId,
+        script,
+      });
+      expect(projectRun.originThreadId).toBeNull();
+      expect(projectRun.projectId).toBe(alice.project.id);
+      native.settle(projectRun.id);
+      const projectReplay = await client(alice.user.id).workflows.start({
+        projectId: alice.project.id,
+        profileVersionId: alice.profile.versionId,
+        script,
+        resumeRunId: projectRun.id,
+      });
+      expect(projectReplay.originThreadId).toBeNull();
+      for (const suffix of ["", "/result", "/history", "/stop"]) {
+        expect(
+          (
+            await request(
+              bob.user.id,
+              `${base}/${projectRun.id}${suffix}`,
+              suffix === "/stop" ? "POST" : "GET",
+            )
+          ).status,
+        ).toBe(404);
+      }
+      for (const input of [
+        {
+          projectId: alice.project.id,
+          profileVersionId: bob.profile.versionId,
+        },
+        {
+          projectId: bob.project.id,
+          profileVersionId: alice.profile.versionId,
+        },
+      ]) {
+        await expect(
+          client(alice.user.id).workflows.start({ ...input, script }),
+        ).rejects.toThrow();
+      }
+      expect(
+        (
+          await request(alice.user.id, base, "POST", {
+            projectId: alice.project.id,
+            script,
+          })
+        ).status,
+      ).toBe(400);
+      await expect(
+        client(alice.user.id).workflows.start({
+          originThreadId: alice.thread.id,
+          script,
+          resumeRunId: projectRun.id,
+        }),
+      ).rejects.toThrow("400");
       setControlPlaneProfileAccess(
         harness.db,
         alice.profile.profileId,
@@ -607,7 +699,11 @@ it("runs the limited SDK against native plugin SQLite with owner-scoped paginati
       expect(
         (await request(alice.user.id, `${base}/${first.id}/result`)).status,
       ).toBe(404);
-      expect((await client(alice.user.id).workflows.list()).runs).toEqual([]);
+      expect(
+        (await client(alice.user.id).workflows.list()).runs.map(
+          (row) => row.projectId,
+        ),
+      ).toEqual([fresh.id, fresh.id]);
       harness.db
         .update(controlPlaneUsers)
         .set({ enabled: false })
