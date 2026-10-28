@@ -482,6 +482,170 @@ export function createUserThreadFixture({ db, users }) {
         });
       }
       const [alice, bob] = created;
+      const manualRuns = [];
+      for (const subject of [alice, bob]) {
+        const key = `manual-${subject.user.login}-one`;
+        const args = [
+          "agent-runs",
+          "start",
+          subject.project.projectId,
+          "--profile-version",
+          subject.profile.body.version.id,
+          "--input",
+          `BB_PERSONAL_manual-${subject.user.login}`,
+          "--idempotency-key",
+          key,
+          "--json",
+        ];
+        const run = await command(subject.user.login, args);
+        assert.equal(run.runId, run.threadId);
+        assert.equal(
+          (await command(subject.user.login, args)).runId,
+          run.runId,
+        );
+        await wait(
+          () =>
+            db.prepare("SELECT status FROM threads WHERE id = ?").get(run.runId)
+              ?.status === "idle",
+          `manual run ${subject.user.login}`,
+        );
+        const identity = JSON.parse(
+          await readFile(
+            `${subject.user.home}/bb-personal-manual-${subject.user.login}.json`,
+            "utf8",
+          ),
+        );
+        assert.deepEqual(identity, {
+          uid: subject.user.uid,
+          home: subject.user.home,
+          cwd: `${subject.user.projects_root}/personal-api`,
+        });
+        assert.equal(
+          (
+            await command(subject.user.login, [
+              "agent-runs",
+              "result",
+              run.runId,
+              "--json",
+            ])
+          ).run.runId,
+          run.runId,
+        );
+        const firstEvents = await command(subject.user.login, [
+          "agent-runs",
+          "events",
+          run.runId,
+          "--limit",
+          "2",
+          "--json",
+        ]);
+        assert.ok(firstEvents.events.length > 0);
+        const resumedEvents = await command(subject.user.login, [
+          "agent-runs",
+          "events",
+          run.runId,
+          "--after",
+          String(firstEvents.cursor),
+          "--json",
+        ]);
+        assert.ok(
+          resumedEvents.events.every((event) => event.seq > firstEvents.cursor),
+        );
+        assert.ok(
+          (
+            await command(subject.user.login, [
+              "agent-runs",
+              "list",
+              "--project",
+              subject.project.projectId,
+              "--json",
+            ])
+          ).runs.some((item) => item.runId === run.runId),
+        );
+        manualRuns.push(run);
+      }
+      assert.equal(
+        (
+          await send(`/control-plane/user/agent-runs/${manualRuns[1].runId}`, {
+            token: sessions.get("alice").token,
+          })
+        ).status,
+        404,
+      );
+      assert.equal(
+        (
+          await send(
+            `/control-plane/user/agent-runs/${manualRuns[1].runId}/cancel`,
+            { token: sessions.get("alice").token, method: "POST" },
+          )
+        ).status,
+        404,
+      );
+      const cancellable = await command("alice", [
+        "agent-runs",
+        "start",
+        alice.project.projectId,
+        "--profile-version",
+        alice.profile.body.version.id,
+        "--input",
+        "BB_PERSONAL_worker-hang-manual-alice",
+        "--idempotency-key",
+        "manual-alice-cancel",
+        "--json",
+      ]);
+      await wait(async () => {
+        try {
+          const identity = JSON.parse(
+            await readFile(
+              `${alice.user.home}/bb-personal-worker-hang-manual-alice.json`,
+              "utf8",
+            ),
+          );
+          assert.equal(identity.uid, alice.user.uid);
+          assert.equal(identity.home, alice.user.home);
+          assert.equal(identity.cwd, alice.project.cwd);
+          return (
+            db
+              .prepare("SELECT status FROM threads WHERE id = ?")
+              .get(cancellable.runId)?.status === "active"
+          );
+        } catch (error) {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        }
+      }, "manual agent run active under personal UID");
+      assert.deepEqual(
+        await command("alice", [
+          "agent-runs",
+          "cancel",
+          cancellable.runId,
+          "--json",
+        ]),
+        { ok: true },
+      );
+      await wait(
+        () =>
+          db
+            .prepare("SELECT status FROM threads WHERE id = ?")
+            .get(cancellable.runId)?.status === "idle",
+        "manual run cancellation",
+      );
+      assert.equal(
+        (
+          await send("/control-plane/user/agent-runs", {
+            token: sessions.get("alice").token,
+            method: "POST",
+            body: {
+              projectId: alice.project.projectId,
+              profileVersionId: alice.profile.body.version.id,
+              input: "changed task",
+              source: "manual",
+              idempotencyKey: "manual-alice-one",
+            },
+          })
+        ).status,
+        409,
+      );
       const inputLimits = await verifyControlPlaneInputLimits({
         send,
         db,
@@ -890,6 +1054,22 @@ export function createUserThreadFixture({ db, users }) {
         (await sendAdmin(access, { allowed: false }, adminToken, "PUT")).status,
         200,
       );
+      assert.equal(
+        (
+          await send("/control-plane/user/agent-runs", {
+            token: aliceToken,
+            method: "POST",
+            body: {
+              projectId: alice.project.projectId,
+              profileVersionId: alice.profile.body.version.id,
+              input: "BB_PERSONAL_manual-revoked-alice",
+              source: "manual",
+              idempotencyKey: "manual-alice-revoked",
+            },
+          })
+        ).status,
+        404,
+      );
       const before = db
         .prepare("SELECT count(*) AS value FROM events WHERE thread_id = ?")
         .get(alice.thread.id).value;
@@ -951,6 +1131,7 @@ export function createUserThreadFixture({ db, users }) {
         bindingCheck,
         workflows,
         automations,
+        manualRuns,
       };
       return {
         ...productionBrowser,
@@ -959,6 +1140,7 @@ export function createUserThreadFixture({ db, users }) {
         ...workflows.verification,
         ...automations.verification,
         personalThreadCertificateCliAndFreshEnvironment: true,
+        personalManualAgentRunsTwoUids: true,
         actualTwoUserThreadApiDispatch: true,
         personalEventsAndResults: true,
         personalNativeTimelineAndToolDetailsCli: true,
@@ -1041,7 +1223,8 @@ export function createUserThreadFixture({ db, users }) {
       await saved.automations.afterShutdown();
     },
     async afterRestart() {
-      const { command, alice, wait, shutdownStream, bindingCheck } = saved;
+      const { command, alice, wait, shutdownStream, bindingCheck, manualRuns } =
+        saved;
       const jobBindingRestart = await bindingCheck("resume");
       const workflowRestart = await saved.workflows.afterRestart();
       const automationRestart = await saved.automations.afterRestart();
@@ -1050,6 +1233,28 @@ export function createUserThreadFixture({ db, users }) {
         (await command("alice", ["threads", "get", alice.thread.id, "--json"]))
           .id,
         alice.thread.id,
+      );
+      assert.equal(
+        (
+          await command("alice", [
+            "agent-runs",
+            "get",
+            manualRuns[0].runId,
+            "--json",
+          ])
+        ).runId,
+        manualRuns[0].runId,
+      );
+      assert.equal(
+        (
+          await command("alice", [
+            "agent-runs",
+            "result",
+            manualRuns[0].runId,
+            "--json",
+          ])
+        ).run.runId,
+        manualRuns[0].runId,
       );
       await command(
         "alice",
@@ -1078,6 +1283,7 @@ export function createUserThreadFixture({ db, users }) {
         ...workflowRestart,
         ...automationRestart,
         personalTokenAndThreadSurviveRestart: true,
+        personalManualRunSurvivesRestart: true,
         personalStreamsClosedOnServerShutdown: true,
         personalNativeQwenSessionResumedWithHistory: true,
       };

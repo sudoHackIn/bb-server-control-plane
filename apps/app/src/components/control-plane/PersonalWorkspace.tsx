@@ -410,6 +410,7 @@ function WorkspaceNavigation({
         ) : agentView ? (
           <PersonalAgents
             client={client}
+            projectId={selectedProject?.projectId ?? null}
             canStart={selectedProject?.canRun === true}
             onStart={(agentId) => {
               if (!selectedProject?.canRun) return;

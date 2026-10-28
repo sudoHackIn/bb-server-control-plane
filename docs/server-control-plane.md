@@ -29,9 +29,9 @@ Each slice must be independently useful and small enough to test on the running 
 
 Goal: the user selects the published agent, gives it a task and follows status/result without keeping a chat turn open.
 
-- [ ] Add one typed invocation contract: pinned version, verified owner, project, bounded input, source and idempotency key. Reuse BB thread/workflow records; do not duplicate their histories.
-- [ ] Expose start, list, status, events, result and cancel through limited API, SDK, CLI and agent UI. Text task and result suffice.
-- [ ] Verify UID/HOME/cwd, cancellation, restart/reconnect, revocation and foreign-ID denial in Docker.
+- [x] Add one typed invocation contract: pinned version, verified owner, project, bounded input, source and idempotency key. Reuse BB thread/workflow records; do not duplicate their histories.
+- [x] Expose start, list, status, events, result and cancel through limited API, SDK, CLI and agent UI. Text task and result suffice.
+- [x] Verify UID/HOME/cwd, cancellation, restart/reconnect, revocation and foreign-ID denial in Docker.
 
 ### P2 — Time trigger for a published agent
 

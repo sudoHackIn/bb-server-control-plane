@@ -6,6 +6,7 @@ import { createControlPlaneWorkflowClient } from "./control-plane-workflows.js";
 import { z } from "zod";
 import { getControlPlaneThreadPath } from "@bb/server-contract";
 import { createControlPlaneThreadClient } from "./control-plane-threads.js";
+import { createControlPlaneAgentRunClient } from "./control-plane-agent-runs.js";
 import {
   controlPlaneBrowserContextSchema,
   controlPlaneUserSessionSchema,
@@ -175,7 +176,9 @@ export function createControlPlaneClient(args: {
   const adminProfiles = "/control-plane/admin/profiles";
   const ok = z.object({ ok: z.literal(true) });
   const threads = createControlPlaneThreadClient(request, requestResponse);
+  const agentRuns = createControlPlaneAgentRunClient(request, requestResponse);
   return {
+    agentRuns,
     async browserContext(signal?: AbortSignal) {
       return controlPlaneBrowserContextSchema.parse(
         await request(

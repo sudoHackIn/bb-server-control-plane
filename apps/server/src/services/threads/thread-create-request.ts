@@ -15,6 +15,11 @@ import type {
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {
+  controlPlaneRun?: {
+    source: "manual";
+    idempotencyKey: string;
+    inputDigest: string;
+  };
   controlPlaneJobBindingId?: string;
   controlPlaneProfileVersionId?: CreateThreadRequest["controlPlaneProfileVersionId"];
   environment: CreateThreadEnvironmentArgs;

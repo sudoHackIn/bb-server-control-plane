@@ -13,6 +13,7 @@ import {
   controlPlaneThreadStartSchema,
   controlPlaneThreadSendSchema,
   controlPlaneThreadResolutionSchema,
+  controlPlaneAgentRunStartSchema,
 } from "@bb/domain";
 import { ControlPlaneThreadError } from "@bb/db";
 import type { ControlPlaneThreadService } from "./threads.js";
@@ -31,6 +32,14 @@ const eventPage = z
   })
   .strict();
 export function isControlPlaneThreadPath(path: string, method: string) {
+  if (path === "/control-plane/user/agent-runs")
+    return ["GET", "POST"].includes(method);
+  if (
+    /^\/control-plane\/user\/agent-runs\/[^/]+(?:\/(?:events|result|cancel|stream))?$/u.test(
+      path,
+    )
+  )
+    return path.endsWith("/cancel") ? method === "POST" : method === "GET";
   if (path === "/control-plane/user/threads")
     return ["GET", "POST"].includes(method);
   if (
@@ -61,12 +70,15 @@ export function installControlPlaneThreadRoutes(
     return next();
   });
   app.use(`${base}/*`, controlPlaneBodyLimit(1048576));
+  const runBase = "/control-plane/user/agent-runs";
+  app.use(`${runBase}/*`, controlPlaneBodyLimit(1048576));
   const handled =
     (run: (context: Context, userId: string) => Response | Promise<Response>) =>
     async (context: Context) => {
       const identity = authenticate(context);
       if (!identity)
         return context.json({ error: "authentication_required" }, 401);
+      context.header("cache-control", "no-store");
       try {
         return await run(context, identity.user.id);
       } catch (error) {
@@ -75,6 +87,84 @@ export function installControlPlaneThreadRoutes(
         throw error;
       }
     };
+  app.get(
+    runBase,
+    handled((context, userId) => {
+      const parsed = page.safeParse(context.req.query());
+      if (!parsed.success)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(
+        service.listRuns(userId, {
+          ...parsed.data,
+          cursor: parsed.data.cursor ?? null,
+        }),
+      );
+    }),
+  );
+  app.post(
+    runBase,
+    handled(async (context, userId) => {
+      const parsed = controlPlaneAgentRunStartSchema.safeParse(
+        await readControlPlaneJson(context),
+      );
+      if (!parsed.success)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(await service.startRun(userId, parsed.data), 201);
+    }),
+  );
+  app.get(
+    `${runBase}/:id`,
+    handled((context, userId) =>
+      context.json(service.run(userId, context.req.param("id") ?? "")),
+    ),
+  );
+  app.get(
+    `${runBase}/:id/events`,
+    handled((context, userId) => {
+      const id = context.req.param("id") ?? "";
+      service.run(userId, id);
+      const parsed = eventPage.safeParse(context.req.query());
+      if (!parsed.success)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(service.events(userId, id, parsed.data));
+    }),
+  );
+  app.get(
+    `${runBase}/:id/result`,
+    handled((context, userId) => {
+      const id = context.req.param("id") ?? "";
+      const run = service.run(userId, id);
+      return context.json({ run, text: service.result(userId, id).text });
+    }),
+  );
+  app.post(
+    `${runBase}/:id/cancel`,
+    handled(async (context, userId) => {
+      if (!hasControlPlaneEmptyBody(context))
+        return context.json({ error: "invalid_request" }, 400);
+      const id = context.req.param("id") ?? "";
+      service.run(userId, id);
+      return context.json(await service.stop(userId, id));
+    }),
+  );
+  app.get(
+    `${runBase}/:id/stream`,
+    handled((context, userId) => {
+      const id = context.req.param("id") ?? "";
+      service.run(userId, id);
+      const parsed = z
+        .object({ after: z.coerce.number().int().nonnegative().default(0) })
+        .strict()
+        .safeParse(context.req.query());
+      if (!parsed.success)
+        return context.json({ error: "invalid_request" }, 400);
+      return service.stream(userId, id, {
+        after: parsed.data.after,
+        signal: context.req.raw.signal,
+        authorized: () => authenticate(context)?.user.id === userId,
+      });
+    }),
+  );
   app.get(
     base,
     handled((context, userId) => {

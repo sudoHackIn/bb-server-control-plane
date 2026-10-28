@@ -381,6 +381,20 @@ active turns queue the message. Steering and execution-option overrides are
 not supported. `threads stop <thread-id>` can stop your job after its profile
 grant is revoked, while current project access is still required.
 
+`bb server access agent-runs start <project-id> --profile-version <version-id>
+--input <text> [--idempotency-key <key>]` starts a one-shot background task with
+the approved agent version. The service derives UID, HOME and cwd from the
+registered project. Supply the same key and input to retry without creating a
+second run; reusing a key with different input returns a conflict. If omitted,
+the CLI generates a key for that invocation. `agent-runs list [--project <id>]
+[--cursor <id>] [--limit 1..100]`, `status <run-id>`, `get <run-id>`, `events <run-id> [--after
+<sequence>] [--limit 1..200]`, `result <run-id>` and `cancel <run-id>` are
+limited to your current project access. The SDK exposes `agentRuns.start`,
+`list`, `get`, `status`, `events`, `stream`, `result` and `cancel`. The run ID is the BB
+thread ID; its native event history and result are stored once. These hidden
+threads do not appear in the conversation list and cannot accept chat sends.
+An `idle` status means the one-shot turn has finished; `error` means it failed.
+
 `threads events <thread-id> [--after <sequence>] [--limit 1..200]` reads a page
 of persisted native events in sequence order, exclusive of `after` (default 0).
 Continue using `cursor` while `hasMore`; this command is not a live stream.

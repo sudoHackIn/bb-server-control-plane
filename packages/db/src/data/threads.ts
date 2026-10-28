@@ -269,6 +269,11 @@ function upsertThreadTitleSearchSegments(
 
 export interface CreateThreadInput {
   controlPlaneOwnerUserId?: string;
+  controlPlaneRun?: {
+    source: "manual";
+    idempotencyKey: string;
+    inputDigest: string;
+  };
   controlPlaneJobBindingId?: string;
   controlPlaneProfileVersionId?: string;
   projectId: string;
@@ -382,6 +387,9 @@ export function createThread(
             ownerUserId: owner.user.id,
             profileVersionId: owner.profileVersion.id,
             jobBindingId: input.controlPlaneJobBindingId,
+            runSource: input.controlPlaneRun?.source ?? null,
+            runIdempotencyKey: input.controlPlaneRun?.idempotencyKey ?? null,
+            runInputDigest: input.controlPlaneRun?.inputDigest ?? null,
           })
           .run();
         requireControlPlaneThreadDispatch(tx, createdThread.id);

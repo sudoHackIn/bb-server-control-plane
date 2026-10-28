@@ -107,6 +107,7 @@ export function createThreadRecord(
     const thread = createThread(deps.db, deps.hub, {
       controlPlaneProfileVersionId: args.request.controlPlaneProfileVersionId,
       controlPlaneJobBindingId: args.request.controlPlaneJobBindingId,
+      controlPlaneRun: args.request.controlPlaneRun,
       controlPlaneOwnerUserId: controlPlaneThreadOwnerForCreate(
         deps.db,
         args.request,

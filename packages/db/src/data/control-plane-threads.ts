@@ -298,6 +298,7 @@ export function listControlPlaneThreads(
     .where(
       and(
         eq(controlPlaneThreads.ownerUserId, userId),
+        isNull(controlPlaneThreads.runSource),
         isNull(threads.deletedAt),
         options.projectId
           ? eq(threads.projectId, options.projectId)
@@ -316,6 +317,64 @@ export function listControlPlaneThreads(
     })),
     nextCursor:
       rows.length > options.limit ? (selected.at(-1)?.id ?? null) : null,
+  };
+}
+
+export function getControlPlaneAgentRunByKey(
+  db: DbQueryConnection,
+  userId: string,
+  idempotencyKey: string,
+) {
+  return db
+    .select({ threadId: controlPlaneThreads.threadId, inputDigest: controlPlaneThreads.runInputDigest })
+    .from(controlPlaneThreads)
+    .where(and(
+      eq(controlPlaneThreads.ownerUserId, userId),
+      eq(controlPlaneThreads.runSource, "manual"),
+      eq(controlPlaneThreads.runIdempotencyKey, idempotencyKey),
+    ))
+    .get();
+}
+
+export function listControlPlaneAgentRuns(
+  db: DbQueryConnection,
+  userId: string,
+  options: { projectId?: string; cursor: string | null; limit: number },
+) {
+  const accessible = accessibleControlPlaneProjects(db)
+    .where(eq(controlPlaneProjectAccess.userId, userId))
+    .as("accessible_run_projects");
+  const rows = db
+    .select({
+      runId: threads.id,
+      threadId: threads.id,
+      projectId: threads.projectId,
+      profileId: controlPlaneProfileVersions.profileId,
+      profileVersionId: controlPlaneThreads.profileVersionId,
+      source: controlPlaneThreads.runSource,
+      title: threads.title,
+      status: threads.status,
+      createdAt: threads.createdAt,
+      updatedAt: threads.updatedAt,
+    })
+    .from(controlPlaneThreads)
+    .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
+    .innerJoin(controlPlaneProfileVersions, eq(controlPlaneProfileVersions.id, controlPlaneThreads.profileVersionId))
+    .innerJoin(accessible, eq(accessible.projectId, threads.projectId))
+    .where(and(
+      eq(controlPlaneThreads.ownerUserId, userId),
+      eq(controlPlaneThreads.runSource, "manual"),
+      isNull(threads.deletedAt),
+      options.projectId ? eq(threads.projectId, options.projectId) : undefined,
+      options.cursor ? gt(threads.id, options.cursor) : undefined,
+    ))
+    .orderBy(asc(threads.id))
+    .limit(options.limit + 1)
+    .all();
+  const selected = rows.slice(0, options.limit);
+  return {
+    runs: selected,
+    nextCursor: rows.length > options.limit ? (selected.at(-1)?.runId ?? null) : null,
   };
 }
 

@@ -557,6 +557,9 @@ export const controlPlaneThreads = sqliteTable(
     profileVersionId: text("profile_version_id").references(
       () => controlPlaneProfileVersions.id,
     ),
+    runSource: text("run_source", { enum: ["manual"] }),
+    runIdempotencyKey: text("run_idempotency_key"),
+    runInputDigest: text("run_input_digest"),
   },
   (table) => [
     index("control_plane_threads_owner_idx").on(
@@ -565,6 +568,13 @@ export const controlPlaneThreads = sqliteTable(
     ),
     uniqueIndex("control_plane_threads_session_idx").on(table.qwenSessionId),
     uniqueIndex("control_plane_threads_job_idx").on(table.jobBindingId),
+    uniqueIndex("control_plane_threads_run_key_idx")
+      .on(table.ownerUserId, table.runIdempotencyKey)
+      .where(sql`${table.runSource} = 'manual'`),
+    check(
+      "control_plane_threads_run_fields",
+      sql`(${table.runSource} IS NULL AND ${table.runIdempotencyKey} IS NULL AND ${table.runInputDigest} IS NULL) OR (${table.runSource} = 'manual' AND ${table.runIdempotencyKey} IS NOT NULL AND ${table.runInputDigest} IS NOT NULL)`,
+    ),
   ],
 );
 

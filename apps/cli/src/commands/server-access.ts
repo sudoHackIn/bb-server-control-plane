@@ -10,6 +10,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { setTimeout } from "node:timers/promises";
 import { createControlPlaneClient } from "@bb/sdk/node";
 import { registerServerThreadCommands } from "./server-threads.js";
+import { registerServerAgentRunCommands } from "./server-agent-runs.js";
 import { registerServerProfileCommands } from "./server-profiles.js";
 import { registerServerProjectRoleCommands } from "./server-project-roles.js";
 import { outputJson } from "./helpers.js";
@@ -61,6 +62,12 @@ export function registerServerAccessCommands(
     }),
   );
   registerServerThreadCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
+  registerServerAgentRunCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,
       fetch: cliFetch,

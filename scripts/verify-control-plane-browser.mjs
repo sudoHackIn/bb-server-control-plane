@@ -218,6 +218,26 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       alice.page.getByRole("button", { name: "Start conversation" }),
     );
     await alice.page
+      .getByRole("textbox", { name: "Background task" })
+      .fill("BB_PERSONAL_browser-alice");
+    const browserRunResponse = alice.page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/control-plane/user/agent-runs" &&
+        response.request().method() === "POST",
+    );
+    await alice.page.getByRole("button", { name: "Run task" }).click();
+    const browserRun = await (await browserRunResponse).json();
+    assert.equal(browserRun.projectId, aliceUser.projectId);
+    await visible(
+      alice.page.getByRole("button", { name: "BB_PERSONAL_browser-alice" }),
+    );
+    await alice.page
+      .getByRole("button", { name: "BB_PERSONAL_browser-alice" })
+      .click();
+    await visible(alice.page.getByRole("heading", { name: "Events" }));
+    await visible(alice.page.getByText(`Task ${browserRun.runId}`));
+    await visible(alice.page.getByText("Personal browser-alice completed"));
+    await alice.page
       .getByRole("button", { name: "Start conversation" })
       .click();
     await alice.page.waitForURL(

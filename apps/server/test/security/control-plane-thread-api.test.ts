@@ -313,6 +313,117 @@ it("scopes personal SDK reads and action admission to the persisted owner and cu
       ]);
       expect(JSON.stringify(bootstrap)).not.toContain(bob.thread.id);
       expect(JSON.stringify(bootstrap)).not.toContain(bob.user.home);
+      const runInput = {
+        projectId: alice.project.id,
+        profileVersionId: alice.profile.versionId,
+        input: "Inspect this project",
+        source: "manual" as const,
+        idempotencyKey: "alice-run-one",
+      };
+      const runs = client(alice.token).agentRuns;
+      const firstRun = await runs.start(runInput);
+      expect(
+        (
+          await request(
+            alice.token,
+            `/control-plane/user/agent-runs/${firstRun.runId}`,
+          )
+        ).headers.get("cache-control"),
+      ).toBe("no-store");
+      expect(firstRun).toMatchObject({
+        runId: firstRun.threadId,
+        projectId: alice.project.id,
+        profileVersionId: alice.profile.versionId,
+        source: "manual",
+      });
+      expect((await runs.start(runInput)).runId).toBe(firstRun.runId);
+      expect((await runs.status(firstRun.runId)).runId).toBe(firstRun.runId);
+      const concurrent = await Promise.all([
+        runs.start({ ...runInput, idempotencyKey: "alice-run-concurrent" }),
+        runs.start({ ...runInput, idempotencyKey: "alice-run-concurrent" }),
+      ]);
+      expect(concurrent[0]?.runId).toBe(concurrent[1]?.runId);
+      expect(
+        (await runs.list({ projectId: alice.project.id })).runs.map(
+          (run) => run.runId,
+        ),
+      ).toContain(firstRun.runId);
+      expect(
+        (await api.list()).threads.map((thread) => thread.id),
+      ).not.toContain(firstRun.runId);
+      expect((await runs.result(firstRun.runId)).run.runId).toBe(
+        firstRun.runId,
+      );
+      expect((await runs.events(firstRun.runId)).events).toEqual(
+        expect.any(Array),
+      );
+      expect(
+        (
+          await request(
+            alice.token,
+            `/control-plane/user/agent-runs/${firstRun.runId}/cancel`,
+            "POST",
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(alice.token, `${base}/${firstRun.runId}/send`, "POST", {
+            message: "continue",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(
+            bob.token,
+            `/control-plane/user/agent-runs/${firstRun.runId}`,
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await request(
+            bob.token,
+            `/control-plane/user/agent-runs/${firstRun.runId}/events`,
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await request(
+            bob.token,
+            `/control-plane/user/agent-runs/${firstRun.runId}/cancel`,
+            "POST",
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await request(alice.token, `/control-plane/user/agent-runs`, "POST", {
+            ...runInput,
+            input: "Changed",
+          })
+        ).status,
+      ).toBe(409);
+      expect(
+        (
+          await request(alice.token, `/control-plane/user/agent-runs`, "POST", {
+            ...runInput,
+            projectId: bob.project.id,
+            idempotencyKey: "foreign-project",
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await request(alice.token, `/control-plane/user/agent-runs`, "POST", {
+            ...runInput,
+            profileVersionId: bob.profile.versionId,
+            idempotencyKey: "foreign-profile",
+          })
+        ).status,
+      ).toBe(404);
       expect(bootstrap.capabilities).toEqual({
         canCreateProjects: true,
         canInstallPlugins: false,

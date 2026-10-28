@@ -6,7 +6,14 @@ import {
   resolveThreadProviderDisplayName,
 } from "../services/threads/thread-timeline-windows.js";
 import { buildTimelineTurnSummaryDetails } from "../services/threads/timeline.js";
-import { getAppSettings } from "@bb/db";
+import {
+  getAppSettings,
+  controlPlaneThreads,
+  getControlPlaneAgentRunByKey,
+  listControlPlaneAgentRuns,
+  isSqliteUniqueConstraintOnColumns,
+} from "@bb/db";
+import { createHash } from "node:crypto";
 import type {
   ControlPlaneTimelineDetails,
   TimelinePaginationCursor,
@@ -28,6 +35,7 @@ import { and, eq } from "drizzle-orm";
 import type {
   ControlPlaneThreadStart,
   ControlPlaneThreadSend,
+  ControlPlaneAgentRunStart,
 } from "@bb/domain";
 import { CONTROL_PLANE_WORKFLOWS_PLUGIN_ID } from "@bb/domain";
 import type { AppDeps } from "../types.js";
@@ -116,9 +124,107 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       archived: row.archivedAt !== null,
     };
   }
+  function run(userId: string, id: string) {
+    const { row } = read(userId, id);
+    const binding = deps.db
+      .select()
+      .from(controlPlaneThreads)
+      .where(eq(controlPlaneThreads.threadId, id))
+      .get();
+    if (binding?.runSource !== "manual" || !row.profileVersionId)
+      throw new ApiError(404, "run_not_found", "Run not found");
+    const version = deps.db
+      .select({ profileId: controlPlaneProfileVersions.profileId })
+      .from(controlPlaneProfileVersions)
+      .where(eq(controlPlaneProfileVersions.id, row.profileVersionId))
+      .get();
+    if (!version) throw new ApiError(404, "run_not_found", "Run not found");
+    return {
+      runId: id,
+      threadId: id,
+      projectId: row.projectId,
+      profileId: version.profileId,
+      profileVersionId: row.profileVersionId,
+      source: "manual" as const,
+      title: row.title,
+      status: row.status,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
   return {
     close: () => streams.close(),
     get,
+    run,
+    listRuns(
+      userId: string,
+      options: { projectId?: string; cursor: string | null; limit: number },
+    ) {
+      if (
+        options.projectId &&
+        !getControlPlaneProject(deps.db, userId, options.projectId)
+      )
+        throw new ApiError(404, "project_not_found", "Project not found");
+      return listControlPlaneAgentRuns(deps.db, userId, options);
+    },
+    async startRun(userId: string, input: ControlPlaneAgentRunStart) {
+      const digest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            projectId: input.projectId,
+            profileVersionId: input.profileVersionId,
+            input: input.input,
+            source: input.source,
+          }),
+        )
+        .digest("hex");
+      const existing = () =>
+        getControlPlaneAgentRunByKey(deps.db, userId, input.idempotencyKey);
+      const resolveExisting = () => {
+        const found = existing();
+        if (!found) return null;
+        if (found.inputDigest !== digest)
+          throw new ApiError(
+            409,
+            "idempotency_conflict",
+            "Idempotency key was used for another request",
+          );
+        return run(userId, found.threadId);
+      };
+      const previous = resolveExisting();
+      if (previous) return previous;
+      try {
+        const thread = await this.start(
+          userId,
+          {
+            projectId: input.projectId,
+            profileVersionId: input.profileVersionId,
+            message: input.input,
+            title: input.input.trim().slice(0, 120),
+          },
+          null,
+          {
+            source: "manual",
+            idempotencyKey: input.idempotencyKey,
+            inputDigest: digest,
+          },
+        );
+        return run(userId, thread.id);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          isSqliteUniqueConstraintOnColumns(error, {
+            tableName: "control_plane_threads",
+            columnNames: ["owner_user_id", "run_idempotency_key"],
+            indexName: "control_plane_threads_run_key_idx",
+          })
+        ) {
+          const previous = resolveExisting();
+          if (previous) return previous;
+        }
+        throw error;
+      }
+    },
     profile(userId: string, id: string) {
       const { row } = read(userId, id);
       const version = row.profileVersionId
@@ -150,6 +256,11 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       userId: string,
       input: ControlPlaneThreadStart,
       worker: { bindingId: string; callId: string } | null = null,
+      manualRun: {
+        source: "manual";
+        idempotencyKey: string;
+        inputDigest: string;
+      } | null = null,
     ) {
       assertExecutionAdmission(deps.db);
       const job = worker
@@ -220,6 +331,9 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
               projectId: project.projectId,
               providerId: profile.version.definition.providerId,
               controlPlaneProfileVersionId: profile.version.id,
+              ...(manualRun
+                ? { controlPlaneRun: manualRun, visibility: "hidden" as const }
+                : {}),
               ...(job && worker && parent && originThreadId
                 ? {
                     controlPlaneJobBindingId: job.binding.id,
@@ -261,6 +375,18 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       return get(userId, thread.id);
     },
     async send(userId: string, id: string, input: ControlPlaneThreadSend) {
+      read(userId, id);
+      const binding = deps.db
+        .select({ runSource: controlPlaneThreads.runSource })
+        .from(controlPlaneThreads)
+        .where(eq(controlPlaneThreads.threadId, id))
+        .get();
+      if (binding?.runSource === "manual")
+        throw new ApiError(
+          409,
+          "run_is_not_chat",
+          "Background runs do not accept chat messages",
+        );
       const { thread, context } = executable(userId, id);
       const response = await withControlPlaneUser(userId, () =>
         acceptThreadSendRequest(deps, {
