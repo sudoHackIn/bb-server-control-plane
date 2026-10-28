@@ -116,13 +116,17 @@ export function PersonalAgents({
             ) : !current ? (
               <p role="status">Loading agent…</p>
             ) : (
-              <div className="max-w-2xl space-y-5">
+              <div className="max-w-2xl space-y-5 rounded-lg border p-5">
                 <div>
                   <h2 className="text-lg font-medium">
                     {current.profile.name}
                   </h2>
                   <p className="text-sm text-muted-foreground">
                     Version {current.version.version} · {current.profile.slug}
+                  </p>
+                  <p className="mt-3 text-sm">
+                    {current.version.definition.purpose ??
+                      "This version has no published purpose."}
                   </p>
                 </div>
                 <dl className="grid gap-3 text-sm sm:grid-cols-2">
@@ -139,10 +143,16 @@ export function PersonalAgents({
                     <dd>{current.version.definition.permissionMode}</dd>
                   </div>
                   <div>
-                    <dt className="text-muted-foreground">Tools and MCP</dt>
-                    <dd>
-                      {current.version.definition.tools.length} tools ·{" "}
-                      {current.version.definition.mcpServers.length} MCP servers
+                    <dt className="text-muted-foreground">Tools</dt>
+                    <dd className="break-words">
+                      {current.version.definition.tools.join(", ") || "None"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">MCP sources</dt>
+                    <dd className="break-words">
+                      {current.version.definition.mcpServers.join(", ") ||
+                        "None"}
                     </dd>
                   </div>
                 </dl>

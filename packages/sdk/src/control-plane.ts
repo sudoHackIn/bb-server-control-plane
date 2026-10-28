@@ -12,7 +12,7 @@ import {
   controlPlaneUserProjectSchema,
   controlPlaneUserBootstrapSchema,
   controlPlaneProfileCreateSchema,
-  controlPlaneProfileDefinitionSchema,
+  controlPlaneProfilePublicationSchema,
   controlPlaneProfileDetailSchema,
   controlPlaneProfileSummarySchema,
   controlPlaneProfileVersionSchema,
@@ -248,7 +248,7 @@ export function createControlPlaneClient(args: {
               "POST",
               {
                 definition:
-                  controlPlaneProfileDefinitionSchema.parse(definition),
+                  controlPlaneProfilePublicationSchema.parse(definition),
               },
               signal,
             ),

@@ -1,6 +1,6 @@
 import type { Command } from "commander";
 import { z } from "zod";
-import { controlPlaneProfileDefinitionSchema } from "@bb/domain";
+import { controlPlaneProfilePublicationSchema } from "@bb/domain";
 import type { createControlPlaneClient } from "@bb/sdk/node";
 import { action } from "../action.js";
 
@@ -30,7 +30,7 @@ export function registerServerProfileCommands(
         throw new Error("Profile definition is too large");
     }
     const value: unknown = JSON.parse(text);
-    return controlPlaneProfileDefinitionSchema.parse(value);
+    return controlPlaneProfilePublicationSchema.parse(value);
   };
   profiles
     .command("versions <profile-id>")

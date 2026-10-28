@@ -2,6 +2,7 @@ import { request } from "node:http";
 import { z } from "zod";
 const profileDefinition = z
   .object({
+    purpose: z.string().max(280).optional(),
     prompt: z.string().max(131072),
     providerId: z.literal("qwen-server"),
     model: z.string().min(1).max(200),

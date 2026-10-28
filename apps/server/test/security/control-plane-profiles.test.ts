@@ -85,6 +85,7 @@ it("serves the administrative and personal SDK catalogs with real authorization,
     const aliceApi = client(aliceToken),
       bobApi = client(bobToken);
     const definition: ControlPlaneProfileDefinition = {
+      purpose: "Review a user's project files.",
       prompt: "Review safely",
       providerId: "qwen-server",
       model: "qwen-approved",
@@ -163,6 +164,21 @@ it("serves the administrative and personal SDK catalogs with real authorization,
           slug: "ignored",
           name: "Ignored",
           definition: { ...definition, tools: ["read_file", "read_file"] },
+        },
+        {
+          slug: "ignored",
+          name: "Ignored",
+          definition: { ...definition, reasoningLevel: "unsupported" },
+        },
+        {
+          slug: "ignored",
+          name: "Ignored",
+          definition: { ...definition, tools: ["unknown_native_tool"] },
+        },
+        {
+          slug: "ignored",
+          name: "Ignored",
+          definition: { ...definition, mcpServers: ["unapproved"] },
         },
       ])
         expect((await send("POST", base, adminToken, body)).status).toBe(400);

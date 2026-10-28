@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
   controlPlaneProfileCreateSchema,
   controlPlaneProfileDefinitionSchema,
+  controlPlaneProfilePublicationSchema,
   type ControlPlaneProfileDefinition,
 } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
@@ -149,7 +150,7 @@ export function publishControlPlaneProfileVersion(
   profileId: string,
   definition: ControlPlaneProfileDefinition,
 ) {
-  const parsed = controlPlaneProfileDefinitionSchema.parse(definition);
+  const parsed = controlPlaneProfilePublicationSchema.parse(definition);
   return db.transaction(
     (tx) => {
       const last = tx

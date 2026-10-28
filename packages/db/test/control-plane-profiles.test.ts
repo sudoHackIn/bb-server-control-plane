@@ -20,13 +20,14 @@ import {
 } from "../src/index.js";
 
 const definition: ControlPlaneProfileDefinition = {
+  purpose: "Review project files safely.",
   prompt: "Approved instructions",
   providerId: "qwen-server",
   model: "qwen-test",
   reasoningLevel: "none",
   permissionMode: "full",
   tools: ["read_file"],
-  mcpServers: ["approved-server"],
+  mcpServers: ["bb"],
 };
 
 it("preserves immutable definitions, scopes grants and old versions, and applies profile/version/user revocation", () => {

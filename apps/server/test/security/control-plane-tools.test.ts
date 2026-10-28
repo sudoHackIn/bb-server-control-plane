@@ -4,6 +4,7 @@ import {
   ControlPlaneRegistry,
   controlPlaneUsers,
   controlPlaneThreads,
+  controlPlaneProfileVersions,
   controlPlaneProjectAccess,
   environments,
   createControlPlaneProfile,
@@ -61,14 +62,29 @@ it("checks each managed daemon tool call against current grants and invokes only
         model: "qwen-test",
         reasoningLevel: "none",
         permissionMode: "full",
-        tools: [
-          "bb:approved_tool",
-          "bb:update_environment_directory",
-          "bb:bb_workflow_run",
-        ],
+        tools: ["bb:approved_tool"],
         mcpServers: ["bb"],
       },
     });
+    harness.db
+      .update(controlPlaneProfileVersions)
+      .set({
+        definition: {
+          prompt: "Approved",
+          providerId: "qwen-server",
+          model: "qwen-test",
+          reasoningLevel: "none",
+          permissionMode: "full",
+          tools: [
+            "bb:approved_tool",
+            "bb:update_environment_directory",
+            "bb:bb_workflow_run",
+          ],
+          mcpServers: ["bb"],
+        },
+      })
+      .where(eq(controlPlaneProfileVersions.id, profile.versionId))
+      .run();
     setControlPlaneProfileAccess(harness.db, profile.profileId, alice.id, true);
     const thread = createThread(harness.db, harness.hub, {
       projectId: project.id,

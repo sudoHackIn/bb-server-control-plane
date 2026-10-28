@@ -3,7 +3,7 @@ import type { Context, Hono } from "hono";
 import { z } from "zod";
 import {
   controlPlaneProfileCreateSchema,
-  controlPlaneProfileDefinitionSchema,
+  controlPlaneProfilePublicationSchema,
 } from "@bb/domain";
 import {
   ControlPlaneProfileError,
@@ -145,7 +145,7 @@ export function installControlPlaneProfileRoutes(
     `${admin}/:id/versions`,
     handled(async (context) => {
       const parsed = z
-        .object({ definition: controlPlaneProfileDefinitionSchema })
+        .object({ definition: controlPlaneProfilePublicationSchema })
         .strict()
         .safeParse(await readControlPlaneJson(context));
       if (!parsed.success)

@@ -26,6 +26,7 @@ it("publishes an agent version and grants a registered user through the limited 
   let granted = false;
   const requests: string[] = [];
   const definition = {
+    purpose: "Investigate a project question.",
     prompt: "Original instructions",
     providerId: "qwen-server",
     model: "qwen-test",
@@ -68,6 +69,7 @@ it("publishes an agent version and grants a registered user through the limited 
           expect(body).toMatchObject({
             slug: "research",
             name: "Research agent",
+            definition: { purpose: "Investigate a project question." },
           });
           version = 1;
           return Response.json(detail());
@@ -85,9 +87,13 @@ it("publishes an agent version and grants a registered user through the limited 
       ) {
         const body: unknown = JSON.parse(String(init.body));
         expect(body).toMatchObject({
-          definition: { prompt: "Revised instructions" },
+          definition: {
+            purpose: "Investigate and summarize a project question.",
+            prompt: "Revised instructions",
+          },
         });
         version = 2;
+        definition.purpose = "Investigate and summarize a project question.";
         definition.prompt = "Revised instructions";
         return Response.json(detail());
       }
@@ -134,6 +140,9 @@ it("publishes an agent version and grants a registered user through the limited 
   fireEvent.change(screen.getByRole("textbox", { name: "Name" }), {
     target: { value: "Research agent" },
   });
+  fireEvent.change(screen.getByRole("textbox", { name: "Purpose" }), {
+    target: { value: "Investigate a project question." },
+  });
   fireEvent.change(screen.getByRole("textbox", { name: "Model" }), {
     target: { value: "qwen-test" },
   });
@@ -145,6 +154,9 @@ it("publishes an agent version and grants a registered user through the limited 
   await screen.findByText("Agent created");
   await screen.findByRole("button", { name: "Edit next version" });
   fireEvent.click(screen.getByRole("button", { name: "Edit next version" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Purpose" }), {
+    target: { value: "Investigate and summarize a project question." },
+  });
   fireEvent.change(
     screen.getByRole("textbox", { name: "Agent instructions" }),
     { target: { value: "Revised instructions" } },

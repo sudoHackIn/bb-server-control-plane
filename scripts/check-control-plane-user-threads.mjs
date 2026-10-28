@@ -293,6 +293,7 @@ export function createUserThreadFixture({ db, users }) {
             slug: `personal-${user.login}`,
             name: `Personal ${user.login}`,
             definition: {
+              purpose: `Help ${user.login} with project diagrams.`,
               prompt: "Personal API fixture",
               providerId: "qwen-server",
               model: "qwen-job-test",
@@ -330,12 +331,22 @@ export function createUserThreadFixture({ db, users }) {
           `BB_PERSONAL_${user.login} first`,
         );
         assert.equal(thread.profileVersionId, profile.body.version.id);
-        await wait(
-          () =>
-            db.prepare("SELECT status FROM threads WHERE id = ?").get(thread.id)
-              ?.status === "idle",
-          `personal ${user.login}`,
-        );
+        await wait(() => {
+          const status = db
+            .prepare("SELECT status FROM threads WHERE id = ?")
+            .get(thread.id)?.status;
+          if (status === "error") {
+            const events = db
+              .prepare(
+                "SELECT type,data FROM events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 5",
+              )
+              .all(thread.id);
+            throw new Error(
+              `Personal ${user.login} thread failed: ${JSON.stringify(events)}`,
+            );
+          }
+          return status === "idle";
+        }, `personal ${user.login}`);
         const probe = JSON.parse(
           await readFile(`${user.home}/bb-personal-${user.login}.json`, "utf8"),
         );

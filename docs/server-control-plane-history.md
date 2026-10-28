@@ -54,6 +54,15 @@ definitions and run history remain in the project-scoped Workflows screen.
 The [phase 83 verification](control-plane-phase-83-verification.json) covers
 the navigation, agent editor and a production browser catalog-to-chat path.
 
+The first P0 slice adds a short purpose and explicit capabilities to the
+personal agent card and administrator editor. Publication validates the Qwen
+reasoning level, managed MCP sources and tool selectors before creating a new
+immutable version. Existing versions remain readable, and the server Qwen
+bridge accepts the new purpose in its strict execution context. The two-user
+Docker browser path verifies the published purpose and latest version's tools,
+then exercises conversation, access boundaries, restart and crash recovery.
+See [phase 84 verification](control-plane-phase-84-verification.json).
+
 ## Feature sequence
 
 Complete each implementation stage with relevant tests, a deployment check against the real fork in Docker and a separate commit. Record the verified scope and leave later features unchecked; an access-module smoke test alone does not verify a deployment.

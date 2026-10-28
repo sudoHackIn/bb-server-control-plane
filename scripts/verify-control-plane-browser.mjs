@@ -202,6 +202,10 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       0,
     );
     await agentCatalog.getByRole("button", { name: /Personal alice/u }).click();
+    await visible(alice.page.getByText("Help alice with project diagrams."));
+    await visible(
+      alice.page.getByText("run_shell_command, read_file", { exact: true }),
+    );
     await visible(
       alice.page.getByRole("button", { name: "Start conversation" }),
     );

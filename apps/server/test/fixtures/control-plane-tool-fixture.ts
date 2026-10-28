@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
+  controlPlaneProfileVersions,
   createConnection,
   createControlPlaneProfile,
   createThread,
@@ -8,6 +9,7 @@ import {
   requireControlPlaneThreadDispatch,
   setControlPlaneProfileAccess,
 } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import {
   createControlPlaneAccess,
@@ -28,10 +30,20 @@ export async function verifyToolFixture(threadId: string) {
       name: "Delegated fixture",
       definition: {
         ...source.profileVersion.definition,
-        tools: ["bb:approved_fixture", "bb:update_environment_directory"],
+        tools: ["bb:approved_fixture"],
         mcpServers: ["bb"],
       },
     });
+    db.update(controlPlaneProfileVersions)
+      .set({
+        definition: {
+          ...source.profileVersion.definition,
+          tools: ["bb:approved_fixture", "bb:update_environment_directory"],
+          mcpServers: ["bb"],
+        },
+      })
+      .where(eq(controlPlaneProfileVersions.id, profile.versionId))
+      .run();
     setControlPlaneProfileAccess(db, profile.profileId, source.user.id, true);
     const thread = createThread(db, noopNotifier, {
       projectId: source.thread.projectId,

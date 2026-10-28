@@ -1,0 +1,31 @@
+{
+  "scope": "First P0 slice: published agent purpose, visible capabilities and enforceable profile settings",
+  "contracts": {
+    "personalAgentCardShowsPurposeVersionAndCapabilities": true,
+    "administratorEditorPublishesImmutableVersions": true,
+    "unsupportedQwenReasoningToolsAndMcpSourcesRejected": true,
+    "existingProfileVersionsRemainReadable": true,
+    "serverQwenBridgeAcceptsPublishedPurpose": true
+  },
+  "verification": {
+    "focusedAppTestsPassed": 13,
+    "providerTestsPassed": 31,
+    "domainTestsPassed": 262,
+    "databaseTestsPassed": 696,
+    "sdkTestsPassed": 137,
+    "focusedServerProfileToolAndCatalogTestsPassed": true,
+    "dockerCommand": "BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright node scripts/test-control-plane-deployment.mjs --browser-only",
+    "dockerCompositePassed": true,
+    "dockerCompositeDurationMs": 665850,
+    "twoUserBrowserAgentCardChatAndIsolationPassed": true,
+    "restartAndCrashRecoveryPassed": true,
+    "strictLintAndDiffCheckPassed": true,
+    "changedCodeAndActivePlanPrettierPassed": true
+  },
+  "limitations": [
+    "Docker uses deterministic model and integration fixtures; corporate Qwen authentication is outside this test.",
+    "The full app test suite still includes five previously failing UI test files; the focused agent and workspace tests pass.",
+    "The remaining P0 UI boundary and turn/resume capability evidence are separate slices.",
+    "The historical record retains pre-existing extra blank lines elsewhere in the file, so whole-file Prettier check remains non-green."
+  ]
+}

@@ -279,6 +279,7 @@ it("opens an approved agent from the BB sidebar and carries it into a new conver
           enabled: true,
           createdAt: 1,
           definition: {
+            purpose: "Investigate questions in this project.",
             prompt: "Research carefully",
             providerId: "qwen-server",
             model: "qwen-test",
@@ -297,6 +298,7 @@ it("opens an approved agent from the BB sidebar and carries it into a new conver
     await screen.findByRole("button", { name: /Research agent/u }),
   );
   await screen.findByText("qwen-test");
+  await screen.findByText("Investigate questions in this project.");
   fireEvent.click(screen.getByRole("button", { name: "Start conversation" }));
   await waitFor(() =>
     expect(screen.getByTestId("current-location").textContent).toBe(

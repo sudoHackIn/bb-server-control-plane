@@ -403,7 +403,7 @@ export async function verifyUserDeployment({
         reasoningLevel: "none",
         permissionMode: "full",
         tools: ["read_file"],
-        mcpServers: ["approved-mcp"],
+        mcpServers: ["bb"],
       };
       const profile = JSON.parse(
         await adminProfiles(
