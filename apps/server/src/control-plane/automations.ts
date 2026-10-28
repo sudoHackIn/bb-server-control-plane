@@ -7,6 +7,7 @@ import {
   getInstalledPluginRegistration,
   listControlPlaneJobBindings,
   requireControlPlaneThreadDispatch,
+  requireControlPlaneThreadOwner,
   type DbConnection,
 } from "@bb/db";
 import {
@@ -171,7 +172,16 @@ export function createControlPlaneAutomationService(
         return invalid();
     }
     for (const id of ids) binding(userId, id);
-    return result.data;
+    return result.data.map((value) => ({
+      ...value,
+      target:
+        value.execution.mode === "agent"
+          ? {
+              profileVersionId: binding(userId, value.id).profileVersionId,
+              input: value.execution.prompt,
+            }
+          : null,
+    }));
   }
   async function get(userId: string, id: string) {
     const rows = await read(userId, [id]);
@@ -206,23 +216,31 @@ export function createControlPlaneAutomationService(
     get,
     definition,
     async create(userId: string, input: ControlPlaneAutomationCreate) {
-      const source = requireControlPlaneThreadDispatch(
-        db,
-        input.originThreadId,
-      );
+      const source =
+        "target" in input
+          ? requireControlPlaneThreadOwner(db, {
+              projectId: input.projectId,
+              ownerUserId: userId,
+              profileVersionId: input.target.profileVersionId,
+              providerId: "qwen-server",
+              relatedThreadIds: [],
+            })
+          : requireControlPlaneThreadDispatch(db, input.originThreadId);
       if (!source || source.user.id !== userId) return missing();
+      const originThreadId =
+        "originThreadId" in input ? input.originThreadId : null;
       const profile = source.profileVersion.definition;
       const result = z
         .object({
           id: z.string(),
           projectId: z.string(),
-          createdByThreadId: z.string(),
+          createdByThreadId: z.string().nullable(),
         })
         .parse(
           await withControlPlaneUser(userId, () =>
             rpc("automations_create", {
               projectId: source.project.projectId,
-              createdByThreadId: input.originThreadId,
+              ...(originThreadId ? { createdByThreadId: originThreadId } : {}),
               name: input.name,
               enabled: input.enabled,
               trigger: input.trigger,
@@ -238,7 +256,9 @@ export function createControlPlaneAutomationService(
                     }
                   : {
                       mode: "agent",
-                      prompt: input.prompt,
+                      prompt:
+                        "target" in input ? input.target.input : input.prompt,
+                      profileVersionId: source.profileVersion.id,
                       providerId: profile.providerId,
                       model: profile.model,
                       reasoningLevel: profile.reasoningLevel,
@@ -250,7 +270,7 @@ export function createControlPlaneAutomationService(
         );
       if (
         result.projectId !== source.project.projectId ||
-        result.createdByThreadId !== input.originThreadId
+        result.createdByThreadId !== originThreadId
       )
         return invalid();
       return mutation(userId, result.id);
@@ -269,7 +289,8 @@ export function createControlPlaneAutomationService(
         );
       if (
         (input.script && row.executionMode !== "script") ||
-        (input.prompt !== undefined && row.executionMode !== "agent")
+        ((input.prompt !== undefined || input.input !== undefined) &&
+          row.executionMode !== "agent")
       )
         throw new ApiError(
           400,
@@ -293,9 +314,11 @@ export function createControlPlaneAutomationService(
                   workingDirectory: { type: "project" },
                 },
               }),
-          ...(input.prompt === undefined
-            ? {}
-            : { agent: { prompt: input.prompt } }),
+          ...(input.input !== undefined
+            ? { agent: { prompt: input.input } }
+            : input.prompt !== undefined
+              ? { agent: { prompt: input.prompt } }
+              : {}),
           ...(input.trigger === undefined ? {} : { trigger: input.trigger }),
         }),
       );

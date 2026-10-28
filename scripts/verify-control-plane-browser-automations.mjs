@@ -40,7 +40,7 @@ export async function verifyBrowserAutomations({
   const marker = `automation-browser-${user.login}`;
   await page.getByLabel("Automation name", { exact: true }).fill(title);
   await page
-    .getByLabel("Automation prompt", { exact: true })
+    .getByLabel("Agent task", { exact: true })
     .fill(`BB_PERSONAL_${marker}`);
   const base = "/control-plane/user/automations";
   async function operation(path, method, action, status = 200) {
@@ -294,7 +294,7 @@ export async function verifyBrowserAutomations({
     definition.id,
   );
   assert.equal(
-    await page.getByLabel("Automation prompt", { exact: true }).inputValue(),
+    await page.getByLabel("Agent task", { exact: true }).inputValue(),
     `BB_PERSONAL_${marker}`,
   );
   await page
@@ -309,7 +309,7 @@ export async function verifyBrowserAutomations({
   await visible(page.getByRole("heading", { name: title, exact: true }));
   const hanging = `worker-hang-automation-browser-${user.login}`;
   await page
-    .getByLabel("Automation prompt", { exact: true })
+    .getByLabel("Agent task", { exact: true })
     .fill(`BB_PERSONAL_${hanging}`);
   const v3 = await operation(path, "PUT", () =>
     page.getByRole("button", { name: "Save automation", exact: true }).click(),

@@ -1011,3 +1011,12 @@ are rejected; Qwen model credentials are not passed to scripts. The Docker lab
 enables this primitive. Managed Automations and personal APIs still reject script
 definitions pending their bounded server runner and durable lifecycle integration.
 See `docs/control-plane-script-runtime.md` for installation, limits and checks.
+
+
+### Schedule a published server agent
+
+Use `bb server access automations schedule <project-id> --profile-version <version-id> --name Digest --input 'Summarize the project' --cron '0 9 * * *' --timezone Europe/Moscow --json`, or `--at <future-ISO-time>` for a one-shot trigger. `--disabled` creates a paused definition. This needs no conversation: the registered project selects cwd and the owner selects UID/HOME. The version stays pinned when an administrator publishes a newer one.
+
+The SDK `automations.create` and POST `/control-plane/user/automations` accept `{projectId,name,target:{profileVersionId,input},trigger,enabled}`. Agent metadata includes `target`; scripts return null. `createdByThreadId` is nullable. Edit task input with SDK `automations.update(id,{expectedRevision,input})` or the existing CLI `automations update <id> --revision <n> --prompt <text>`. Prompt here means task input, not an agent system prompt. Pause, resume, run, stop, history and delete use the existing automation commands.
+
+Agent runs include `source: automation` beside manual runs. Results/events use the same `agent-runs` readers; cancellation delegates to the scheduler. History records failed/skipped dispatches even when no worker thread was created. One active run per definition: overlapping ticks are skipped, missed ticks coalesce into one catch-up run, and failed tasks are not automatically retried. Manual idempotency keys deduplicate admission, not external effects. Recovery is durable, not exactly-once execution.

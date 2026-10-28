@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { PersonalAutomationEditor } from "./PersonalAutomationEditor";
 import {
   useInfiniteQuery,
   useMutation,
@@ -21,6 +23,7 @@ export function PersonalAgents({
   onStart: (profileId: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [task, setTask] = useState("");
   const [retryKey, setRetryKey] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -249,6 +252,53 @@ export function PersonalAgents({
                 </div>
                 {projectId && (
                   <>
+                    <div className="space-y-3 border-t pt-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          disabled={
+                            !canStart ||
+                            !current.profile.enabled ||
+                            !current.version.enabled
+                          }
+                          onClick={() => setScheduleOpen(!scheduleOpen)}
+                        >
+                          {scheduleOpen
+                            ? "Close schedule editor"
+                            : "Schedule this agent"}
+                        </Button>
+                        <Link
+                          className="inline-flex items-center text-sm underline"
+                          to="?view=automations"
+                        >
+                          Manage schedules and history
+                        </Link>
+                      </div>
+                      {scheduleOpen && (
+                        <PersonalAutomationEditor
+                          key={`${projectId}:${current.version.id}`}
+                          client={client}
+                          saved={null}
+                          originThreadId={null}
+                          target={{
+                            projectId,
+                            profileVersionId: current.version.id,
+                          }}
+                          canExecute={
+                            canStart &&
+                            current.profile.enabled &&
+                            current.version.enabled
+                          }
+                          onReload={null}
+                          onSaved={() => {
+                            setScheduleOpen(false);
+                            void queryClient.invalidateQueries({
+                              queryKey: ["personal", "automations", projectId],
+                            });
+                          }}
+                        />
+                      )}
+                    </div>
                     <PersonalAgentRunList
                       client={client}
                       projectId={projectId}
@@ -344,7 +394,10 @@ function PersonalAgentRunList({
             >
               {run.title ?? run.runId}
             </button>
-            <span>{run.status}</span>
+            <span>
+              {run.source === "automation" ? "Scheduled" : "Manual"} ·{" "}
+              {run.status}
+            </span>
             {["pending", "starting", "active"].includes(run.status) && (
               <Button
                 variant="outline"

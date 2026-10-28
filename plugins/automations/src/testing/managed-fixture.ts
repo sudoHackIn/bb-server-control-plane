@@ -51,6 +51,11 @@ export default function fixture(bb: BbPluginApi) {
         );
       else db.exec("DROP TRIGGER reject_automation_version;");
     },
+    legacyAgentTarget(id: string) {
+      db.prepare(
+        "UPDATE automations SET execution=json_remove(execution,'$.profileVersionId') WHERE id=?",
+      ).run(id);
+    },
     versions(id: string) {
       return db
         .prepare(

@@ -603,3 +603,87 @@ it("checks worker-origin ancestry as a graph without rejecting convergent depend
     db.$client.close();
   }
 });
+
+it("runs pinned automation workers without a conversation and rejects a different worker version", () => {
+  const { db, alice, bob } = fixture();
+  try {
+    const root = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      originThreadId: null,
+    });
+    const run = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      kind: "automation-run",
+      objectId: randomUUID(),
+      originThreadId: null,
+      sourceBindingId: root.id,
+    });
+    const worker = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      kind: "automation-worker",
+      objectId: randomUUID(),
+      originThreadId: null,
+      sourceBindingId: run.id,
+    });
+    expect(requireControlPlaneJobDispatch(db, worker.id).user.id).toBe(
+      alice.user.id,
+    );
+    const version = publishControlPlaneProfileVersion(
+      db,
+      alice.profile.profileId,
+      {
+        prompt: "New",
+        providerId: "qwen-server",
+        model: "new",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: [],
+        mcpServers: [],
+      },
+    );
+    expect(() =>
+      createControlPlaneJobBinding(db, {
+        ...alice.input,
+        kind: "automation-worker",
+        objectId: randomUUID(),
+        originThreadId: null,
+        profileVersionId: version.id,
+        sourceBindingId: run.id,
+      }),
+    ).toThrow(ControlPlaneJobError);
+    expect(() =>
+      createControlPlaneJobBinding(db, {
+        ...bob.input,
+        kind: "automation-worker",
+        objectId: randomUUID(),
+        originThreadId: null,
+        sourceBindingId: run.id,
+      }),
+    ).toThrow(ControlPlaneJobError);
+    const legacy = createControlPlaneJobBinding(db, {
+      ...alice.input,
+      objectId: randomUUID(),
+    });
+    db.update(threads)
+      .set({ archivedAt: 123, deletedAt: 124 })
+      .where(eq(threads.id, alice.origin.id))
+      .run();
+    expect(
+      requireControlPlaneJobDispatch(db, legacy.id).profileVersion.id,
+    ).toBe(alice.profile.versionId);
+    setControlPlaneProfileAccess(
+      db,
+      alice.profile.profileId,
+      alice.user.id,
+      false,
+    );
+    expect(() => requireControlPlaneJobDispatch(db, worker.id)).toThrow(
+      ControlPlaneJobError,
+    );
+    expect(() => requireControlPlaneJobDispatch(db, legacy.id)).toThrow(
+      ControlPlaneJobError,
+    );
+  } finally {
+    db.$client.close();
+  }
+});

@@ -1,3 +1,4 @@
+import { createControlPlaneThreadService } from "../../src/control-plane/threads.js";
 import { normalizeRpcRegistration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginRpcHandler } from "../../src/services/plugins/plugin-api.js";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
@@ -209,6 +210,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
             shutdown(): Promise<void> | undefined;
             tick(startup?: boolean): Promise<void> | undefined;
             fault(enabled: boolean): void;
+            legacyAgentTarget(id: string): void;
             versions(id: string): unknown;
             due(id: string): void;
             legacy(projectId: string): string;
@@ -298,7 +300,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
           origin,
           Date.now,
           undefined,
-          undefined,
+          createControlPlaneThreadService({ deps: harness.deps }),
           undefined,
           personal,
         ),
@@ -722,6 +724,74 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
       alice.user.id,
       true,
     );
+    const scheduled = await mine.create({
+      projectId: alice.project.id,
+      name: "Pinned agent without a conversation",
+      target: {
+        profileVersionId: alice.profile.versionId,
+        input: "owned prompt scheduled",
+      },
+      trigger: { triggerType: "once", runAt: Date.now() + 3600000 },
+      enabled: true,
+    });
+    expect(scheduled.createdByThreadId).toBeNull();
+    expect(scheduled.target).toEqual({
+      profileVersionId: alice.profile.versionId,
+      input: "owned prompt scheduled",
+    });
+    await expect(foreign.get(scheduled.id)).rejects.toThrow("404");
+    await expect(
+      foreign.create({
+        projectId: alice.project.id,
+        name: "forged",
+        target: {
+          profileVersionId: alice.profile.versionId,
+          input: "owned prompt",
+        },
+        trigger: { triggerType: "once", runAt: Date.now() + 3600000 },
+        enabled: true,
+      }),
+    ).rejects.toThrow();
+    native.legacyAgentTarget(scheduled.id);
+    const beforeMigration = native.versions(scheduled.id);
+    await native.tick(true);
+    const migrated = await mine.definition(scheduled.id);
+    expect(migrated.revision).toBe(2);
+    expect(migrated.target).toEqual(scheduled.target);
+    const versions = z
+      .array(z.object({ revision: z.number(), execution_json: z.string() }))
+      .parse(native.versions(scheduled.id));
+    expect(versions.slice(0, 1)).toEqual(beforeMigration);
+    expect(
+      z
+        .object({ profileVersionId: z.string().uuid() })
+        .parse(JSON.parse(versions[1]!.execution_json)).profileVersionId,
+    ).toBe(alice.profile.versionId);
+    await native.tick(true);
+    expect((await mine.definition(scheduled.id)).revision).toBe(2);
+    native.due(scheduled.id);
+    await native.tick();
+    await native.tick();
+    const scheduledHistory = await mine.history(scheduled.id);
+    expect(scheduledHistory.runs).toHaveLength(1);
+    const scheduledThreadId = scheduledHistory.runs[0]!.threadId;
+    expect(scheduledThreadId).not.toBeNull();
+    const scheduledRuns = await client(alice.user.id).agentRuns.list({
+      projectId: alice.project.id,
+    });
+    expect(scheduledRuns.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: scheduledThreadId,
+          source: "automation",
+          profileVersionId: alice.profile.versionId,
+        }),
+      ]),
+    );
+    await expect(
+      client(bob.user.id).agentRuns.get(scheduledThreadId!),
+    ).rejects.toThrow("404");
+    await mine.remove(scheduled.id);
     const created = await mine.create({
       originThreadId: alice.thread.id,
       name: "API definition",
@@ -858,7 +928,7 @@ it("uses the actual builtin automation controller and two SQLite stores for owne
     };
     const sweep = native.tick();
     await cleanupEntered;
-    const cancellation = mine.stop(created.id, raced.id);
+    const cancellation = client(alice.user.id).agentRuns.cancel(raced.threadId);
     await expect.poll(() => native.cancelRequested(raced.id)).toBe(true);
     releaseCleanup();
     const duringCleanup = (await mine.history(created.id)).runs.find(

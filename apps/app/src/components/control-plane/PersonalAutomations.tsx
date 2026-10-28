@@ -259,12 +259,17 @@ export function PersonalAutomations({
                   ? "None"
                   : new Date(saved.nextRunAt).toLocaleString()}
               </p>
-              <Button
-                variant="ghost"
-                onClick={() => onOpenThread(saved.createdByThreadId)}
-              >
-                Open origin conversation
-              </Button>
+              {saved.createdByThreadId && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    if (saved.createdByThreadId)
+                      onOpenThread(saved.createdByThreadId);
+                  }}
+                >
+                  Open origin conversation
+                </Button>
+              )}
               <div className="flex flex-wrap gap-2">
                 {(saved.enabled || canExecute) && (
                   <Button

@@ -26,10 +26,12 @@ export function PersonalAutomationEditor({
   canExecute,
   onSaved,
   onReload,
+  target,
 }: {
   client: PersonalWorkspaceClient;
   saved: AutomationDetail | null;
-  originThreadId: string;
+  originThreadId: string | null;
+  target?: { projectId: string; profileVersionId: string };
   canExecute: boolean;
   onReload: (() => Promise<AutomationDetail>) | null;
   onSaved: (
@@ -109,9 +111,16 @@ export function PersonalAutomationEditor({
           )
         : await client.automations.create(
             controlPlaneAutomationCreateSchema.parse({
-              originThreadId,
+              ...(target
+                ? {
+                    projectId: target.projectId,
+                    target: {
+                      profileVersionId: target.profileVersionId,
+                      input: prompt,
+                    },
+                  }
+                : { originThreadId, ...content }),
               name,
-              ...content,
               trigger,
               enabled,
             }),
@@ -173,8 +182,9 @@ export function PersonalAutomationEditor({
           : "Create automation"}
       </h3>
       <p className="text-sm text-muted-foreground">
-        Uses the origin conversation's approved agent profile. Saving does not
-        change the origin conversation.
+        {target || baseline?.target
+          ? "Runs the pinned agent version in this project. The task is input to the agent; its instructions and tools stay as published."
+          : "Uses the origin conversation's approved agent profile."}
       </p>
       <fieldset
         disabled={save.isPending || reload.isPending || !canExecute}
@@ -198,18 +208,18 @@ export function PersonalAutomationEditor({
             id={kindId}
             className={fieldClass}
             value={kind}
-            disabled={baseline !== null}
+            disabled={baseline !== null || target !== undefined}
             onChange={(event) =>
               setKind(event.target.value === "script" ? "script" : "agent")
             }
           >
-            <option value="agent">Agent prompt</option>
+            <option value="agent">Published agent</option>
             <option value="script">Node.js script</option>
           </select>
         </div>
         <div>
           <label className="block text-sm" htmlFor={promptId}>
-            {kind === "agent" ? "Automation prompt" : "Script source"}
+            {kind === "agent" ? "Agent task" : "Script source"}
           </label>
           <textarea
             id={promptId}

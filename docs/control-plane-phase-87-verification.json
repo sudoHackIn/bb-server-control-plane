@@ -1,0 +1,36 @@
+{
+  "scope": "P2: time triggers for pinned published agents without an origin conversation",
+  "contracts": {
+    "explicitPinnedTargetAndTaskInput": true,
+    "registeredProjectUidHomeCwd": true,
+    "legacyMigrationPreservesOwnerVersionAndSnapshots": true,
+    "unifiedAgentRunResultsAndCancellation": true,
+    "workflowOriginRequirementRetained": true,
+    "onceAndCronReuseExistingScheduler": true,
+    "oneActiveRunPerDefinition": true,
+    "missedTicksCoalesce": true,
+    "automaticTaskRetries": false,
+    "exactlyOnceExternalEffects": false
+  },
+  "verification": {
+    "serverTestsPassed": 16,
+    "databaseTestsPassed": 12,
+    "personalUiTestsPassed": 20,
+    "automationsTestsPassed": 146,
+    "typecheckTasksPassed": 13,
+    "changedFileLintPassed": true,
+    "nativeMaintenanceDurationMs": 112058,
+    "dockerCommand": "BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 712869,
+    "productionBrowserPassed": true,
+    "restartAndCrashRecoveryPassed": true,
+    "twoUserUidHomeCwdAndForeignIdsPassed": true,
+    "scheduleWithRevokedClientTokenRecoversFromSavedAuthority": true
+  },
+  "limitations": [
+    "Docker uses deterministic model/integration fixtures, not corporate Qwen certificate authorization.",
+    "Schedule creation is not idempotent; repeated creates produce separate definitions.",
+    "Native thread statuses remain visible in the unified task list; scheduler history records failed/skipped/cancelled runs, including dispatches without a worker."
+  ]
+}

@@ -190,6 +190,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access automations output`
 - `bb server access automations history`
 - `bb server access automations definition`
+- `bb server access automations schedule`
 - `bb server access automations create`
 - `bb server access automations update`
 - `bb server access automations pause`

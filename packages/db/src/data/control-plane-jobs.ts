@@ -44,10 +44,30 @@ function authority(db: DbQueryConnection, job: Job, allowDisabled = false) {
       ownerUserId: job.ownerUserId,
       profileVersionId: job.profileVersionId,
       providerId: "qwen-server",
-      relatedThreadIds: [job.originThreadId],
+      relatedThreadIds: job.kind.startsWith("automation")
+        ? []
+        : [job.originThreadId],
     });
     if (!context) throw new ControlPlaneJobError();
-    if (job.originThreadId !== null) {
+    if (job.originThreadId !== null && job.kind.startsWith("automation")) {
+      const origin = db
+        .select({
+          owner: controlPlaneThreads.ownerUserId,
+          projectId: threads.projectId,
+        })
+        .from(controlPlaneThreads)
+        .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
+        .where(eq(controlPlaneThreads.threadId, job.originThreadId))
+        .get();
+      if (
+        !origin ||
+        origin.owner !== job.ownerUserId ||
+        origin.projectId !== job.projectId
+      )
+        throw new ControlPlaneJobError();
+    }
+
+    if (job.originThreadId !== null && !job.kind.startsWith("automation")) {
       const origin = db
         .select({ projectId: threads.projectId })
         .from(threads)
@@ -77,13 +97,14 @@ function lineage(db: DbQueryConnection, job: Job, allowDisabled = false) {
       throw new ControlPlaneJobError();
     authority(db, current, current.id === job.id && allowDisabled);
     active.add(current.id);
-    const originBindingId = current.originThreadId
-      ? db
-          .select({ jobBindingId: controlPlaneThreads.jobBindingId })
-          .from(controlPlaneThreads)
-          .where(eq(controlPlaneThreads.threadId, current.originThreadId))
-          .get()?.jobBindingId
-      : null;
+    const originBindingId =
+      !current.kind.startsWith("automation") && current.originThreadId
+        ? db
+            .select({ jobBindingId: controlPlaneThreads.jobBindingId })
+            .from(controlPlaneThreads)
+            .where(eq(controlPlaneThreads.threadId, current.originThreadId))
+            .get()?.jobBindingId
+        : null;
     if (
       current.kind === "workflow-worker" ||
       current.kind === "automation-worker"
@@ -97,8 +118,11 @@ function lineage(db: DbQueryConnection, job: Job, allowDisabled = false) {
           (current.kind === "workflow-worker"
             ? "workflow-run"
             : "automation-run") ||
-        current.originThreadId === null ||
-        parent.originThreadId !== current.originThreadId
+        (current.kind === "workflow-worker" &&
+          current.originThreadId === null) ||
+        parent.originThreadId !== current.originThreadId ||
+        (current.kind === "automation-worker" &&
+          parent.profileVersionId !== current.profileVersionId)
       )
         throw new ControlPlaneJobError();
     }

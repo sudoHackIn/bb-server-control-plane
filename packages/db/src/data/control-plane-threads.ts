@@ -7,10 +7,11 @@ import {
   requireControlPlaneJobDispatch,
   ControlPlaneJobError,
 } from "./control-plane-jobs.js";
-import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
   controlPlaneProjects,
+  controlPlaneJobBindings,
   controlPlaneProjectAccess,
   controlPlaneProfileVersions,
   controlPlaneThreads,
@@ -299,6 +300,7 @@ export function listControlPlaneThreads(
       and(
         eq(controlPlaneThreads.ownerUserId, userId),
         isNull(controlPlaneThreads.runSource),
+        sql`NOT EXISTS (SELECT 1 FROM ${controlPlaneJobBindings} WHERE ${controlPlaneJobBindings.id} = ${controlPlaneThreads.jobBindingId} AND ${controlPlaneJobBindings.kind} = 'automation-worker')`,
         isNull(threads.deletedAt),
         options.projectId
           ? eq(threads.projectId, options.projectId)
@@ -326,13 +328,18 @@ export function getControlPlaneAgentRunByKey(
   idempotencyKey: string,
 ) {
   return db
-    .select({ threadId: controlPlaneThreads.threadId, inputDigest: controlPlaneThreads.runInputDigest })
+    .select({
+      threadId: controlPlaneThreads.threadId,
+      inputDigest: controlPlaneThreads.runInputDigest,
+    })
     .from(controlPlaneThreads)
-    .where(and(
-      eq(controlPlaneThreads.ownerUserId, userId),
-      eq(controlPlaneThreads.runSource, "manual"),
-      eq(controlPlaneThreads.runIdempotencyKey, idempotencyKey),
-    ))
+    .where(
+      and(
+        eq(controlPlaneThreads.ownerUserId, userId),
+        eq(controlPlaneThreads.runSource, "manual"),
+        eq(controlPlaneThreads.runIdempotencyKey, idempotencyKey),
+      ),
+    )
     .get();
 }
 
@@ -351,7 +358,9 @@ export function listControlPlaneAgentRuns(
       projectId: threads.projectId,
       profileId: controlPlaneProfileVersions.profileId,
       profileVersionId: controlPlaneThreads.profileVersionId,
-      source: controlPlaneThreads.runSource,
+      source: sql<
+        "manual" | "automation"
+      >`CASE WHEN ${controlPlaneThreads.runSource} = 'manual' THEN 'manual' ELSE 'automation' END`,
       title: threads.title,
       status: threads.status,
       createdAt: threads.createdAt,
@@ -359,22 +368,37 @@ export function listControlPlaneAgentRuns(
     })
     .from(controlPlaneThreads)
     .innerJoin(threads, eq(threads.id, controlPlaneThreads.threadId))
-    .innerJoin(controlPlaneProfileVersions, eq(controlPlaneProfileVersions.id, controlPlaneThreads.profileVersionId))
+    .innerJoin(
+      controlPlaneProfileVersions,
+      eq(controlPlaneProfileVersions.id, controlPlaneThreads.profileVersionId),
+    )
+    .leftJoin(
+      controlPlaneJobBindings,
+      eq(controlPlaneJobBindings.id, controlPlaneThreads.jobBindingId),
+    )
     .innerJoin(accessible, eq(accessible.projectId, threads.projectId))
-    .where(and(
-      eq(controlPlaneThreads.ownerUserId, userId),
-      eq(controlPlaneThreads.runSource, "manual"),
-      isNull(threads.deletedAt),
-      options.projectId ? eq(threads.projectId, options.projectId) : undefined,
-      options.cursor ? gt(threads.id, options.cursor) : undefined,
-    ))
+    .where(
+      and(
+        eq(controlPlaneThreads.ownerUserId, userId),
+        or(
+          eq(controlPlaneThreads.runSource, "manual"),
+          eq(controlPlaneJobBindings.kind, "automation-worker"),
+        ),
+        isNull(threads.deletedAt),
+        options.projectId
+          ? eq(threads.projectId, options.projectId)
+          : undefined,
+        options.cursor ? gt(threads.id, options.cursor) : undefined,
+      ),
+    )
     .orderBy(asc(threads.id))
     .limit(options.limit + 1)
     .all();
   const selected = rows.slice(0, options.limit);
   return {
     runs: selected,
-    nextCursor: rows.length > options.limit ? (selected.at(-1)?.runId ?? null) : null,
+    nextCursor:
+      rows.length > options.limit ? (selected.at(-1)?.runId ?? null) : null,
   };
 }
 

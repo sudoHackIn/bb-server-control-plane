@@ -17,6 +17,7 @@ import {
 } from "@bb/domain";
 import { ControlPlaneThreadError } from "@bb/db";
 import type { ControlPlaneThreadService } from "./threads.js";
+import type { ControlPlaneAutomationService } from "./automations.js";
 
 const page = z
   .object({
@@ -61,6 +62,7 @@ export function installControlPlaneThreadRoutes(
   app: Hono,
   service: ControlPlaneThreadService,
   authenticate: (context: Context) => { user: { id: string } } | null,
+  automations?: ControlPlaneAutomationService,
 ) {
   const base = "/control-plane/user/threads";
   app.use(`${base}/*`, async (context, next) => {
@@ -144,6 +146,13 @@ export function installControlPlaneThreadRoutes(
         return context.json({ error: "invalid_request" }, 400);
       const id = context.req.param("id") ?? "";
       service.run(userId, id);
+      const target = service.runAutomation(userId, id);
+      if (target) {
+        if (!automations)
+          return context.json({ error: "automation_unavailable" }, 503);
+        await automations.stop(userId, target.automationId, target.runId);
+        return context.json({ ok: true });
+      }
       return context.json(await service.stop(userId, id));
     }),
   );

@@ -3589,3 +3589,53 @@ for both changed deployment scripts. An earlier direct focused run stopped in
 the existing script-job process probe with `ESRCH`; the subsequent focused and
 complete deployment runs passed. Strict lint, Prettier and `git diff --check`
 pass. See [the verification record](control-plane-phase-79-verification.json).
+
+
+## P1 — Manual background runs of published agents
+
+Commit `8d44e9499` adds a bounded invocation with a pinned profile version, project, task input and optional idempotency key. The same hidden BB thread stores execution, history and results; no second run-history store is introduced. Personal Agents exposes start, status, events, result and cancel, with matching limited API, SDK and `bb server access agent-runs` commands. Native thread statuses remain visible; cancellation returns the thread to idle.
+
+Verification covered Alice/Bob UID/HOME/cwd, foreign-ID denial, cancellation, reconnect, restart and current-grant checks, including the production-browser Docker journey. The umbrella repository records that fork revision in `3dad99d`.
+
+## P2 — Time triggers for published agents
+
+The personal Agents card can schedule a pinned version in the selected project,
+without creating an origin conversation. The limited API and SDK accept
+`target: {profileVersionId, input}` with the project and trigger; the CLI exposes
+`bb server access automations schedule`. Existing conversation-based and script
+commands remain available. Task input does not replace the published agent's
+instructions, model, tools or MCP policy.
+
+Managed agent definitions gain an explicit version in a new immutable revision.
+Migration preserves owner, pinned binding and all earlier definition/run
+snapshots. Future agent dispatch uses the registered project environment and
+current user/profile grants; a historical conversation is not its lifecycle
+parent. Workflows retain their origin requirement. Scripts retain their existing
+inline Node ESM and project-directory policy.
+
+Scheduled worker threads appear beside manual tasks in `agent-runs` and the
+agent UI, using the same event/result readers. Cancel delegates to Automations,
+so its history records cancellation while the schedule remains enabled. The
+Automations screen retains pause, resume, edit, delete and all run history,
+including failed/skipped dispatches without a worker.
+
+The existing scheduler permits one active run per definition, skips overlapping
+ticks, coalesces a missed interval into one catch-up run and does not
+retry failed tasks automatically. Manual idempotency keys deduplicate admission;
+recovery and immutable snapshots do not promise exactly-once external effects.
+Creating a schedule is not idempotent: repeated create calls produce distinct
+definitions. Subsequent management uses the returned schedule ID.
+
+
+Verification passes 16 focused server tests, 12 database authority tests,
+20 personal UI tests and 146 Automations tests. Thirteen typecheck tasks and
+lint pass (the broad app lint retains existing warnings). Docker's native
+maintenance suite passes in 112058 ms; the final composite with the production
+browser passes in 712869 ms, with 63/63 Turbo tasks successful. It covers two
+users, null-origin CLI schedules, UID/HOME/cwd, unified results/cancellation,
+foreign IDs, current-grant revocation, offline catch-up and crash recovery.
+The new form was also inspected from a browser screenshot. The initial runs
+exposed two test setup mistakes: expecting 200 instead of 201 on creation and
+using an intentionally revoked Bob token to prepare the offline fixture. The
+fixture now uses administrative setup for that owner; authentication remains
+strict. See [the verification record](control-plane-phase-87-verification.json).

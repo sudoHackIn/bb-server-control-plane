@@ -3964,3 +3964,10 @@ before transport. No Plugin SDK member is added. `createPluginRuntime` exposes a
 internal quiescence getter only to `createPluginService`, whose trusted cron sweep
 checks it before each claim, including after an awaiting callback. This does not
 expose centrally installed plugin schedules as personal automation definitions.
+
+
+### Published agent schedule targets (P2)
+
+Builtin Automations also uses `internal_DO_NOT_USE_backgroundJobs.resolveWorkerProfile` on an `automation` definition to validate its pinned agent configuration, including while paused. It checks current grants without starting work; execution still requires enabled durable authority. Automation-run resolution cannot select another version. `listWorkers` now returns nullable `originThreadId` for automation workers without a conversation; Workflows still requires a non-null origin. Only builtin Automations and Workflows call this internal facade. No host protocol or new public plugin API changes.
+
+Managed agent definitions migrate to an explicit profile version in a new revision, preserving the old immutable snapshots, owner and pinned binding. Scheduled workers use the registered project environment and have no lifecycle parent conversation. Authority checks validate legacy origin ownership but do not require an active origin session. Verification covers null-origin creation/dispatch, version preservation, current grants, owner scoping, existing scripts/workflows and Docker recovery.

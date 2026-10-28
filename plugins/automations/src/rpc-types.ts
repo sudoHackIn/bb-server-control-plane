@@ -158,6 +158,7 @@ export type AutomationTrigger = z.infer<typeof automationTriggerSchema>;
 const automationAgentExecutionSchema = z
   .object({
     mode: z.literal("agent"),
+    profileVersionId: z.string().uuid().optional(),
     prompt: z.string().min(1),
     providerId: z.string().min(1),
     model: z.string().min(1),

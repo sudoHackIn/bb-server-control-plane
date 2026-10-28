@@ -9,6 +9,7 @@ import { buildTimelineTurnSummaryDetails } from "../services/threads/timeline.js
 import {
   getAppSettings,
   controlPlaneThreads,
+  controlPlaneJobBindings,
   getControlPlaneAgentRunByKey,
   listControlPlaneAgentRuns,
   isSqliteUniqueConstraintOnColumns,
@@ -131,7 +132,17 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       .from(controlPlaneThreads)
       .where(eq(controlPlaneThreads.threadId, id))
       .get();
-    if (binding?.runSource !== "manual" || !row.profileVersionId)
+    const job = binding?.jobBindingId
+      ? deps.db
+          .select()
+          .from(controlPlaneJobBindings)
+          .where(eq(controlPlaneJobBindings.id, binding.jobBindingId))
+          .get()
+      : null;
+    if (
+      (binding?.runSource !== "manual" && job?.kind !== "automation-worker") ||
+      !row.profileVersionId
+    )
       throw new ApiError(404, "run_not_found", "Run not found");
     const version = deps.db
       .select({ profileId: controlPlaneProfileVersions.profileId })
@@ -145,7 +156,10 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       projectId: row.projectId,
       profileId: version.profileId,
       profileVersionId: row.profileVersionId,
-      source: "manual" as const,
+      source:
+        binding?.runSource === "manual"
+          ? ("manual" as const)
+          : ("automation" as const),
       title: row.title,
       status: row.status,
       createdAt: row.createdAt,
@@ -156,6 +170,44 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
     close: () => streams.close(),
     get,
     run,
+    runAutomation(userId: string, id: string) {
+      const value = run(userId, id);
+      if (value.source !== "automation") return null;
+      const binding = deps.db
+        .select()
+        .from(controlPlaneThreads)
+        .where(eq(controlPlaneThreads.threadId, id))
+        .get();
+      const worker = binding?.jobBindingId
+        ? deps.db
+            .select()
+            .from(controlPlaneJobBindings)
+            .where(eq(controlPlaneJobBindings.id, binding.jobBindingId))
+            .get()
+        : null;
+      const parent = worker?.sourceBindingId
+        ? deps.db
+            .select()
+            .from(controlPlaneJobBindings)
+            .where(eq(controlPlaneJobBindings.id, worker.sourceBindingId))
+            .get()
+        : null;
+      const definition = parent?.sourceBindingId
+        ? deps.db
+            .select()
+            .from(controlPlaneJobBindings)
+            .where(eq(controlPlaneJobBindings.id, parent.sourceBindingId))
+            .get()
+        : null;
+      if (
+        parent?.kind !== "automation-run" ||
+        definition?.kind !== "automation" ||
+        parent.ownerUserId !== userId ||
+        definition.ownerUserId !== userId
+      )
+        throw new ApiError(404, "run_not_found", "Run not found");
+      return { automationId: definition.objectId, runId: parent.objectId };
+    },
     listRuns(
       userId: string,
       options: { projectId?: string; cursor: string | null; limit: number },
@@ -273,20 +325,26 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
           job.user.id !== userId ||
           job.project.projectId !== input.projectId ||
           job.profileVersion.id !== input.profileVersionId ||
-          job.binding.originThreadId === null)
+          (job.binding.kind === "workflow-worker" &&
+            job.binding.originThreadId === null))
       )
         throw new ControlPlaneThreadError();
       const parent = job?.binding.sourceBindingId
         ? requireControlPlaneJobDispatch(deps.db, job.binding.sourceBindingId)
         : null;
-      const originThreadId = job?.binding.originThreadId;
+      const originThreadId =
+        job?.binding.kind === "workflow-worker"
+          ? job.binding.originThreadId
+          : null;
       const jobOrigin =
         job && originThreadId
           ? requireControlPlaneThreadDispatch(deps.db, originThreadId)
           : null;
       if (
         job &&
-        (!parent || !originThreadId || !jobOrigin?.thread.environmentId)
+        (!parent ||
+          (job.binding.kind === "workflow-worker" &&
+            (!originThreadId || !jobOrigin?.thread.environmentId)))
       )
         throw new ControlPlaneThreadError();
       const project = getControlPlaneProject(deps.db, userId, input.projectId);
@@ -334,15 +392,19 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
               ...(manualRun
                 ? { controlPlaneRun: manualRun, visibility: "hidden" as const }
                 : {}),
-              ...(job && worker && parent && originThreadId
+              ...(job && worker && parent
                 ? {
                     controlPlaneJobBindingId: job.binding.id,
                     originPluginId:
                       job.binding.kind === "workflow-worker"
                         ? CONTROL_PLANE_WORKFLOWS_PLUGIN_ID
                         : "automations",
-                    lifecycleOwnerThreadId: originThreadId,
-                    parentThreadId: originThreadId,
+                    ...(originThreadId
+                      ? {
+                          lifecycleOwnerThreadId: originThreadId,
+                          parentThreadId: originThreadId,
+                        }
+                      : {}),
                     visibility: "hidden" as const,
                     parentNotifications: "off" as const,
                     pluginMetadata: {

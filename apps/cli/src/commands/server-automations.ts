@@ -16,6 +16,52 @@ export function registerServerAutomationCommands(
     .description("Manage your server automations through the limited API");
   const output = (value: object) => console.log(JSON.stringify(value, null, 2));
   automations
+    .command("schedule <project-id>")
+    .requiredOption("--profile-version <id>", "Pinned published agent version")
+    .requiredOption("--input <text>", "Task input for the agent")
+    .requiredOption("--name <name>", "Schedule name")
+    .option("--at <time>", "Once trigger: ISO time or Unix milliseconds")
+    .option("--cron <expression>", "Five-field cron trigger")
+    .option("--timezone <zone>", "Cron timezone, defaults to UTC")
+    .option("--disabled", "Create paused")
+    .option("--json", "Print JSON")
+    .action(
+      action(
+        async (
+          projectId: string,
+          options: {
+            profileVersion: string;
+            input: string;
+            name: string;
+            at?: string;
+            cron?: string;
+            timezone?: string;
+            disabled?: boolean;
+          },
+        ) => {
+          const parsed = await automationInput({
+            name: options.name,
+            at: options.at,
+            cron: options.cron,
+            timezone: options.timezone,
+          });
+          if (!parsed.trigger) throw new Error("Provide --at or --cron");
+          output(
+            await client().automations.create({
+              projectId,
+              name: options.name,
+              target: {
+                profileVersionId: options.profileVersion,
+                input: options.input,
+              },
+              trigger: parsed.trigger,
+              enabled: !options.disabled,
+            }),
+          );
+        },
+      ),
+    );
+  automations
     .command("list")
     .option("--json", "Print JSON")
     .option("--project <id>", "Authorized project")

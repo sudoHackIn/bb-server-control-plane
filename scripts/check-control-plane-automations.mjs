@@ -521,13 +521,18 @@ export async function verifyNativeAutomations({
     );
     const scheduled = await Promise.all(
       subjects.map((subject) =>
-        rpc(
-          "automations_create",
-          payload(
-            subject,
-            `automation-scheduled-${subject.user.login}`,
-            Date.now() + 2000,
-          ),
+        command(
+          subject,
+          "schedule",
+          subject.project.projectId,
+          "--profile-version",
+          subject.profile.body.version.id,
+          "--name",
+          `Pinned ${subject.user.login}`,
+          "--input",
+          `BB_PERSONAL_automation-scheduled-${subject.user.login}`,
+          "--at",
+          String(Date.now() + 2000),
         ),
       ),
     );
@@ -542,6 +547,45 @@ export async function verifyNativeAutomations({
         "scheduled native automation completes",
       );
       await proof(subject, `automation-scheduled-${subject.user.login}`);
+      assert.equal(saved.createdByThreadId, null);
+      assert.equal(
+        saved.target.profileVersionId,
+        subject.profile.body.version.id,
+      );
+      const history = await command(subject, "history", saved.id);
+      const runId = history.runs[0].threadId;
+      const runs = await userCommand(subject.user.login, [
+        "agent-runs",
+        "list",
+        "--project",
+        subject.project.projectId,
+        "--json",
+      ]);
+      assert.ok(
+        runs.runs.some(
+          (run) => run.runId === runId && run.source === "automation",
+        ),
+      );
+      const result = await userCommand(subject.user.login, [
+        "agent-runs",
+        "result",
+        runId,
+        "--json",
+      ]);
+      assert.match(result.text, /Personal automation-scheduled-/u);
+      const other = subjects.find(
+        (candidate) => candidate.user.id !== subject.user.id,
+      );
+      assert.equal(
+        (
+          await userRequest(
+            other.user.login,
+            `/control-plane/user/agent-runs/${runId}`,
+          )
+        ).status,
+        404,
+      );
+
       assert.equal(
         storage
           .prepare(
@@ -629,8 +673,14 @@ export async function verifyNativeAutomations({
     for (let index = 0; index < cancellable.length; index++) {
       const item = cancellable[index];
       assert.equal(
-        (await command(item.subject, "stop", item.definition.id, item.run.id))
-          .stopped,
+        (
+          await userCommand(item.subject.user.login, [
+            "agent-runs",
+            "cancel",
+            item.run.threadId,
+            "--json",
+          ])
+        ).ok,
         true,
       );
       await wait(
@@ -793,6 +843,8 @@ export async function verifyNativeAutomations({
         nativeAutomationRuntimeReleaseAcknowledgedBeforeResume: true,
         nativeAutomationConversationResumesSameQwenSession: true,
         nativeTwoUserOnceSchedulesSingleFire: true,
+        publishedAgentSchedulesWithoutOriginConversation: true,
+        scheduledRunsUseUnifiedAgentResultAndCancelApi: true,
         nativeAutomationPauseStopsActiveWorker: true,
         nativeAutomationPauseKillsActualCommandProcesses: true,
         unsupportedScriptAutomationRejectedBeforeServiceSpawn: true,
@@ -805,10 +857,19 @@ export async function verifyNativeAutomations({
       },
       async beforeRestart() {
         offlineScript = await scriptAutomation.beforeRestart();
-        offline = await rpc(
-          "automations_create",
-          payload(bob, "automation-offline-bob", Date.now() + 5000),
-        );
+        const draft = payload(bob, "automation-offline-bob", Date.now() + 5000);
+        offline = await rpc("automations_create", {
+          projectId: draft.projectId,
+          name: "Offline pinned agent",
+          enabled: draft.enabled,
+          origin: draft.origin,
+          trigger: draft.trigger,
+          execution: {
+            ...draft.execution,
+            profileVersionId: bob.profile.body.version.id,
+          },
+        });
+        assert.equal(offline.createdByThreadId, null);
       },
       async afterShutdown() {
         await scriptAutomation.afterShutdown(offlineScript);

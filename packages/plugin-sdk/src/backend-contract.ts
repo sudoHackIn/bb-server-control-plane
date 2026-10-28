@@ -1977,7 +1977,7 @@ export interface InternalDoNotUseBackgroundJobs {
       parentBindingId: string;
       runId: string;
       callId: string | null;
-      originThreadId: string;
+      originThreadId: string | null;
     }>;
     nextCursor: string | null;
   };

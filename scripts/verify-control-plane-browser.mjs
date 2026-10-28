@@ -237,6 +237,79 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     await visible(alice.page.getByRole("heading", { name: "Events" }));
     await visible(alice.page.getByText(`Task ${browserRun.runId}`));
     await visible(alice.page.getByText("Personal browser-alice completed"));
+    const agentUrl = alice.page.url();
+    await alice.page
+      .getByRole("button", { name: "Schedule this agent" })
+      .click();
+    await alice.page
+      .getByLabel("Automation name", { exact: true })
+      .fill("Browser pinned schedule");
+    await alice.page
+      .getByLabel("Agent task", { exact: true })
+      .fill("BB_PERSONAL_browser-schedule-alice");
+    const scheduleArtifacts =
+      process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS ??
+      process.env.BB_THREAD_STORAGE;
+    if (scheduleArtifacts) {
+      await mkdir(scheduleArtifacts, { recursive: true, mode: 0o700 });
+      await alice.page
+        .getByRole("form", { name: "Automation editor" })
+        .screenshot({
+          path: join(scheduleArtifacts, "published-agent-schedule.png"),
+        });
+    }
+    const scheduleResponse = alice.page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          "/control-plane/user/automations" &&
+        response.request().method() === "POST",
+    );
+    await alice.page
+      .getByRole("button", { name: "Create automation", exact: true })
+      .click();
+    const scheduleReply = await scheduleResponse;
+    assert.equal(scheduleReply.status(), 201, await scheduleReply.text());
+    const schedule = await scheduleReply.json();
+    assert.equal(schedule.createdByThreadId, null);
+    assert.equal(schedule.projectId, aliceUser.projectId);
+    assert.equal(schedule.target.input, "BB_PERSONAL_browser-schedule-alice");
+    assert.equal(
+      (
+        await bob.page
+          .context()
+          .request.get(
+            `${ready.origin}/control-plane/user/automations/${schedule.id}`,
+          )
+      ).status(),
+      404,
+    );
+    await alice.page
+      .getByRole("link", { name: "Manage schedules and history" })
+      .click();
+    await alice.page
+      .getByRole("button", { name: /Browser pinned schedule/u })
+      .click();
+    await visible(alice.page.getByRole("heading", { name: "Run history" }));
+    assert.equal(
+      await alice.page
+        .getByRole("button", { name: "Open origin conversation" })
+        .count(),
+      0,
+    );
+    await alice.page
+      .getByRole("button", { name: "Pause automation", exact: true })
+      .click();
+    await visible(
+      alice.page.getByRole("button", {
+        name: "Resume automation",
+        exact: true,
+      }),
+    );
+    await alice.page.goto(agentUrl);
+    await alice.page
+      .getByRole("list", { name: "Agent catalog" })
+      .getByRole("button", { name: /Personal alice/u })
+      .click();
     await alice.page
       .getByRole("button", { name: "Start conversation" })
       .click();

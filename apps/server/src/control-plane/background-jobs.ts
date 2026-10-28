@@ -169,6 +169,18 @@ export function createControlPlaneBackgroundJobs(
               .get()?.profileVersionId
           : null);
       if (!profileVersionId) return denied();
+      if (parsed.originThreadId && parsed.sourceBindingId === null) {
+        const origin = requireControlPlaneThreadDispatch(
+          db,
+          parsed.originThreadId,
+        );
+        if (
+          !origin ||
+          origin.user.id !== userId ||
+          origin.project.projectId !== parsed.projectId
+        )
+          return denied();
+      }
       return createControlPlaneJobBinding(db, {
         ...parsed,
         profileVersionId,
@@ -245,23 +257,34 @@ export function createControlPlaneBackgroundJobs(
       return workers.listWorkers(input);
     },
     resolveWorkerProfile(id, profileVersionId) {
+      const job = required(id);
       if (
-        required(id).kind !==
-        (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
-          ? "workflow-run"
-          : "automation-run")
+        !(
+          pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
+            ? ["workflow-run"]
+            : ["automation", "automation-run"]
+        ).includes(job.kind)
       )
         return denied();
       const versionId = z.string().uuid().nullable().parse(profileVersionId);
-      return withControlPlaneJobAuthority(db, id, (parent) => {
+      if (
+        pluginId === BUILTIN_AUTOMATIONS_PLUGIN_ID &&
+        versionId !== null &&
+        versionId !== job.profileVersionId
+      )
+        return denied();
+      const resolve = () => {
         const context = requireControlPlaneThreadOwner(db, {
-          projectId: parent.binding.projectId,
-          ownerUserId: parent.user.id,
-          profileVersionId: versionId ?? parent.binding.profileVersionId,
+          projectId: job.projectId,
+          ownerUserId: job.ownerUserId,
+          profileVersionId: versionId ?? job.profileVersionId,
           providerId: "qwen-server",
-          relatedThreadIds: [parent.binding.originThreadId],
+          relatedThreadIds:
+            pluginId === BUILTIN_AUTOMATIONS_PLUGIN_ID
+              ? []
+              : [job.originThreadId],
         });
-        if (!context) return denied();
+        if (!context || job.deletedAt !== null) return denied();
         const definition = context.profileVersion.definition;
         return {
           profileVersionId: context.profileVersion.id,
@@ -270,7 +293,10 @@ export function createControlPlaneBackgroundJobs(
           reasoningLevel: definition.reasoningLevel,
           permissionMode: definition.permissionMode,
         };
-      });
+      };
+      return job.kind === "automation"
+        ? resolve()
+        : withControlPlaneJobAuthority(db, id, resolve);
     },
     startWorker(id, input, signal) {
       assertExecutionAdmission(db);

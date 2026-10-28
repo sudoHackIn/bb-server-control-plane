@@ -462,7 +462,9 @@ export function createWorkflowService(
           limit: 100,
           includeArchived,
         });
-        for (const worker of page.workers)
+        for (const worker of page.workers) {
+          if (worker.originThreadId === null)
+            throw new Error("Workflow worker has no origin");
           ownWorker(
             db,
             worker.threadId,
@@ -471,6 +473,7 @@ export function createWorkflowService(
             worker.originThreadId,
             worker.parentBindingId,
           );
+        }
         cursor = page.nextCursor;
       } while (cursor !== null);
       return;

@@ -175,7 +175,13 @@ export function createControlPlaneUserAccess(
       installControlPlaneProfileRoutes(app, registry.db, authenticate);
       if (mcp)
         installControlPlaneMcpRoutes(app, registry.db, mcp, authenticate);
-      if (threads) installControlPlaneThreadRoutes(app, threads, authenticate);
+      if (threads)
+        installControlPlaneThreadRoutes(
+          app,
+          threads,
+          authenticate,
+          automations,
+        );
       if (workflows) {
         installControlPlaneWorkflowRoutes(app, workflows, authenticate);
         installControlPlaneDefinitionRoutes(

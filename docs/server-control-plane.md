@@ -25,21 +25,11 @@ The profile schema currently supports `qwen-server`. Verified prompt policy appe
 
 Each slice must be independently useful and small enough to test on the running Docker deployment. Ship its limited API, SDK and CLI with its UI. Close a slice after focused tests, a two-user Docker path and a separate commit. Enforce owner/project/profile authority in that slice.
 
-### P1 — Manual background run of the same agent
-
-Goal: the user selects the published agent, gives it a task and follows status/result without keeping a chat turn open.
-
-- [x] Add one typed invocation contract: pinned version, verified owner, project, bounded input, source and idempotency key. Reuse BB thread/workflow records; do not duplicate their histories.
-- [x] Expose start, list, status, events, result and cancel through limited API, SDK, CLI and agent UI. Text task and result suffice.
-- [x] Verify UID/HOME/cwd, cancellation, restart/reconnect, revocation and foreign-ID denial in Docker.
-
-### P2 — Time trigger for a published agent
-
-Goal: schedule the same agent in the same project and see each run beside manual work. Reuse the existing once/cron scheduler.
-
-- [ ] Make the automation target an explicit pinned agent version and input, without requiring an origin conversation or a separate agent prompt. Migrate existing definitions without changing their owner or pinned version.
-- [ ] Keep trigger configuration separate from the agent. Define overlap, retries, missed runs and duplicate behavior; do not promise exactly-once external effects.
-- [ ] Verify two users' schedules, UID/HOME/cwd, revocation and restart recovery in Docker. Show run status/result in the agent UI.
+P1 and P2 are complete: a user can run the published agent immediately or
+schedule its pinned version in a project without an origin conversation.
+Scheduled and manual work share the agent task list and BB result history.
+See the [delivery history](server-control-plane-history.md#p2--time-triggers-for-published-agents)
+and [P2 verification](control-plane-phase-87-verification.json).
 
 ### P3 — Workflow as an agent execution strategy
 

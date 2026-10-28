@@ -21,7 +21,7 @@ export const controlPlaneAgentRunSchema = z.object({
   projectId: z.string(),
   profileId: z.string().uuid(),
   profileVersionId: z.string().uuid(),
-  source: z.literal("manual"),
+  source: z.enum(["manual", "automation"]),
   title: z.string().nullable(),
   status: threadStatusSchema,
   createdAt: z.number(),

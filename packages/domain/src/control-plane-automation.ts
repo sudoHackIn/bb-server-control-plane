@@ -17,7 +17,15 @@ export const controlPlaneAutomationSchema = z
         })
         .strict(),
     ]),
-    createdByThreadId: z.string().min(1),
+    createdByThreadId: z.string().min(1).nullable(),
+    target: z
+      .object({
+        profileVersionId: z.string().uuid(),
+        input: z.string().min(1).max(131072),
+      })
+      .strict()
+      .nullable()
+      .default(null),
     nextRunAt: z.number().nullable(),
     lastRunAt: z.number().nullable(),
     runCount: z.number().int().min(0),
@@ -101,6 +109,15 @@ const automationCreate = z
   })
   .strict();
 export const controlPlaneAutomationCreateSchema = z.union([
+  automationCreate.omit({ originThreadId: true }).extend({
+    projectId: z.string().min(1).max(200),
+    target: z
+      .object({
+        profileVersionId: z.string().uuid(),
+        input: controlPlaneAutomationPromptSchema,
+      })
+      .strict(),
+  }),
   automationCreate.extend({ prompt: controlPlaneAutomationPromptSchema }),
   automationCreate.extend({ script: controlPlaneAutomationScriptSchema }),
 ]);
@@ -109,6 +126,7 @@ export const controlPlaneAutomationUpdateSchema = z
     expectedRevision: z.number().int().min(1),
     name: z.string().trim().min(1).max(200).optional(),
     prompt: controlPlaneAutomationPromptSchema.optional(),
+    input: controlPlaneAutomationPromptSchema.optional(),
     script: controlPlaneAutomationScriptSchema.optional(),
     trigger: controlPlaneAutomationSchema.shape.trigger.optional(),
   })
@@ -117,12 +135,16 @@ export const controlPlaneAutomationUpdateSchema = z
     (value) =>
       value.name !== undefined ||
       value.prompt !== undefined ||
+      value.input !== undefined ||
       value.script !== undefined ||
       value.trigger !== undefined,
     "Provide a definition change",
   )
   .refine(
-    (value) => value.prompt === undefined || value.script === undefined,
+    (value) =>
+      [value.prompt, value.input, value.script].filter(
+        (item) => item !== undefined,
+      ).length <= 1,
     "Choose prompt or script",
   );
 export const controlPlaneAutomationRunInputSchema = z

@@ -102,7 +102,9 @@ export function createManagedAutomationService({
   }
   const cancelTasks = new Map<string, Promise<boolean>>();
   const scripts = createManagedScripts(db, jobs, emit);
-  function head(row: AutomationRow) {
+  function head(
+    row: Pick<AutomationRow, "id" | "projectId" | "createdByThreadId">,
+  ) {
     const raw = db
       .prepare(
         `SELECT automation_id AS automationId,owner_user_id AS ownerUserId,binding_id AS bindingId,revision FROM automation_authorities WHERE automation_id=?${jobs.userId === null ? "" : " AND owner_user_id=?"}`,
@@ -146,58 +148,74 @@ export function createManagedAutomationService({
       });
   }
   function execution(
-    row: Pick<AutomationRow, "projectId" | "createdByThreadId">,
+    row: Pick<AutomationRow, "id" | "projectId" | "createdByThreadId">,
     value: AutomationExecution,
+    bindingId?: string,
   ) {
+    if (value.mode === "agent") {
+      const root = jobs.get(bindingId ?? head(row).bindingId);
+      if (
+        !root ||
+        root.projectId !== row.projectId ||
+        (value.profileVersionId !== undefined &&
+          value.profileVersionId !== root.profileVersionId)
+      )
+        throw new Error(
+          "Automation target must match its pinned agent version",
+        );
+      const profile = jobs.resolveWorkerProfile(root.id, null);
+      const legacyReuse =
+        value.profileVersionId === undefined &&
+        value.environment.type === "reuse" &&
+        row.createdByThreadId !== null &&
+        jobs.readOrigin(row.createdByThreadId).environmentId ===
+          value.environment.environmentId;
+      if (
+        value.targetThreadId !== undefined ||
+        value.serviceTier !== undefined ||
+        (value.environment.type !== "project-default" && !legacyReuse)
+      )
+        throw new Error(
+          "Published agents require the registered project environment",
+        );
+      if (
+        value.providerId !== profile.providerId ||
+        value.model !== profile.model ||
+        value.reasoningLevel !== profile.reasoningLevel ||
+        value.permissionMode !== profile.permissionMode
+      )
+        throw new Error(
+          "Automation execution must match its approved profile and pinned agent version",
+        );
+      if (Buffer.byteLength(value.prompt, "utf8") > 131072)
+        throw new Error("Automation input exceeds 128 KiB");
+      return {
+        ...value,
+        profileVersionId: root.profileVersionId,
+        environment: { type: "project-default" as const },
+      };
+    }
     if (!row.createdByThreadId)
       throw new Error("Managed automations require an owned origin thread");
     const origin = jobs.readOrigin(row.createdByThreadId);
     if (origin.projectId !== row.projectId)
       throw new Error("Automation origin project mismatch");
-    if (value.mode === "script") {
-      if (
-        !value.script ||
-        value.scriptFile !== undefined ||
-        value.interpreter !== "node" ||
-        value.workingDirectory.type !== "project" ||
-        value.env !== undefined
-      )
-        throw new Error(
-          "Managed scripts require inline Node ESM, project cwd and no environment overrides",
-        );
-      if (origin.permissionMode !== "full")
-        throw new Error(
-          "Managed scripts require an approved full-permission origin profile",
-        );
-      if (Buffer.byteLength(value.script) > 262144)
-        throw new Error("Script source exceeds 256 KiB");
-      return value;
-    }
-    if (value.targetThreadId !== undefined)
-      throw new Error("Managed target-thread automations are not supported");
-    if (value.serviceTier !== undefined)
-      throw new Error(
-        "Managed automation service tier overrides are not supported",
-      );
     if (
-      value.providerId !== origin.providerId ||
-      value.model !== origin.model ||
-      value.reasoningLevel !== origin.reasoningLevel ||
-      value.permissionMode !== origin.permissionMode
+      !value.script ||
+      value.scriptFile !== undefined ||
+      value.interpreter !== "node" ||
+      value.workingDirectory.type !== "project" ||
+      value.env !== undefined
     )
       throw new Error(
-        "Automation execution must match the origin's approved profile",
+        "Managed scripts require inline Node ESM, project cwd and no environment overrides",
       );
-    if (
-      value.environment.type === "host" ||
-      (value.environment.type === "reuse" &&
-        value.environment.environmentId !== origin.environmentId)
-    )
+    if (origin.permissionMode !== "full")
       throw new Error(
-        "Automation environment must use the owned origin or project default",
+        "Managed scripts require an approved full-permission origin profile",
       );
-    if (Buffer.byteLength(value.prompt, "utf8") > 131072)
-      throw new Error("Automation prompt exceeds 128 KiB");
+    if (Buffer.byteLength(value.script) > 262144)
+      throw new Error("Script source exceeds 256 KiB");
     return value;
   }
   function rows(input: { projectId?: string; targetThreadId?: string }) {
@@ -259,6 +277,49 @@ export function createManagedAutomationService({
     db.prepare(
       "INSERT INTO automation_run_authorities(run_id,automation_id,definition_binding_id,definition_revision,execution_json) VALUES(?,?,?,?,?)",
     ).run(run.id, row.id, saved.bindingId, saved.revision, row.execution);
+  }
+  function migrateAgentTargets() {
+    const ids = z
+      .array(z.object({ id: z.string() }))
+      .parse(
+        db
+          .prepare(
+            "SELECT a.id FROM automations a JOIN automation_authorities o ON o.automation_id=a.id WHERE a.run_mode='agent'",
+          )
+          .all(),
+      );
+    for (const { id } of ids) {
+      const row = getAutomation(db, id);
+      if (!row) continue;
+      const value = parseAutomationExecution(row.execution);
+      if (value.mode !== "agent" || value.profileVersionId !== undefined)
+        continue;
+      let root: ReturnType<typeof head>;
+      try {
+        root = head(row);
+      } catch {
+        continue;
+      }
+      db.transaction(() => {
+        const updated = updateAutomation(db, {
+          projectId: row.projectId,
+          automationId: row.id,
+          patch: {
+            execution: {
+              ...value,
+              profileVersionId: root.binding.profileVersionId,
+              environment: { type: "project-default" },
+            },
+          },
+        });
+        if (!updated)
+          throw new Error("Automation disappeared during target migration");
+        db.prepare(
+          "UPDATE automation_authorities SET revision=revision+1 WHERE automation_id=? AND revision=?",
+        ).run(row.id, root.revision);
+        recordVersion(updated, root.revision + 1);
+      }).immediate();
+    }
   }
   function dispatch(row: AutomationRow, run: AutomationRunRow) {
     const task = dispatchRun(row, run);
@@ -628,6 +689,7 @@ export function createManagedAutomationService({
       if (ticking) return;
       ticking = true;
       try {
+        if (startup) migrateAgentTargets();
         if (startup)
           db.prepare(
             "UPDATE automations SET enabled=0,next_run_at=NULL,last_error='Owner assignment required before managed execution' WHERE NOT EXISTS (SELECT 1 FROM automation_authorities o WHERE o.automation_id=automations.id)",
@@ -749,15 +811,6 @@ export function createManagedAutomationService({
       admit();
       const now = Date.now();
       validate(input.trigger, now);
-      const value = execution(
-        {
-          projectId: input.projectId,
-          createdByThreadId: input.createdByThreadId ?? null,
-        },
-        input.execution.mode === "agent"
-          ? input.execution
-          : automationExecutionSchema.parse(input.execution),
-      );
       if (
         input.createdByThreadId &&
         db
@@ -772,12 +825,26 @@ export function createManagedAutomationService({
         revision: 1,
         projectId: input.projectId,
         originThreadId: input.createdByThreadId ?? null,
-        profileVersionId: null,
+        profileVersionId:
+          input.execution.mode === "agent"
+            ? (input.execution.profileVersionId ?? null)
+            : null,
         sourceBindingId: null,
       });
       let created: AutomationRow;
       try {
         admit();
+        const value = execution(
+          {
+            id,
+            projectId: input.projectId,
+            createdByThreadId: input.createdByThreadId ?? null,
+          },
+          input.execution.mode === "agent"
+            ? input.execution
+            : automationExecutionSchema.parse(input.execution),
+          binding.id,
+        );
         created = jobs.withAuthority(binding.id, () =>
           db
             .transaction(() => {

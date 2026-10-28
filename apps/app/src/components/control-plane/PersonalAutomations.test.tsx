@@ -138,7 +138,7 @@ it("creates from the current origin, edits with CAS, preserves rejected drafts a
   fireEvent.change(screen.getByLabelText("Automation name"), {
     target: { value: saved.name },
   });
-  fireEvent.change(screen.getByRole("textbox", { name: "Automation prompt" }), {
+  fireEvent.change(screen.getByRole("textbox", { name: "Agent task" }), {
     target: { value: saved.prompt },
   });
   fireEvent.click(screen.getByRole("checkbox", { name: "Enable automation" }));
@@ -171,28 +171,31 @@ it("creates from the current origin, edits with CAS, preserves rejected drafts a
   });
   conflict = true;
   revision = 3;
-  fireEvent.change(screen.getByRole("textbox", { name: "Automation prompt" }), {
+  fireEvent.change(screen.getByRole("textbox", { name: "Agent task" }), {
     target: { value: "Keep my unsaved draft" },
   });
   fireEvent.submit(screen.getByRole("form", { name: "Automation editor" }));
   await screen.findByRole("alert");
-  expect(
-    screen.getByRole("textbox", { name: "Automation prompt" }),
-  ).toHaveProperty("value", "Keep my unsaved draft");
+  expect(screen.getByRole("textbox", { name: "Agent task" })).toHaveProperty(
+    "value",
+    "Keep my unsaved draft",
+  );
   expect(writes[2]?.body).toMatchObject({ expectedRevision: 2 });
   fireEvent.click(screen.getByRole("button", { name: "Refresh automations" }));
   await screen.findByText(/A newer revision/u);
-  expect(
-    screen.getByRole("textbox", { name: "Automation prompt" }),
-  ).toHaveProperty("value", "Keep my unsaved draft");
+  expect(screen.getByRole("textbox", { name: "Agent task" })).toHaveProperty(
+    "value",
+    "Keep my unsaved draft",
+  );
   revision = 4;
   fireEvent.click(
     screen.getByRole("button", { name: "Reload saved automation" }),
   );
   await screen.findByText("Edit automation · v4");
-  expect(
-    screen.getByRole("textbox", { name: "Automation prompt" }),
-  ).toHaveProperty("value", saved.prompt);
+  expect(screen.getByRole("textbox", { name: "Agent task" })).toHaveProperty(
+    "value",
+    saved.prompt,
+  );
 });
 it("reuses an unacknowledged dispatch key, paginates history and links only returned conversations", async () => {
   const keys: unknown[] = [];
@@ -362,7 +365,7 @@ it("aborts an in-flight create and ignores its acknowledgement after the project
   fireEvent.change(screen.getByLabelText("Automation name"), {
     target: { value: saved.name },
   });
-  fireEvent.change(screen.getByRole("textbox", { name: "Automation prompt" }), {
+  fireEvent.change(screen.getByRole("textbox", { name: "Agent task" }), {
     target: { value: saved.prompt },
   });
   fireEvent.submit(screen.getByRole("form", { name: "Automation editor" }));
@@ -415,7 +418,7 @@ it("creates a Node script with explicit timeout and reloads its source without a
   fireEvent.change(screen.getByLabelText("Automation type"), {
     target: { value: "script" },
   });
-  expect(screen.queryByLabelText("Automation prompt")).toBeNull();
+  expect(screen.queryByLabelText("Agent task")).toBeNull();
   fireEvent.change(screen.getByLabelText("Automation name"), {
     target: { value: "Script" },
   });
