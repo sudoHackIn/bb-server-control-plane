@@ -14,19 +14,16 @@ This is the active backlog. Completed increments, verification records and deplo
 
 The fork already has published profile versions and grants, certificate users, personal projects, native Qwen conversations and timeline, a personal Agents catalog, workflow persistence/workers, and manual/once/cron automations. The two-user publish-to-chat-to-automation path has been exercised in Docker. These are starting primitives, not backlog items. See the [delivery record](server-control-plane-history.md#current-delivery-goal-complete-user-journey).
 
+P0 is complete: administrators publish a plain Qwen agent with supported
+capabilities, and a granted user selects it and chats in the restricted BB
+workspace. The pinned profile and tool policy survive later turns and restart.
+See [the P0 verification record](control-plane-phase-86-verification.json).
+
 The profile schema currently supports `qwen-server`. Verified prompt policy appends Qwen instructions; it does not replace the full system prompt. Workflow `agent()` can select `profileVersionId` on this server, but that is not yet published-agent composition. Restricted native Qwen nested agents remain denied.
 
 ## Delivery rules
 
 Each slice must be independently useful and small enough to test on the running Docker deployment. Ship its limited API, SDK and CLI with its UI. Close a slice after focused tests, a two-user Docker path and a separate commit. Enforce owner/project/profile authority in that slice.
-
-### P0 — Simple agent in the user UI
-
-Goal: an administrator publishes and grants a basic agent; a user finds it in a project and holds a normal BB conversation. This is the first deployable product. Text input and native thread output suffice.
-
-- [x] Finish the agent card and administrator editor around a short purpose, visible version and supported capabilities. Keep publication immutable and reject unsupported profile settings.
-- [x] Complete the restricted personal UI boundary for this flow: keep project/thread navigation, composer and timeline; hide the right workspace panel and administrative controls. Clear personal drafts and subscriptions on identity switch.
-- [ ] Record the supported provider/tool subset on new turns and resume. Extend the existing two-user Docker publish-to-chat scenario only to cover the new card, UI boundary and any profile setting whose enforcement is not yet demonstrated.
 
 ### P1 — Manual background run of the same agent
 

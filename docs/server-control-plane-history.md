@@ -71,6 +71,15 @@ the old account's storage. Focused tests cover the delayed-write race and
 subscription cleanup; the two-user Docker browser journey checks the visible
 boundary. See [phase 85 verification](control-plane-phase-85-verification.json).
 
+P0 is complete. The supported interactive Qwen subset and first-turn,
+later-turn and resume behavior are recorded in [configuration](configuration.md).
+The profile-policy test checks fixed model, reasoning and exact native tools.
+The two-user Docker fixture checks that Alice's pinned thread still exposes
+only its original `run_shell_command` tool after a newer profile version adds
+`read_file`, including when the Qwen session resumes after server restart.
+It also retains the browser catalog-to-chat and foreign-object isolation path.
+See [phase 86 verification](control-plane-phase-86-verification.json).
+
 ## Feature sequence
 
 Complete each implementation stage with relevant tests, a deployment check against the real fork in Docker and a separate commit. Record the verified scope and leave later features unchecked; an access-module smoke test alone does not verify a deployment.

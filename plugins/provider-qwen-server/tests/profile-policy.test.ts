@@ -35,6 +35,13 @@ it("compiles exact native-tool restrictions without deny-rule family expansion a
     systemPrompt: { type: "preset", preset: "qwen_code", append: "BB context" },
   });
   expect(compiled.appendPrompt).toBe("Approved instructions\n\nBB context");
+  expect(compiled.settings.model).toEqual({
+    name: "approved-model",
+    reasoningEffort: "none",
+    generationConfig: null,
+  });
+  expect(compiled.settings.tools.core).toEqual(["read_file"]);
+  expect(compiled.settings.tools.visible).toEqual(["read_file"]);
   expect(compiled.settings.tools.disabled).not.toContain("read_file");
   expect(compiled.settings.tools.disabled).toContain("write_file");
   expect(compiled.settings.tools.disabled).toContain("tool_call");

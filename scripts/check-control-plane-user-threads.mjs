@@ -23,6 +23,12 @@ export function createUserThreadFixture({ db, users }) {
     )
       return false;
     assert.equal(body.model, "qwen-job-test");
+    if (marker === "alice")
+      assert.equal(
+        body.tools.some((tool) => tool.function?.name === "read_file"),
+        false,
+        "A newer profile version must not expand the pinned thread's tools",
+      );
     if (marker.startsWith("workflow-retry-")) {
       const runId = JSON.stringify(body.messages).match(
         /run (wfr_[A-Za-z0-9-]+)/u,

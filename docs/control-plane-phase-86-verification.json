@@ -1,0 +1,24 @@
+{
+  "scope": "Final P0 slice: document and verify pinned Qwen provider and tool policy across turns and resume",
+  "contracts": {
+    "supportedInteractiveQwenSubsetRecorded": true,
+    "profilePolicyPinsModelReasoningPromptAndNativeTools": true,
+    "newerPublicationDoesNotExpandExistingThreadTools": true,
+    "sameProfileVersionAndQwenSessionResumeAfterRestart": true,
+    "p0UserJourneyComplete": true
+  },
+  "verification": {
+    "providerTestsPassed": 31,
+    "providerTypecheckPassed": true,
+    "dockerCommand": "BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 675689,
+    "twoUserBrowserJourneyPassed": true,
+    "restartAndCrashRecoveryPassed": true,
+    "lintPrettierAndDiffCheckPassed": true
+  },
+  "limitations": [
+    "The Docker run uses deterministic model and integration fixtures; corporate Qwen authorization is outside this test.",
+    "Arbitrary raw SDK MCP transports and replacement system prompts are outside the personal API's supported subset."
+  ]
+}
