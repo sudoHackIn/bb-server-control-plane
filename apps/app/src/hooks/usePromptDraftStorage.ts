@@ -142,6 +142,13 @@ export function flushPendingPromptDraftPersists(): boolean {
   return persisted;
 }
 
+export function discardPendingPromptDraftPersists(): void {
+  for (const storageKey of pendingPromptDraftStorageKeys)
+    clearPromptDraftPersistTimer(storageKey);
+  pendingPromptDraftStorageKeys.clear();
+  promptDraftCache.clear();
+}
+
 function ensurePromptDraftStorageObserver(): void {
   if (promptDraftStorageObserverInitialized || typeof window === "undefined") {
     return;

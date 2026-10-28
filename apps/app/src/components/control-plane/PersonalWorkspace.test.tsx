@@ -138,6 +138,10 @@ it("uses the native left sidebar with scoped project/thread pagination and never
   expect(
     screen.queryByRole("button", { name: /terminal|settings|plugins/iu }),
   ).toBeNull();
+  expect(
+    screen.queryByRole("tablist", { name: "Right panel views" }),
+  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Show right panel" })).toBeNull();
 });
 
 it("fences a slow previous-project response and removes revoked thread details", async () => {

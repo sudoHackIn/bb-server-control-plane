@@ -63,6 +63,14 @@ Docker browser path verifies the published purpose and latest version's tools,
 then exercises conversation, access boundaries, restart and crash recovery.
 See [phase 84 verification](control-plane-phase-84-verification.json).
 
+The second P0 slice closes the personal UI boundary: it keeps native BB left
+navigation, conversation and composer, while omitting right-panel and
+administrative controls. Browser identity changes unmount the personal view,
+release its timeline stream and discard pending draft writes before clearing
+the old account's storage. Focused tests cover the delayed-write race and
+subscription cleanup; the two-user Docker browser journey checks the visible
+boundary. See [phase 85 verification](control-plane-phase-85-verification.json).
+
 ## Feature sequence
 
 Complete each implementation stage with relevant tests, a deployment check against the real fork in Docker and a separate commit. Record the verified scope and leave later features unchecked; an access-module smoke test alone does not verify a deployment.

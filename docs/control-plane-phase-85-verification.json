@@ -1,0 +1,22 @@
+{
+  "scope": "Second P0 slice: restricted personal UI and identity-switch cleanup",
+  "contracts": {
+    "leftProjectThreadNavigationComposerAndTimelineRemain": true,
+    "rightWorkspacePanelAndAdministrativeControlsAbsent": true,
+    "identitySwitchUnmountsPersonalViewAndReleasesTimelineSubscription": true,
+    "pendingPersonalDraftCannotReappearAfterIdentityChange": true
+  },
+  "verification": {
+    "focusedAppTestsPassed": 22,
+    "appTypecheckPassed": true,
+    "dockerCommand": "BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 688441,
+    "twoUserBrowserJourneyPassed": true,
+    "restartAndCrashRecoveryPassed": true
+  },
+  "limitations": [
+    "The Docker browser switches between distinct Alice and Bob sessions; the pending-write race is covered by a focused browser-bootstrap test.",
+    "The full app test suite retains previously failing unrelated UI files; this slice's focused tests pass."
+  ]
+}

@@ -25,7 +25,7 @@ Each slice must be independently useful and small enough to test on the running 
 Goal: an administrator publishes and grants a basic agent; a user finds it in a project and holds a normal BB conversation. This is the first deployable product. Text input and native thread output suffice.
 
 - [x] Finish the agent card and administrator editor around a short purpose, visible version and supported capabilities. Keep publication immutable and reject unsupported profile settings.
-- [ ] Complete the restricted personal UI boundary for this flow: keep project/thread navigation, composer and timeline; hide the right workspace panel and administrative controls. Clear personal drafts and subscriptions on identity switch.
+- [x] Complete the restricted personal UI boundary for this flow: keep project/thread navigation, composer and timeline; hide the right workspace panel and administrative controls. Clear personal drafts and subscriptions on identity switch.
 - [ ] Record the supported provider/tool subset on new turns and resume. Extend the existing two-user Docker publish-to-chat scenario only to cover the new card, UI boundary and any profile setting whose enforcement is not yet demonstrated.
 
 ### P1 — Manual background run of the same agent

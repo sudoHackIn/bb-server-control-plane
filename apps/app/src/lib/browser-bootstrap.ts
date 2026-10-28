@@ -8,6 +8,7 @@ import {
   clearInactiveAccountStorage,
   configureAccountStorage,
 } from "./account-storage";
+import { discardPendingPromptDraftPersists } from "@/hooks/usePromptDraftStorage";
 
 function scopeFor(context: ControlPlaneBrowserContext): string | null {
   return context.mode === "admin" || context.mode === "user"
@@ -135,6 +136,7 @@ export async function startBrowserApplication(
     !(context.mode === "standalone" && previous === null)
   ) {
     rememberIdentity("transition");
+    discardPendingPromptDraftPersists();
     const old =
       previous?.startsWith("admin:") || previous?.startsWith("user:")
         ? previous
@@ -214,6 +216,7 @@ export async function startBrowserApplication(
     hide();
     stop();
     if (storedIdentity() === marker) rememberIdentity("transition");
+    discardPendingPromptDraftPersists();
     clearStorage(storageScope);
     document.getElementById("bb-app-theme")?.remove();
     void resetVoiceDatabase(storageScope).then(

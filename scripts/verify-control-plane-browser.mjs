@@ -125,6 +125,14 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         .count(),
       0,
     );
+    assert.equal(
+      await page.getByRole("tablist", { name: "Right panel views" }).count(),
+      0,
+    );
+    assert.equal(
+      await page.getByRole("button", { name: "Show right panel" }).count(),
+      0,
+    );
     assert.equal(await page.locator('[data-sidebar="sidebar"]').count(), 1);
     await page.reload();
     await visible(page.getByRole("heading", { name: user.title, exact: true }));

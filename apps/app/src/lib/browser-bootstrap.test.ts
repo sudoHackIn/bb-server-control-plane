@@ -21,6 +21,8 @@ beforeEach(() => {
     location: { origin: "https://bb.example", reload, replace },
     addEventListener: realWindow.addEventListener.bind(realWindow),
     removeEventListener: realWindow.removeEventListener.bind(realWindow),
+    setTimeout: realWindow.setTimeout.bind(realWindow),
+    clearTimeout: realWindow.clearTimeout.bind(realWindow),
   });
 });
 afterEach(() => {
@@ -220,4 +222,43 @@ it("loads only the personal application after both identity checks and disposes 
   mode = "anonymous";
   realWindow.dispatchEvent(new Event("pageshow"));
   await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce());
+});
+
+it("discards a pending personal draft before clearing the previous identity", async () => {
+  const identity = "11111111-1111-4111-8111-111111111111";
+  const epoch = "a".repeat(64);
+  const marker = `user:${identity}@${epoch}`;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        mode: "user",
+        identity,
+        login: "alice",
+        cacheEpoch: epoch,
+      }),
+    ),
+  );
+  const storage = await import("./account-storage");
+  const { startBrowserApplication } = await import("./browser-bootstrap");
+  stop = await startBrowserApplication(vi.fn(), async () => () => vi.fn());
+  const { getPromptDraftAccessor } =
+    await import("../hooks/usePromptDraftStorage");
+  const draft = getPromptDraftAccessor({
+    kind: "plugin-new-thread",
+    key: "personal:project-a",
+  });
+  draft.setTextAndMentions("private pending draft", []);
+  const key = storage.accountStoragePrefix(marker) + draft.storageKey;
+  expect(localStorage.getItem(key)).toBeNull();
+  realWindow.dispatchEvent(
+    new StorageEvent("storage", {
+      key: storage.browserIdentityMarker,
+      newValue: "user:bob",
+      storageArea: localStorage,
+    }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(localStorage.getItem(key)).toBeNull();
+  expect(draft.getCurrent().text).toBe("");
 });
