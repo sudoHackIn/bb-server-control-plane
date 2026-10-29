@@ -316,6 +316,65 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     await alice.page.goto(agentUrl);
     await alice.page
       .getByRole("list", { name: "Agent catalog" })
+      .getByRole("button", { name: /Workflow agent alice/u })
+      .click();
+    await visible(alice.page.getByRole("button", { name: "Run task" }));
+    assert.equal(
+      await alice.page
+        .getByRole("button", { name: "Start conversation" })
+        .count(),
+      0,
+    );
+    assert.equal(
+      await alice.page
+        .getByRole("button", { name: "Schedule this agent" })
+        .count(),
+      0,
+    );
+    await alice.page
+      .getByRole("textbox", { name: "Background task" })
+      .fill("Browser workflow task");
+    const workflowAgentReply = alice.page.waitForResponse(
+      (reply) =>
+        new URL(reply.url()).pathname === "/control-plane/user/agent-runs" &&
+        reply.request().method() === "POST",
+    );
+    await alice.page.getByRole("button", { name: "Run task" }).click();
+    const workflowAgentResponse = await workflowAgentReply;
+    assert.equal(
+      workflowAgentResponse.status(),
+      201,
+      await workflowAgentResponse.text(),
+    );
+    const workflowAgentRun = await workflowAgentResponse.json();
+    assert.equal(workflowAgentRun.strategy, "workflow");
+    assert.equal(workflowAgentRun.threadId, null);
+    await alice.page
+      .getByRole("button", { name: "Browser workflow task", exact: true })
+      .click();
+    await visible(alice.page.getByText(`Task ${workflowAgentRun.runId}`));
+    await visible(alice.page.getByText("edited-source", { exact: true }));
+    assert.equal(
+      await alice.page.getByRole("heading", { name: "Events" }).count(),
+      0,
+    );
+    assert.equal(
+      (
+        await bob.context.request.get(
+          `${ready.origin}/control-plane/user/agent-runs/${workflowAgentRun.runId}/result`,
+        )
+      ).status(),
+      404,
+    );
+    await verifyPersonalSurface(
+      alice.page,
+      "Available agents",
+      "workflow-agent",
+      "All agents",
+    );
+    await alice.page.goto(agentUrl);
+    await alice.page
+      .getByRole("list", { name: "Agent catalog" })
       .getByRole("button", { name: /Personal alice/u })
       .click();
     await alice.page
@@ -832,6 +891,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       personalAutomationBrowserCancellationReapsActualCommands: true,
       personalAutomationBrowserForeignReadsAndMutationsDenied: true,
       productionBrowserRenderingVerified: true,
+      publishedWorkflowAgentCatalogTaskResultBrowser: true,
       browserVersion: browser.version(),
       separateCertificateBrowserContexts: true,
       certificateLoginPreservesConversationAndMessageFragment: true,

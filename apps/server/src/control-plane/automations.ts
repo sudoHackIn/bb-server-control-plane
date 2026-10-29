@@ -230,6 +230,12 @@ export function createControlPlaneAutomationService(
       const originThreadId =
         "originThreadId" in input ? input.originThreadId : null;
       const profile = source.profileVersion.definition;
+      if (profile.workflow)
+        throw new ApiError(
+          409,
+          "agent_is_background_only",
+          "Workflow agents currently support manual tasks only",
+        );
       const result = z
         .object({
           id: z.string(),

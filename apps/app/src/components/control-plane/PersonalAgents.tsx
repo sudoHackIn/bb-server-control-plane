@@ -203,17 +203,19 @@ export function PersonalAgents({
                   </p>
                 </div>
 
-                <Button
-                  disabled={
-                    !canStart ||
-                    !current.profile.enabled ||
-                    !current.version.enabled
-                  }
-                  onClick={() => onStart(current.profile.id)}
-                >
-                  <Icon name="MessageSquare" aria-hidden />
-                  Start conversation
-                </Button>
+                {!current.version.definition.workflow && (
+                  <Button
+                    disabled={
+                      !canStart ||
+                      !current.profile.enabled ||
+                      !current.version.enabled
+                    }
+                    onClick={() => onStart(current.profile.id)}
+                  >
+                    <Icon name="MessageSquare" aria-hidden />
+                    Start conversation
+                  </Button>
+                )}
                 <div className="space-y-4 border-t border-border pt-5">
                   <h3 className="text-sm font-medium">Run a background task</h3>
                   <Textarea
@@ -247,53 +249,59 @@ export function PersonalAgents({
                 </div>
                 {projectId && (
                   <>
-                    <div className="space-y-4 border-t border-border pt-5">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          disabled={
-                            !canStart ||
-                            !current.profile.enabled ||
-                            !current.version.enabled
-                          }
-                          onClick={() => setScheduleOpen(!scheduleOpen)}
-                        >
-                          {scheduleOpen
-                            ? "Close schedule editor"
-                            : "Schedule this agent"}
-                        </Button>
-                        <Link
-                          className="inline-flex items-center text-sm underline"
-                          to="?view=automations"
-                        >
-                          Manage schedules and history
-                        </Link>
+                    {!current.version.definition.workflow && (
+                      <div className="space-y-4 border-t border-border pt-5">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            disabled={
+                              !canStart ||
+                              !current.profile.enabled ||
+                              !current.version.enabled
+                            }
+                            onClick={() => setScheduleOpen(!scheduleOpen)}
+                          >
+                            {scheduleOpen
+                              ? "Close schedule editor"
+                              : "Schedule this agent"}
+                          </Button>
+                          <Link
+                            className="inline-flex items-center text-sm underline"
+                            to="?view=automations"
+                          >
+                            Manage schedules and history
+                          </Link>
+                        </div>
+                        {scheduleOpen && (
+                          <PersonalAutomationEditor
+                            key={`${projectId}:${current.version.id}`}
+                            client={client}
+                            saved={null}
+                            originThreadId={null}
+                            target={{
+                              projectId,
+                              profileVersionId: current.version.id,
+                            }}
+                            canExecute={
+                              canStart &&
+                              current.profile.enabled &&
+                              current.version.enabled
+                            }
+                            onReload={null}
+                            onSaved={() => {
+                              setScheduleOpen(false);
+                              void queryClient.invalidateQueries({
+                                queryKey: [
+                                  "personal",
+                                  "automations",
+                                  projectId,
+                                ],
+                              });
+                            }}
+                          />
+                        )}
                       </div>
-                      {scheduleOpen && (
-                        <PersonalAutomationEditor
-                          key={`${projectId}:${current.version.id}`}
-                          client={client}
-                          saved={null}
-                          originThreadId={null}
-                          target={{
-                            projectId,
-                            profileVersionId: current.version.id,
-                          }}
-                          canExecute={
-                            canStart &&
-                            current.profile.enabled &&
-                            current.version.enabled
-                          }
-                          onReload={null}
-                          onSaved={() => {
-                            setScheduleOpen(false);
-                            void queryClient.invalidateQueries({
-                              queryKey: ["personal", "automations", projectId],
-                            });
-                          }}
-                        />
-                      )}
-                    </div>
+                    )}
                     <PersonalAgentRunList
                       client={client}
                       projectId={projectId}
@@ -393,7 +401,9 @@ function PersonalAgentRunList({
         signal,
       }),
     getNextPageParam: (page) => (page.hasMore ? page.cursor : undefined),
-    enabled: selectedRunId !== null,
+    enabled:
+      selectedRunId !== null &&
+      runs.find((run) => run.runId === selectedRunId)?.strategy !== "workflow",
     refetchInterval: 3000,
   });
   const cancel = useMutation({
@@ -425,7 +435,9 @@ function PersonalAgentRunList({
               {run.source === "automation" ? "Scheduled" : "Manual"} ·{" "}
               <PersonalStatus status={run.status} />
             </span>
-            {["pending", "starting", "active"].includes(run.status) && (
+            {["pending", "starting", "active", "queued", "running"].includes(
+              run.status,
+            ) && (
               <Button
                 variant="outline"
                 disabled={cancel.isPending}
@@ -442,7 +454,7 @@ function PersonalAgentRunList({
           className="space-y-3 rounded-md border border-border p-4 text-sm"
           aria-live="polite"
         >
-          <p>Task {selectedRunId}</p>
+          <p className="break-all">Task {selectedRunId}</p>
           <p>Status: {result.data?.run.status ?? "Loading…"}</p>
           {result.data?.text && (
             <pre className={`${personalCodeClass} font-sans text-sm`}>
@@ -450,25 +462,29 @@ function PersonalAgentRunList({
             </pre>
           )}
           {result.isError && <p role="alert">{result.error.message}</p>}
-          <h4 className="font-medium">Events</h4>
-          {events.isError && <p role="alert">{events.error.message}</p>}
-          <ol className="max-h-48 space-y-1 overflow-y-auto">
-            {events.data?.pages
-              .flatMap((page) => page.events)
-              .map((event) => (
-                <li key={event.seq} className="text-muted-foreground">
-                  #{event.seq} {event.type}
-                </li>
-              ))}
-          </ol>
-          {events.hasNextPage && (
-            <Button
-              variant="outline"
-              disabled={events.isFetchingNextPage}
-              onClick={() => void events.fetchNextPage()}
-            >
-              More events
-            </Button>
+          {result.data?.run.strategy !== "workflow" && (
+            <>
+              <h4 className="font-medium">Events</h4>
+              {events.isError && <p role="alert">{events.error.message}</p>}
+              <ol className="max-h-48 space-y-1 overflow-y-auto">
+                {events.data?.pages
+                  .flatMap((page) => page.events)
+                  .map((event) => (
+                    <li key={event.seq} className="text-muted-foreground">
+                      #{event.seq} {event.type}
+                    </li>
+                  ))}
+              </ol>
+              {events.hasNextPage && (
+                <Button
+                  variant="outline"
+                  disabled={events.isFetchingNextPage}
+                  onClick={() => void events.fetchNextPage()}
+                >
+                  More events
+                </Button>
+              )}
+            </>
           )}
         </div>
       )}

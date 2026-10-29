@@ -24,6 +24,9 @@ type AgentDraft = {
   permissionMode: ControlPlaneProfileDefinition["permissionMode"];
   tools: string;
   mcpServers: string;
+  strategy: "conversation" | "workflow";
+  workflowDefinitionId: string;
+  workflowRevision: string;
 };
 
 const emptyDraft: AgentDraft = {
@@ -36,6 +39,9 @@ const emptyDraft: AgentDraft = {
   permissionMode: "accept-edits",
   tools: "",
   mcpServers: "",
+  strategy: "conversation",
+  workflowDefinitionId: "",
+  workflowRevision: "1",
 };
 
 function identifiers(value: string): string[] {
@@ -47,6 +53,14 @@ function identifiers(value: string): string[] {
 
 function definition(draft: AgentDraft): ControlPlaneProfileDefinition {
   return controlPlaneProfilePublicationSchema.parse({
+    ...(draft.strategy === "workflow"
+      ? {
+          workflow: {
+            definitionId: draft.workflowDefinitionId.trim(),
+            revision: Number(draft.workflowRevision),
+          },
+        }
+      : {}),
     purpose: draft.purpose,
     prompt: draft.prompt,
     providerId: "qwen-server",
@@ -241,6 +255,9 @@ export function AdminAgentProfiles({ client }: { client: Client }) {
                       permissionMode: source.permissionMode,
                       tools: source.tools.join(", "),
                       mcpServers: source.mcpServers.join(", "),
+                      strategy: source.workflow ? "workflow" : "conversation",
+                      workflowDefinitionId: source.workflow?.definitionId ?? "",
+                      workflowRevision: String(source.workflow?.revision ?? 1),
                     });
                     setDraftForId(current.profile.id);
                   }}
@@ -382,6 +399,66 @@ export function AdminAgentProfiles({ client }: { client: Client }) {
               </p>
             )}
             <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                Execution strategy
+                <select
+                  aria-label="Execution strategy"
+                  value={draft.strategy}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      strategy:
+                        event.target.value === "workflow"
+                          ? "workflow"
+                          : "conversation",
+                    })
+                  }
+                  className="rounded border bg-background p-2"
+                >
+                  <option value="conversation">Qwen conversation</option>
+                  <option value="workflow">Background workflow</option>
+                </select>
+              </label>
+              {draft.strategy === "workflow" && (
+                <>
+                  <label className="flex flex-col gap-1 text-sm">
+                    Workflow definition ID
+                    <input
+                      value={draft.workflowDefinitionId}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          workflowDefinitionId: event.target.value,
+                        })
+                      }
+                      required
+                      className="rounded border bg-background p-2"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm">
+                    Workflow revision
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={draft.workflowRevision}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          workflowRevision: event.target.value,
+                        })
+                      }
+                      required
+                      className="rounded border bg-background p-2"
+                    />
+                  </label>
+                  <p className="text-sm text-muted-foreground sm:col-span-2">
+                    Publishes a fixed copy of this revision. The workflow must
+                    declare a text inputSchema and an outputSchema. Input is
+                    limited to 128 KiB; JSON output to 1 MiB.
+                  </p>
+                </>
+              )}
               <label className="flex flex-col gap-1 text-sm">
                 Slug
                 <input

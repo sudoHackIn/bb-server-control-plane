@@ -46,6 +46,18 @@ const contract = defineRpcContract({
       .strict(),
     output: run,
   },
+  controlPlaneAgentWorkflowStart: {
+    input: z
+      .object({
+        runId: z.string().regex(/^wfa_[a-f0-9]{64}$/u),
+        projectId: id,
+        profileVersionId: z.string().uuid(),
+        script: z.string().min(1).max(524288),
+        args: z.string().min(1).max(131072),
+      })
+      .strict(),
+    output: run,
+  },
   controlPlaneWorkflowRuns: {
     input: z.object({ ids: z.array(id).max(50) }).strict(),
     output: z.object({ runs: z.array(run) }).strict(),
@@ -140,6 +152,20 @@ export function registerManagedWorkflowApi(
           source: input.script,
           args: toJsonValue(input.args, "args"),
           resumedFromRunId: input.resumeRunId,
+        }),
+      );
+    },
+    async controlPlaneAgentWorkflowStart(input) {
+      managed();
+      return workflowRunSummary(
+        await service.start({
+          runId: input.runId,
+          projectId: input.projectId,
+          originThreadId: null,
+          profileVersionId: input.profileVersionId,
+          source: input.script,
+          args: input.args,
+          resumedFromRunId: null,
         }),
       );
     },

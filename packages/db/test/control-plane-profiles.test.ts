@@ -182,3 +182,71 @@ it("rolls back invalid publications and duplicate profiles, and rejects foreign 
     db.$client.close();
   }
 });
+
+it("publishes a workflow snapshot atomically and keeps its source private and immutable across agent revisions", async () => {
+  const { getControlPlaneProfileWorkflow } = await import("../src/index.js");
+  const db = createMigratedConnection();
+  const workflow = { definitionId: "wfd_fixture", revision: 1 };
+  const source = {
+    ...workflow,
+    script: 'export const meta={name:"v1",description:"fixed"};return args;',
+  };
+  try {
+    expect(() =>
+      createControlPlaneProfile(db, {
+        slug: "missing",
+        name: "Missing",
+        definition: { ...definition, workflow },
+      }),
+    ).toThrow(ControlPlaneProfileError);
+    expect(
+      listControlPlaneProfiles(db, null, { cursor: null, limit: 10 }).profiles,
+    ).toEqual([]);
+    const first = createControlPlaneProfile(
+      db,
+      {
+        slug: "workflow",
+        name: "Workflow",
+        definition: { ...definition, workflow },
+      },
+      source,
+    );
+    const next = publishControlPlaneProfileVersion(
+      db,
+      first.profileId,
+      { ...definition, workflow: { ...workflow, revision: 2 } },
+      { ...source, revision: 2, script: "revision two" },
+    );
+    expect(getControlPlaneProfileWorkflow(db, first.versionId)?.script).toBe(
+      source.script,
+    );
+    expect(getControlPlaneProfileWorkflow(db, next.id)?.script).toBe(
+      "revision two",
+    );
+    const published = getControlPlaneProfile(
+      db,
+      null,
+      first.profileId,
+      first.versionId,
+    );
+    expect(published?.profile.strategy).toBe("workflow");
+    expect(published?.version.definition.workflow).toEqual(workflow);
+    expect(JSON.stringify(published)).not.toContain(source.script);
+    expect(() =>
+      publishControlPlaneProfileVersion(
+        db,
+        first.profileId,
+        { ...definition, workflow },
+        { ...source, revision: 3 },
+      ),
+    ).toThrow(ControlPlaneProfileError);
+    expect(
+      listControlPlaneProfileVersions(db, null, first.profileId, {
+        cursor: null,
+        limit: 10,
+      }).versions,
+    ).toHaveLength(2);
+  } finally {
+    db.$client.close();
+  }
+});

@@ -32,15 +32,18 @@ See the [delivery history](server-control-plane-history.md#p2--time-triggers-for
 and [P2 verification](control-plane-phase-87-verification.json).
 
 Project workflow execution now has an origin-free path with an explicit pinned
-profile, the registered project environment, and scoped history/replay. It is an
-advanced authoring path; publishing workflow-backed agents remains P3 below.
+profile, the registered project environment, and scoped history/replay. It remains an
+advanced authoring path. Administrators can now publish a private, immutable
+workflow revision snapshot as a background agent; users invoke it through the
+existing catalog and agent-runs API/SDK/CLI with bounded text input and native
+schema-checked JSON output. See [workflow agents](control-plane-workflow-agents.md)
+and [P3.2 verification](control-plane-phase-90-verification.json).
 See the [P3.1 verification record](control-plane-phase-88-verification.json).
 
 ### P3 — Workflow as an agent execution strategy
 
 Goal: an administrator publishes an agent whose background task uses a versioned workflow. Users still invoke an agent.
 
-- [ ] Bind an approved workflow definition revision to an immutable agent version. Validate bounded input/output. Start with background execution and retain workflow history/replay.
 - [ ] Resolve every workflow `agent()` step through a pinned approved profile and the saved user/project authority. Verify child thread/result/replay scope and revocation after restart.
 - [ ] Show workflow progress and child work in the agent run detail. Keep source editing in administrator or advanced authoring surfaces.
 

@@ -3705,3 +3705,43 @@ The Docker fixture releases completed idle owned worker runtimes before the
 browser to avoid accumulated test processes exhausting its 4 GiB VM. It retains
 history and active work. The final browser run has an OOM-kill count of zero.
 See [the UI verification record](control-plane-phase-89-verification.json).
+
+
+## P3.2 — Published background workflow agents
+
+Administrators can publish an enabled saved workflow definition revision as an
+immutable agent version, through the Server agents editor or the existing
+profiles API/SDK/CLI. A private source snapshot is stored atomically with the
+version; personal profile responses expose only its reference. Source edits or
+removal do not change an approved version. Agent/version enablement and grants
+remain the revocation controls.
+
+The catalog's Run task and existing limited agent-runs API/SDK/CLI choose the
+strategy from the approved version. A workflow task uses native workflow
+lifecycle, history, replay and results, with the saved user/project/profile
+binding and registered UID/HOME/cwd. No second run/result store is added.
+Idempotent admission survives restart and rejects mismatched input/version.
+The workflow declares text input and output schemas; input is capped at 128 KiB
+UTF-8 and JSON output at 1 MiB, with native validation before success.
+
+Workflow agents currently support manual background tasks. Chat and scheduling
+are rejected by admission and hidden in the catalog. The task detail shows the
+native status, readable result or bounded failure; its long native ID wraps on
+compact screens. Call history and replay retain the advanced workflow surface.
+Remaining P3 work is the per-step profile/authority/recovery audit and embedded
+phase/child progress; P3 is not complete.
+
+Verification passes 608 unique tests across 93 files, 11 typecheck tasks,
+changed-file lint and the full Docker composite (63/63, 711711 ms). The deployment
+publishes two revisions for Alice and Bob, invokes native workers under each
+UID/HOME/cwd, checks contracts/idempotency/foreign access, edits and removes the
+source, replays native history, and recovers result/request identity after
+restart. The production browser selects the workflow agent, runs a task and
+reads its result in desktop light/dark, mobile, increased text and landscape.
+
+The checks caught and fixed mobile overflow from a long workflow ID and a
+revoked-profile response regression affecting ordinary agents. Fixture cleanup
+also releases completed owned idle sessions after the browser, retaining primary
+fixture conversations and active jobs; the final after-browser OOM-kill count is
+zero. See [the workflow agent guide](control-plane-workflow-agents.md) and
+[verification record](control-plane-phase-90-verification.json).

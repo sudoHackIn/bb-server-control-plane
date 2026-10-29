@@ -395,6 +395,30 @@ thread ID; its native event history and result are stored once. These hidden
 threads do not appear in the conversation list and cannot accept chat sends.
 An `idle` status means the one-shot turn has finished; `error` means it failed.
 
+To publish a background workflow agent, include `workflow: {definitionId,
+revision}` in the profile definition JSON passed to `profiles create` or
+`profiles publish`. The administrator approves an enabled saved workflow
+revision; the service stores a private, immutable copy with that agent version.
+Editing or deleting the authoring definition does not change the published
+copy. Disable the agent/version or revoke its grants to prevent further work.
+The workflow must declare `meta.inputSchema` with `type: "string"` and a
+`meta.outputSchema`. Input is plain task text capped at 128 KiB UTF-8; the
+native workflow validates the schemas and caps JSON output at 1 MiB, 100,000
+nodes and depth 128. Definition default arguments are not used for agent tasks.
+
+Use the same `agent-runs start/list/get/status/result/cancel` commands and SDK
+methods for either strategy. Workflow tasks return `strategy: "workflow"`,
+`threadId: null` and `workflowRunId` equal to `runId`; their statuses are
+`queued`, `running`, `succeeded`, `failed` or `cancelled`. Read native call
+history with `workflows history <workflow-run-id>` or
+`workflows.history(workflowRunId)`. Workflow task `events`/`stream` return
+`409 workflow_history_required` because thread events use a different cursor.
+Native project workflow replay remains available through `workflows start
+--project ... --profile-version ... --resume <workflow-run-id>` with the same
+source/arguments. Replays remain advanced workflow runs. Chat and scheduling
+for workflow agents are not enabled in this slice.
+
+
 `threads events <thread-id> [--after <sequence>] [--limit 1..200]` reads a page
 of persisted native events in sequence order, exclusive of `after` (default 0).
 Continue using `cursor` while `hasMore`; this command is not a live stream.

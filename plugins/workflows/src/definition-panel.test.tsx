@@ -34,6 +34,7 @@ const defaults: PluginRpcTestHandlers<typeof workflowDefinitionRpcContract> = {
   controlPlaneDefinitionCreate: unexpected,
   controlPlaneDefinitions: unexpected,
   controlPlaneDefinitionGet: unexpected,
+  controlPlaneDefinitionApprove: unexpected,
   controlPlaneDefinitionUpdate: unexpected,
   controlPlaneDefinitionEnabled: unexpected,
   controlPlaneDefinitionRemove: unexpected,

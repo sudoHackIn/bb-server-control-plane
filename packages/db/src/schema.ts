@@ -524,6 +524,18 @@ export const controlPlaneProfileVersions = sqliteTable(
   ],
 );
 
+export const controlPlaneProfileWorkflows = sqliteTable(
+  "control_plane_profile_workflows",
+  {
+    profileVersionId: text("profile_version_id")
+      .primaryKey()
+      .references(() => controlPlaneProfileVersions.id),
+    definitionId: text("definition_id").notNull(),
+    revision: integer("revision").notNull(),
+    script: text("script").notNull(),
+  },
+);
+
 export const controlPlaneProfileAccess = sqliteTable(
   "control_plane_profile_access",
   {

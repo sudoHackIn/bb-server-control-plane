@@ -26,6 +26,8 @@ import { withControlPlaneUser } from "./access.js";
 type Operation =
   | "controlPlaneDefinitionCreate"
   | "controlPlaneDefinitions"
+  | "controlPlaneDefinitionApprove"
+  | "controlPlaneAgentWorkflowStart"
   | "controlPlaneDefinitionGet"
   | "controlPlaneDefinitionUpdate"
   | "controlPlaneDefinitionEnabled"
@@ -76,6 +78,15 @@ export function createControlPlaneWorkflowRpc(
       input,
       { kind: "client" },
     );
+    if (
+      !result.ok &&
+      result.error.message.includes("Workflow agent idempotency conflict")
+    )
+      throw new ApiError(
+        409,
+        "idempotency_conflict",
+        "Idempotency key was used for another request",
+      );
     if (!result.ok)
       throw new ApiError(
         400,
@@ -157,6 +168,62 @@ export function createControlPlaneWorkflowService(
   }
   return {
     definitions: createControlPlaneWorkflowDefinitions(db, rpc),
+    async approveDefinition(input: { definitionId: string; revision: number }) {
+      return z
+        .object({
+          definitionId: z.string(),
+          revision: z.number().int().positive(),
+          script: z.string().max(524288),
+        })
+        .strict()
+        .parse(
+          await rpc("controlPlaneDefinitionApprove", {
+            id: input.definitionId,
+            revision: input.revision,
+          }),
+        );
+    },
+    async startAgent(
+      userId: string,
+      input: {
+        runId: string;
+        projectId: string;
+        profileVersionId: string;
+        script: string;
+        args: string;
+      },
+    ) {
+      const row = controlPlaneWorkflowRunSchema.parse(
+        await withControlPlaneUser(userId, () =>
+          rpc("controlPlaneAgentWorkflowStart", input),
+        ),
+      );
+      if (row.id !== input.runId)
+        throw new ApiError(
+          502,
+          "workflow_contract_error",
+          "Invalid workflow identity",
+        );
+      return checked(userId, row);
+    },
+    async find(userId: string, runId: string) {
+      const value = z
+        .object({ run: controlPlaneWorkflowRunSchema.nullable() })
+        .strict()
+        .parse(
+          await withControlPlaneUser(userId, () =>
+            rpc("controlPlaneWorkflowGet", { runId }),
+          ),
+        );
+      if (!value.run) return null;
+      if (value.run.id !== runId)
+        throw new ApiError(
+          502,
+          "workflow_contract_error",
+          "Invalid workflow identity",
+        );
+      return checked(userId, value.run);
+    },
     get,
     async start(userId: string, input: ControlPlaneWorkflowStart) {
       const context =

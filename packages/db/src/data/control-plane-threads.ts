@@ -1,5 +1,6 @@
 import { getControlPlaneUidMaintenance } from "./control-plane-uid-maintenance.js";
 import {
+  controlPlaneProfileDefinitionSchema,
   CONTROL_PLANE_AUTOMATIONS_PLUGIN_ID,
   CONTROL_PLANE_WORKFLOWS_PLUGIN_ID,
 } from "@bb/domain";
@@ -266,7 +267,10 @@ export function resolveControlPlaneQwenContext(
         sessionId: input.sessionId,
         profile: {
           versionId: context.profileVersion.id,
-          definition: context.profileVersion.definition,
+          definition: controlPlaneProfileDefinitionSchema
+            .omit({ workflow: true })
+            .strip()
+            .parse(context.profileVersion.definition),
         },
       };
     },

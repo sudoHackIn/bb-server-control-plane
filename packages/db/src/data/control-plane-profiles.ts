@@ -8,6 +8,7 @@ import {
 } from "@bb/domain";
 import type { DbConnection, DbQueryConnection } from "../connection.js";
 import {
+  controlPlaneProfileWorkflows as workflows,
   controlPlaneProfiles as profiles,
   controlPlaneProfileVersions as versions,
   controlPlaneProfileAccess as access,
@@ -28,6 +29,11 @@ function catalog(db: DbQueryConnection, userId: string | null) {
       slug: profiles.slug,
       name: profiles.name,
       enabled: profiles.enabled,
+      strategy: sql<
+        "conversation" | "workflow"
+      >`CASE WHEN json_extract(${versions.definition}, '$.workflow') IS NULL THEN 'conversation' ELSE 'workflow' END`.as(
+        "strategy",
+      ),
       createdAt: profiles.createdAt,
       latestVersionId: sql<string>`${versions.id}`.as("latest_version_id"),
       latestVersion: sql<number>`${versions.version}`.as("latest_version"),
@@ -113,6 +119,11 @@ export function createControlPlaneProfile(
     name: string;
     definition: ControlPlaneProfileDefinition;
   },
+  workflow: {
+    definitionId: string;
+    revision: number;
+    script: string;
+  } | null = null,
 ) {
   const parsed = controlPlaneProfileCreateSchema.parse(input);
   return db.transaction(
@@ -139,6 +150,7 @@ export function createControlPlaneProfile(
         })
         .returning()
         .get();
+      saveWorkflow(tx, version.id, parsed.definition, workflow);
       return { profileId: id, versionId: version.id };
     },
     { behavior: "immediate" },
@@ -149,6 +161,11 @@ export function publishControlPlaneProfileVersion(
   db: DbConnection,
   profileId: string,
   definition: ControlPlaneProfileDefinition,
+  workflow: {
+    definitionId: string;
+    revision: number;
+    script: string;
+  } | null = null,
 ) {
   const parsed = controlPlaneProfilePublicationSchema.parse(definition);
   return db.transaction(
@@ -161,7 +178,7 @@ export function publishControlPlaneProfileVersion(
         .limit(1)
         .get();
       if (!last) throw new ControlPlaneProfileError();
-      return tx
+      const version = tx
         .insert(versions)
         .values({
           id: randomUUID(),
@@ -173,6 +190,8 @@ export function publishControlPlaneProfileVersion(
         })
         .returning()
         .get();
+      saveWorkflow(tx, version.id, parsed, workflow);
+      return version;
     },
     { behavior: "immediate" },
   );
@@ -297,4 +316,35 @@ export function listControlPlaneProfileVersions(
         ? (found[options.limit - 1]?.version ?? null)
         : null,
   };
+}
+
+function saveWorkflow(
+  db: DbQueryConnection,
+  profileVersionId: string,
+  definition: ControlPlaneProfileDefinition,
+  workflow: { definitionId: string; revision: number; script: string } | null,
+) {
+  if (!definition.workflow && !workflow) return;
+  if (
+    !workflow ||
+    workflow.definitionId !== definition.workflow?.definitionId ||
+    workflow.revision !== definition.workflow.revision
+  )
+    throw new ControlPlaneProfileError();
+  db.insert(workflows)
+    .values({ profileVersionId, ...workflow })
+    .run();
+}
+
+export function getControlPlaneProfileWorkflow(
+  db: DbQueryConnection,
+  profileVersionId: string,
+) {
+  return (
+    db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.profileVersionId, profileVersionId))
+      .get() ?? null
+  );
 }

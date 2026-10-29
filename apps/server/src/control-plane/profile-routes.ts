@@ -18,6 +18,7 @@ import {
   isSqliteUniqueConstraintOnColumns,
   type DbConnection,
 } from "@bb/db";
+import type { ControlPlaneWorkflowService } from "./workflows.js";
 import { currentControlPlanePrincipal } from "./access.js";
 
 const pageSchema = z
@@ -33,7 +34,21 @@ export function installControlPlaneProfileRoutes(
   app: Hono,
   db: DbConnection,
   authenticate: (context: Context) => { user: { id: string } } | null,
+  workflows?: ControlPlaneWorkflowService,
 ) {
+  async function approve(
+    input: { definitionId: string; revision: number } | undefined,
+  ) {
+    if (!input) return null;
+    if (!workflows) throw new ControlPlaneProfileError();
+    const result = await workflows.approveDefinition(input);
+    if (
+      result.definitionId !== input.definitionId ||
+      result.revision !== input.revision
+    )
+      throw new ControlPlaneProfileError();
+    return result;
+  }
   const admin = "/control-plane/admin/profiles";
   const user = "/control-plane/user/profiles";
   app.use(`${admin}/*`, controlPlaneBodyLimit(1048576));
@@ -134,7 +149,11 @@ export function installControlPlaneProfileRoutes(
       );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
-      const result = createControlPlaneProfile(db, parsed.data);
+      const result = createControlPlaneProfile(
+        db,
+        parsed.data,
+        await approve(parsed.data.definition.workflow),
+      );
       return context.json(
         getControlPlaneProfile(db, null, result.profileId),
         201,
@@ -155,6 +174,7 @@ export function installControlPlaneProfileRoutes(
         db,
         profileId,
         parsed.data.definition,
+        await approve(parsed.data.definition.workflow),
       );
       return context.json(
         getControlPlaneProfile(db, null, profileId, version.id),

@@ -13,6 +13,13 @@ const identifiers = z
 export const controlPlaneProfileDefinitionSchema = z
   .object({
     purpose: z.string().trim().min(1).max(280).optional(),
+    workflow: z
+      .object({
+        definitionId: z.string().regex(/^wfd_[A-Za-z0-9-]{1,100}$/u),
+        revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      })
+      .strict()
+      .optional(),
     prompt: z.string().max(131072),
     providerId: z.literal("qwen-server"),
     model: z.string().trim().min(1).max(200),
@@ -106,6 +113,7 @@ export const controlPlaneProfileSummarySchema = z.object({
   createdAt: z.number(),
   latestVersionId: z.string().uuid(),
   latestVersion: z.number().int().positive(),
+  strategy: z.enum(["conversation", "workflow"]).default("conversation"),
 });
 
 export const controlPlaneProfileVersionSchema = z.object({

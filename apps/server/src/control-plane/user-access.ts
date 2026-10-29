@@ -1,3 +1,4 @@
+import { createControlPlaneAgentWorkflowService } from "./agent-workflows.js";
 import {
   installControlPlaneMcpRoutes,
   isControlPlaneMcpPath,
@@ -172,7 +173,12 @@ export function createControlPlaneUserAccess(
       browser.install(app, signOutAdministrator);
       if (automations)
         installControlPlaneAutomationRoutes(app, automations, authenticate);
-      installControlPlaneProfileRoutes(app, registry.db, authenticate);
+      installControlPlaneProfileRoutes(
+        app,
+        registry.db,
+        authenticate,
+        workflows,
+      );
       if (mcp)
         installControlPlaneMcpRoutes(app, registry.db, mcp, authenticate);
       if (threads)
@@ -181,6 +187,13 @@ export function createControlPlaneUserAccess(
           threads,
           authenticate,
           automations,
+          workflows
+            ? createControlPlaneAgentWorkflowService(
+                registry.db,
+                threads,
+                workflows,
+              )
+            : undefined,
         );
       if (workflows) {
         installControlPlaneWorkflowRoutes(app, workflows, authenticate);

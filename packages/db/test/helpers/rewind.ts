@@ -1,6 +1,7 @@
 import type { DbConnection } from "../../src/index.js";
 
 export function dropUidMaintenanceSchemaForRewind(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS control_plane_profile_workflows");
   db.$client.exec(
     "DROP TABLE IF EXISTS control_plane_project_maintenance; DROP TABLE IF EXISTS control_plane_uid_maintenance",
   );
@@ -9,9 +10,10 @@ export function dropUidMaintenanceSchemaForRewind(db: DbConnection): void {
 export function dropProjectPolicySchemaForRewind(db: DbConnection): void {
   dropUidMaintenanceSchemaForRewind(db);
   const triggers = db.$client
-    .prepare<[], { name: string }>(
-      "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'cp_project_policy_%'",
-    )
+    .prepare<
+      [],
+      { name: string }
+    >("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'cp_project_policy_%'")
     .all();
   for (const trigger of triggers)
     db.$client.exec(`DROP TRIGGER "${trigger.name.replaceAll('"', '""')}"`);

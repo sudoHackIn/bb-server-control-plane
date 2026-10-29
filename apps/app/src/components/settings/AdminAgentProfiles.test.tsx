@@ -170,3 +170,65 @@ it("publishes an agent version and grants a registered user through the limited 
   );
   query.clear();
 });
+
+it("publishes a workflow revision reference without sending editable source", async () => {
+  const posted: object[] = [];
+  const query = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const client = createControlPlaneClient({
+    origin: "https://bb.example",
+    fetch: async (_input, init) => {
+      if (init?.method === "POST") {
+        const value: object = JSON.parse(String(init.body));
+        posted.push(value);
+        return Response.json(
+          { error: "test-publication-captured" },
+          { status: 400 },
+        );
+      }
+      return Response.json({ profiles: [], nextCursor: null });
+    },
+  });
+  try {
+    render(
+      <QueryClientProvider client={query}>
+        <AdminAgentProfiles client={client} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Manage server agents" }),
+    );
+    await screen.findByRole("form", { name: "Agent editor" });
+    fireEvent.change(screen.getByLabelText("Slug"), {
+      target: { value: "workflow-agent" },
+    });
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Workflow agent" },
+    });
+    fireEvent.change(screen.getByLabelText("Purpose"), {
+      target: { value: "Convert a document" },
+    });
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "qwen-test" },
+    });
+    fireEvent.change(screen.getByLabelText("Execution strategy"), {
+      target: { value: "workflow" },
+    });
+    fireEvent.change(screen.getByLabelText("Workflow definition ID"), {
+      target: { value: "wfd_fixture" },
+    });
+    fireEvent.change(screen.getByLabelText("Workflow revision"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create agent" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({
+      definition: { workflow: { definitionId: "wfd_fixture", revision: 2 } },
+    });
+    expect(JSON.stringify(posted)).not.toContain("script");
+  } finally {
+    cleanup();
+    query.clear();
+  }
+});

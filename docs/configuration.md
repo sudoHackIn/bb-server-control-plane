@@ -1856,3 +1856,16 @@ are rejected; Qwen model credentials are not passed to scripts. The Docker lab
 enables this primitive. Managed Automations and personal APIs still reject script
 definitions pending their bounded server runner and durable lifecycle integration.
 See `docs/control-plane-script-runtime.md` for installation, limits and checks.
+
+
+Published workflow agent profiles may include `workflow: {definitionId, revision}`.
+Only administrators can publish the enabled saved revision. Publication stores
+its source in `control_plane_profile_workflows`, keyed by immutable profile
+version; personal profile responses contain the reference without the source.
+Editing/removing a saved definition does not revoke an already approved version.
+Use profile/version enablement and grants for revocation. Workflows require a
+text input schema and an output schema; manual task input is capped at 128 KiB
+UTF-8 and native JSON output at 1 MiB. The existing limited agent-runs API/SDK/CLI
+selects the strategy. Workflow agents currently support manual background tasks;
+chat and scheduler dispatch are rejected. Native history/replay remains under
+the limited workflows surface. No additional runtime configuration is required.

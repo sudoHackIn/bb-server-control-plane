@@ -357,6 +357,15 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
         : null;
       if (!profile)
         throw new ApiError(404, "profile_not_found", "Profile not found");
+      if (
+        profile.version.definition.workflow &&
+        (!worker || job?.binding.kind !== "workflow-worker")
+      )
+        throw new ApiError(
+          409,
+          "agent_is_background_only",
+          "This agent runs background tasks",
+        );
       const environment = deps.db
         .select()
         .from(environments)

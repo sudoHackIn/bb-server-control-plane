@@ -513,3 +513,75 @@ it("runs without an origin under pinned managed authority and settles notificati
     await test.harness.dispose();
   }
 });
+
+it("admits workflow agents idempotently under a pinned profile and rechecks authority on retry", async () => {
+  const test = fixture();
+  try {
+    const input = {
+      ...test.input,
+      originThreadId: null,
+      profileVersionId: test.profileVersionId,
+      runId: `wfa_${"a".repeat(64)}`,
+      args: "task",
+    };
+    const runs = await Promise.all(
+      Array.from({ length: 4 }, () => test.service.start(input)),
+    );
+    expect(new Set(runs.map((run) => run.id))).toEqual(new Set([input.runId]));
+    expect(test.bindings.size).toBe(1);
+    const restarted = createWorkflowService(test.bb, test.db);
+    expect((await restarted.start(input)).id).toBe(input.runId);
+    await expect(
+      restarted.start({ ...input, args: "changed" }),
+    ).rejects.toThrow("idempotency conflict");
+    await expect(
+      restarted.start({ ...input, profileVersionId: randomUUID() }),
+    ).rejects.toThrow("idempotency conflict");
+    const guard = vi
+      .spyOn(test.authority, "withAuthority")
+      .mockImplementation(() => {
+        throw new Error("revoked");
+      });
+    await expect(restarted.start(input)).rejects.toThrow("revoked");
+    guard.mockRestore();
+  } finally {
+    await test.harness.dispose();
+  }
+});
+
+it.each([
+  { value: "invalid", error: "Workflow result is invalid" },
+  { value: "x".repeat(1024 * 1024 + 1), error: "byte limit" },
+])(
+  "persists workflow contract failures instead of publishing an unchecked result: $error",
+  async ({ value, error }) => {
+    const test = fixture();
+    const controller = new AbortController();
+    let worker: Promise<void> | undefined;
+    try {
+      vi.spyOn(test.authority, "evaluateWorkflow").mockResolvedValue(value);
+      const input = {
+        ...test.input,
+        source:
+          'export const meta={name:"contract",description:"Validate result",inputSchema:{type:"string",maxLength:4},outputSchema:{type:"number"}};return 42;',
+        originThreadId: null,
+        profileVersionId: test.profileVersionId,
+      };
+      await expect(
+        test.service.start({ ...input, args: "too long" }),
+      ).rejects.toThrow("Workflow args are invalid");
+      const run = await test.service.start({ ...input, args: "task" });
+      test.setCaller(null);
+      worker = test.service.runWorker(controller.signal);
+      await vi.waitFor(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+      );
+      expect(getRunRequired(test.db, run.id).error).toContain(error);
+      expect(getRunRequired(test.db, run.id).resultJson).toBeNull();
+    } finally {
+      controller.abort();
+      await worker;
+      await test.harness.dispose();
+    }
+  },
+);

@@ -75,7 +75,9 @@ export function PersonalConversationComposer({
   });
   const availableProfiles = profiles.isError
     ? []
-    : (profiles.data?.pages.flatMap((page) => page.profiles) ?? []);
+    : (profiles.data?.pages.flatMap((page) =>
+        page.profiles.filter((profile) => profile.strategy !== "workflow"),
+      ) ?? []);
   const selectedProfile = availableProfiles.find(
     (profile) => profile.id === (profileId ?? availableProfiles[0]?.id),
   );

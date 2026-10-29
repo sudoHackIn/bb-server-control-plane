@@ -257,6 +257,7 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 interface StartWorkflowInput {
+  runId?: string;
   sourceBindingId?: string;
   projectId: string;
   originThreadId: string | null;
@@ -591,7 +592,48 @@ export function createWorkflowService(
     };
   }
 
+  const agentAdmissions = new Map<string, Promise<WorkflowRunRow>>();
   async function start(input: StartWorkflowInput): Promise<WorkflowRunRow> {
+    if (input.runId === undefined) return startNew(input);
+    const prior = agentAdmissions.get(input.runId);
+    const admission = prior
+      ? prior.catch(() => {}).then(() => startNew(input))
+      : startNew(input);
+    agentAdmissions.set(input.runId, admission);
+    try {
+      return await admission;
+    } finally {
+      if (agentAdmissions.get(input.runId) === admission)
+        agentAdmissions.delete(input.runId);
+    }
+  }
+
+  async function startNew(input: StartWorkflowInput): Promise<WorkflowRunRow> {
+    if (input.runId !== undefined) {
+      if (
+        !backgroundJobs ||
+        backgroundJobs.userId === null ||
+        !/^wfa_[a-f0-9]{64}$/u.test(input.runId) ||
+        input.originThreadId !== null ||
+        input.resumedFromRunId !== null
+      )
+        throw new Error("Invalid workflow agent admission");
+      const previous = visibleRun(input.runId);
+      if (previous) {
+        const saved = bindingFor(previous);
+        if (
+          !saved ||
+          saved.ownerUserId !== backgroundJobs.userId ||
+          saved.profileVersionId !== input.profileVersionId ||
+          previous.projectId !== input.projectId ||
+          previous.source !== input.source ||
+          previous.argsJson !== JSON.stringify(input.args)
+        )
+          throw new Error("Workflow agent idempotency conflict");
+        backgroundJobs.withAuthority(saved.id, () => {});
+        return previous;
+      }
+    }
     const parsed = parseWorkflowSource(input.source);
     assertBoundedJson(input.args, "Workflow args", VALUE_LIMITS);
     if (parsed.metadata.inputSchema !== null) {
@@ -663,7 +705,7 @@ export function createWorkflowService(
         );
       }
     }
-    const runId = createWorkflowRunId();
+    const runId = input.runId ?? createWorkflowRunId();
     const binding = backgroundJobs
       ? await backgroundJobs.bind({
           kind: "workflow-run",
@@ -713,7 +755,10 @@ export function createWorkflowService(
           originModel: origin.model,
           originReasoningLevel: origin.reasoningLevel,
           originPermissionMode: origin.permissionMode,
-          name: parsed.metadata.name,
+          name:
+            input.runId && typeof input.args === "string"
+              ? input.args.trim().slice(0, 120)
+              : parsed.metadata.name,
           source: input.source,
           sourceHash: createHash("sha256").update(input.source).digest("hex"),
           argsJson: JSON.stringify(input.args),
@@ -1831,6 +1876,7 @@ export function createWorkflowService(
               },
             });
       if (shuttingDown && signal.aborted) return;
+      assertBoundedJson(result, "Workflow result", VALUE_LIMITS);
       if (parsed.metadata.outputSchema !== null) {
         const validation = validateValue(parsed.metadata.outputSchema, result);
         if (!validation.valid) {

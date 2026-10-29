@@ -11,6 +11,7 @@ import {
 import { managedWorkflowRunSchema, workflowRunSummary } from "./managed-api.js";
 import { assertBoundedJson } from "./schema.js";
 import { toJsonValue } from "./json-value.js";
+import { parseWorkflowSource } from "./parser.js";
 const id = z.string().min(1).max(200);
 const revision = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 const content = { script: z.string().min(1).max(524288), args: z.unknown() };
@@ -44,6 +45,12 @@ export const workflowDefinitionRpcContract = defineRpcContract({
     input: z.object({ ids: z.array(id).max(50) }).strict(),
     output: z
       .object({ definitions: z.array(definitionSummarySchema).max(50) })
+      .strict(),
+  },
+  controlPlaneDefinitionApprove: {
+    input: z.object({ id, revision }).strict(),
+    output: z
+      .object({ definitionId: id, revision, script: content.script })
       .strict(),
   },
   controlPlaneDefinitionGet: {
@@ -88,6 +95,29 @@ export function registerWorkflowDefinitionApi(
     controlPlaneDefinitions: ({ ids }) => ({
       definitions: definitions.summaries(ids),
     }),
+    controlPlaneDefinitionApprove: ({ id, revision }) => {
+      if (bb.server.internal_DO_NOT_USE_backgroundJobs?.userId !== null)
+        throw new Error(
+          "Workflow publication requires administrator authority",
+        );
+      const saved = definitions.get(id, revision);
+      if (!saved.enabled) throw new Error("Workflow definition is disabled");
+      const parsed = parseWorkflowSource(saved.script);
+      if (
+        !parsed.metadata.inputSchema ||
+        typeof parsed.metadata.inputSchema !== "object" ||
+        parsed.metadata.inputSchema.type !== "string" ||
+        !parsed.metadata.outputSchema
+      )
+        throw new Error(
+          "Workflow agents require a text inputSchema and an outputSchema",
+        );
+      return {
+        definitionId: saved.id,
+        revision: saved.revision,
+        script: saved.script,
+      };
+    },
     controlPlaneDefinitionGet: (input) =>
       definitions.get(input.id, input.revision),
     controlPlaneDefinitionUpdate: ({ id, ...input }) =>

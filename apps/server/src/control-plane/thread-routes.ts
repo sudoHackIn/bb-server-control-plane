@@ -16,6 +16,8 @@ import {
   controlPlaneAgentRunStartSchema,
 } from "@bb/domain";
 import { ControlPlaneThreadError } from "@bb/db";
+import type { ControlPlaneAgentWorkflowService } from "./agent-workflows.js";
+import { ApiError } from "../errors.js";
 import type { ControlPlaneThreadService } from "./threads.js";
 import type { ControlPlaneAutomationService } from "./automations.js";
 
@@ -63,6 +65,7 @@ export function installControlPlaneThreadRoutes(
   service: ControlPlaneThreadService,
   authenticate: (context: Context) => { user: { id: string } } | null,
   automations?: ControlPlaneAutomationService,
+  workflowAgents?: ControlPlaneAgentWorkflowService,
 ) {
   const base = "/control-plane/user/threads";
   app.use(`${base}/*`, async (context, next) => {
@@ -91,15 +94,19 @@ export function installControlPlaneThreadRoutes(
     };
   app.get(
     runBase,
-    handled((context, userId) => {
+    handled(async (context, userId) => {
       const parsed = page.safeParse(context.req.query());
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
       return context.json(
-        service.listRuns(userId, {
+        await (workflowAgents?.list(userId, {
           ...parsed.data,
           cursor: parsed.data.cursor ?? null,
-        }),
+        }) ??
+          service.listRuns(userId, {
+            ...parsed.data,
+            cursor: parsed.data.cursor ?? null,
+          })),
       );
     }),
   );
@@ -111,19 +118,34 @@ export function installControlPlaneThreadRoutes(
       );
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
-      return context.json(await service.startRun(userId, parsed.data), 201);
+      return context.json(
+        await (workflowAgents?.start(userId, parsed.data) ??
+          service.startRun(userId, parsed.data)),
+        201,
+      );
     }),
   );
   app.get(
     `${runBase}/:id`,
-    handled((context, userId) =>
-      context.json(service.run(userId, context.req.param("id") ?? "")),
+    handled(async (context, userId) =>
+      context.json(
+        await (workflowAgents?.get(userId, context.req.param("id") ?? "") ??
+          service.run(userId, context.req.param("id") ?? "")),
+      ),
     ),
   );
   app.get(
     `${runBase}/:id/events`,
-    handled((context, userId) => {
+    handled(async (context, userId) => {
       const id = context.req.param("id") ?? "";
+      if (workflowAgents?.isWorkflow(id)) {
+        await workflowAgents.get(userId, id);
+        throw new ApiError(
+          409,
+          "workflow_history_required",
+          "Use workflow history for this task",
+        );
+      }
       service.run(userId, id);
       const parsed = eventPage.safeParse(context.req.query());
       if (!parsed.success)
@@ -133,8 +155,10 @@ export function installControlPlaneThreadRoutes(
   );
   app.get(
     `${runBase}/:id/result`,
-    handled((context, userId) => {
+    handled(async (context, userId) => {
       const id = context.req.param("id") ?? "";
+      if (workflowAgents)
+        return context.json(await workflowAgents.result(userId, id));
       const run = service.run(userId, id);
       return context.json({ run, text: service.result(userId, id).text });
     }),
@@ -145,6 +169,8 @@ export function installControlPlaneThreadRoutes(
       if (!hasControlPlaneEmptyBody(context))
         return context.json({ error: "invalid_request" }, 400);
       const id = context.req.param("id") ?? "";
+      if (workflowAgents?.isWorkflow(id))
+        return context.json(await workflowAgents.cancel(userId, id));
       service.run(userId, id);
       const target = service.runAutomation(userId, id);
       if (target) {
@@ -158,8 +184,16 @@ export function installControlPlaneThreadRoutes(
   );
   app.get(
     `${runBase}/:id/stream`,
-    handled((context, userId) => {
+    handled(async (context, userId) => {
       const id = context.req.param("id") ?? "";
+      if (workflowAgents?.isWorkflow(id)) {
+        await workflowAgents.get(userId, id);
+        throw new ApiError(
+          409,
+          "workflow_history_required",
+          "Use workflow history for this task",
+        );
+      }
       service.run(userId, id);
       const parsed = z
         .object({ after: z.coerce.number().int().nonnegative().default(0) })

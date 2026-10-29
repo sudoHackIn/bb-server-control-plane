@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyPublishedWorkflowAgents } from "./check-control-plane-workflow-agents.mjs";
 import { verifyNativeAutomations } from "./check-control-plane-automations.mjs";
 import { verifyNativeWorkflows } from "./check-control-plane-workflows.mjs";
 import { verifyExternalBrowser } from "./check-control-plane-browser-handshake.mjs";
@@ -691,6 +692,16 @@ export function createUserThreadFixture({ db, users }) {
         userCommand: command,
       });
 
+      const workflowAgents = await verifyPublishedWorkflowAgents({
+        subjects: created,
+        userRequest: (login, path, options = {}) =>
+          send(path, { ...options, token: sessions.get(login).token }),
+        userCommand: command,
+        sendAdmin,
+        adminToken,
+        wait,
+        db,
+      });
       const automations = await verifyNativeAutomations({
         launch,
         signal,
@@ -703,31 +714,36 @@ export function createUserThreadFixture({ db, users }) {
         userRequest: (login, path, options = {}) =>
           send(path, { ...options, token: sessions.get(login).token }),
       });
-      let releasedIdleWorkers = 0;
-      for (const { user } of created) {
-        const idle = db
-          .prepare(
-            "SELECT t.id FROM threads t JOIN control_plane_threads c ON c.thread_id=t.id WHERE c.owner_user_id=? AND t.provider_id='qwen-server' AND t.status='idle' AND t.deleted_at IS NULL AND (c.run_source='manual' OR c.job_binding_id IS NOT NULL)",
-          )
-          .all(user.id);
-        for (const thread of idle) {
-          const released = await send(
-            `/control-plane/user/threads/${thread.id}/stop`,
-            { token: sessions.get(user.login).token, method: "POST" },
-          );
-          assert.ok(
-            [200, 404].includes(released.status),
-            JSON.stringify(released.body),
-          );
-          if (released.status === 200) releasedIdleWorkers++;
+      async function releaseIdleSessions(afterBrowser) {
+        let releasedIdleWorkers = 0;
+        for (const { user, thread: primaryThread } of created) {
+          const idle = db
+            .prepare(
+              "SELECT t.id FROM threads t JOIN control_plane_threads c ON c.thread_id=t.id WHERE c.owner_user_id=? AND t.provider_id='qwen-server' AND t.status='idle' AND t.deleted_at IS NULL AND (c.run_source='manual' OR c.job_binding_id IS NOT NULL OR (?=1 AND t.id<>?))",
+            )
+            .all(user.id, afterBrowser ? 1 : 0, primaryThread.id);
+          for (const thread of idle) {
+            const released = await send(
+              `/control-plane/user/threads/${thread.id}/stop`,
+              { token: sessions.get(user.login).token, method: "POST" },
+            );
+            assert.ok(
+              [200, 404].includes(released.status),
+              JSON.stringify(released.body),
+            );
+            if (released.status === 200) releasedIdleWorkers++;
+          }
         }
+        console.log(
+          JSON.stringify({
+            controlPlaneStage: afterBrowser
+              ? "personal-idle-sessions-released-after-browser"
+              : "personal-idle-workers-released-before-browser",
+            count: releasedIdleWorkers,
+          }),
+        );
       }
-      console.log(
-        JSON.stringify({
-          controlPlaneStage: "personal-idle-workers-released-before-browser",
-          count: releasedIdleWorkers,
-        }),
-      );
+      await releaseIdleSessions(false);
       const productionBrowser = await verifyExternalBrowser({
         origin,
         signal,
@@ -741,6 +757,7 @@ export function createUserThreadFixture({ db, users }) {
           messageSeq,
         })),
       });
+      await releaseIdleSessions(true);
       if (process.env.BB_CONTROL_PLANE_BROWSER_TEST === "1") {
         const proof = JSON.parse(
           await readFile(`${alice.user.home}/bb-personal-browser.json`, "utf8"),
@@ -1157,12 +1174,14 @@ export function createUserThreadFixture({ db, users }) {
         workflows,
         automations,
         manualRuns,
+        workflowAgents,
       };
       return {
         ...productionBrowser,
         ...inputLimits,
         ...jobBindings,
         ...workflows.verification,
+        ...workflowAgents.verification,
         ...automations.verification,
         personalThreadCertificateCliAndFreshEnvironment: true,
         personalManualAgentRunsTwoUids: true,
@@ -1251,7 +1270,10 @@ export function createUserThreadFixture({ db, users }) {
       const { command, alice, wait, shutdownStream, bindingCheck, manualRuns } =
         saved;
       const jobBindingRestart = await bindingCheck("resume");
-      const workflowRestart = await saved.workflows.afterRestart();
+      const workflowRestart = {
+        ...(await saved.workflows.afterRestart()),
+        ...(await saved.workflowAgents.afterRestart()),
+      };
       const automationRestart = await saved.automations.afterRestart();
       assert.notEqual((await shutdownStream.done)[0], 0);
       assert.equal(

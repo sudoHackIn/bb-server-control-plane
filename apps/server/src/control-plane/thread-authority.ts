@@ -2,6 +2,7 @@ import {
   ControlPlaneThreadError,
   getControlPlaneProjectOwner,
   getEnvironment,
+  requireControlPlaneJobDispatch,
   requireControlPlaneThreadOwner,
   type DbQueryConnection,
 } from "@bb/db";
@@ -59,6 +60,13 @@ export function controlPlaneThreadOwnerForCreate(
       ],
     });
     if (!context) throw new ControlPlaneThreadError();
+    if (
+      context.profileVersion.definition.workflow &&
+      (!request.controlPlaneJobBindingId ||
+        requireControlPlaneJobDispatch(db, request.controlPlaneJobBindingId)
+          .binding.kind !== "workflow-worker")
+    )
+      throw new ControlPlaneThreadError();
     const environment = request.environment;
     if (environment.type === "reuse") {
       const existing = getEnvironment(db, environment.environmentId);

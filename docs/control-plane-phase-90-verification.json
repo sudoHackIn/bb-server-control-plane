@@ -1,0 +1,67 @@
+{
+  "scope": "P3 first backlog item: immutable published workflow-agent strategy",
+  "increment": "P3.2",
+  "changes": {
+    "administratorApprovesExactSavedRevision": true,
+    "privateSourceSnapshotAtomicWithProfileVersion": true,
+    "textInputSchemaAndOutputSchemaRequired": true,
+    "inputUtf8ByteLimit": 131072,
+    "nativeJsonOutputByteLimit": 1048576,
+    "existingAgentRunApiSdkCliAndCatalogUsed": true,
+    "nativeWorkflowPersistenceHistoryAndReplayReused": true,
+    "requestIdentityPinnedToUserProjectProfile": true,
+    "crossStrategyAndNativeIdempotentAdmission": true,
+    "chatAndScheduleAdmissionRejectWorkflowStrategy": true,
+    "longWorkflowTaskIdWrapsOnCompactScreens": true
+  },
+  "verification": {
+    "uniqueTestsPassed": 608,
+    "testFilesPassed": 93,
+    "testsByPackage": {
+      "domain": 3,
+      "sdk": 13,
+      "dbIncludingMigrationRegressions": 103,
+      "server": 151,
+      "workflowsPlugin": 286,
+      "app": 52
+    },
+    "typecheckTurboTasksPassed": 11,
+    "changedFileLintPassed": true,
+    "gitDiffCheckPassed": true,
+    "dockerStatus": "passed",
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-workflow-agent-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 711711,
+    "productionBrowserPassed": true,
+    "restartAndCrashRecoveryPassed": true,
+    "nativeWorkflowAgentProofs": {
+      "productionBrowserRenderingVerified": true,
+      "publishedWorkflowAgentCatalogTaskResultBrowser": true,
+      "publishedWorkflowAgentsNativeUidHomeCwdTwoUsers": true,
+      "publishedWorkflowAgentsPinnedSourceAndContracts": true,
+      "publishedWorkflowAgentsIdempotencyAndForeignAccessDenied": true,
+      "publishedWorkflowAgentsNativeHistoryAndReplay": true,
+      "publishedWorkflowAgentsIdentityAndResultAfterRestart": true
+    },
+    "compactAndLargeTextOverflowPassed": true,
+    "oomKillCountAfterBrowser": 0,
+    "preBrowserOwnedIdleStopRequestsSucceeded": 27,
+    "postBrowserOwnedIdleStopRequestsSucceeded": 55
+  },
+  "limitations": [
+    "P3 remains active: published-agent per-step selection/revocation/recovery audit and embedded child/phase progress are separate slices.",
+    "Workflow agents currently accept plain text manual background tasks. Chat and scheduling are rejected.",
+    "Native workflow calls use their existing history cursor; agent task thread events/stream return workflow_history_required. Advanced replay remains a workflow run.",
+    "Saved authoring-definition edits/removal do not revoke an approved private snapshot; revoke the agent/version or grants.",
+    "Docker uses the reviewed stock Qwen CLI and deterministic model fixtures; this does not verify corporate Qwen authentication.",
+    "Browser viewport/theme checks run in Chromium; Safari-specific verification is not claimed."
+  ],
+  "verificationNotes": [
+    "The Docker image packing list now includes the new workflow-agent verifier; its initial absence was caught before deployment checks.",
+    "Migration rewind fixtures retire the new snapshot table before reapplying later migrations.",
+    "The new production-browser compact check caught horizontal overflow from the 68-character workflow task ID. The task label now wraps; the overflow assertion is retained.",
+    "The full deployment caught a changed 403 response for a revoked conversation-agent profile. Shared admission now preserves the established 404 for missing project/profile access, covered through both strategies.",
+    "One intermediate run recorded an OOM kill. The expanded fixture now releases completed owned idle sessions after the browser as well as workers before it, preserving primary fixture conversations and active work. The final after-browser OOM-kill counter is zero.",
+    "Final Docker composite passes all 63 tasks with browser, restart and crash recovery."
+  ]
+}

@@ -1,0 +1,268 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+export async function verifyPublishedWorkflowAgents({
+  subjects,
+  userRequest,
+  userCommand,
+  sendAdmin,
+  adminToken,
+  wait,
+  db,
+}) {
+  const published = [];
+  const base = "/control-plane/user/agent-runs";
+  const definitions = "/control-plane/user/workflow-definitions";
+  const script =
+    'export const meta={name:"published-workflow-agent",description:"Published agent native worker",inputSchema:{type:"string",maxLength:200},outputSchema:{type:"string"}};return await agent(args);';
+  for (const subject of subjects) {
+    const { user, project, thread, profile } = subject;
+    const source = await userRequest(user.login, definitions, {
+      method: "POST",
+      body: { originThreadId: thread.id, script, args: "example" },
+    });
+    assert.equal(source.status, 201, JSON.stringify(source.body));
+    const workflow = {
+      definitionId: source.body.id,
+      revision: source.body.revision,
+    };
+    const agent = await sendAdmin(
+      "/control-plane/admin/profiles",
+      {
+        slug: `workflow-agent-${user.login}`,
+        name: `Workflow agent ${user.login}`,
+        definition: { ...profile.body.version.definition, workflow },
+      },
+      adminToken,
+    );
+    assert.equal(agent.status, 201, JSON.stringify(agent.body));
+    assert.equal(agent.body.profile.strategy, "workflow");
+    assert.equal(JSON.stringify(agent.body).includes(script), false);
+    for (const target of subjects) {
+      const grant = await sendAdmin(
+        `/control-plane/admin/profiles/${agent.body.profile.id}/access/${target.user.id}`,
+        { allowed: true },
+        adminToken,
+        "PUT",
+      );
+      assert.equal(grant.status, 200);
+    }
+    const body = {
+      projectId: project.projectId,
+      profileVersionId: agent.body.version.id,
+      input: `BB_PERSONAL_workflow-published-${user.login}`,
+      source: "manual",
+      idempotencyKey: `published-workflow-${user.login}`,
+    };
+    const run = await userCommand(user.login, [
+      "agent-runs",
+      "start",
+      project.projectId,
+      "--profile-version",
+      body.profileVersionId,
+      "--input",
+      body.input,
+      "--idempotency-key",
+      body.idempotencyKey,
+      "--json",
+    ]);
+    assert.equal(run.strategy, "workflow");
+    assert.equal(run.threadId, null);
+    assert.equal(run.workflowRunId, run.runId);
+    assert.equal(run.profileVersionId, body.profileVersionId);
+    const duplicate = await userRequest(user.login, base, {
+      method: "POST",
+      body,
+    });
+    assert.equal(duplicate.status, 201, JSON.stringify(duplicate.body));
+    assert.equal(duplicate.body.runId, run.runId);
+    const conflict = await userRequest(user.login, base, {
+      method: "POST",
+      body: { ...body, input: "changed" },
+    });
+    assert.equal(conflict.status, 409, JSON.stringify(conflict.body));
+    await wait(() => {
+      const row = db
+        .prepare(
+          "SELECT t.status FROM threads t JOIN control_plane_threads c ON c.thread_id=t.id JOIN control_plane_job_bindings b ON b.id=c.job_binding_id JOIN control_plane_job_bindings p ON p.id=b.source_binding_id WHERE p.object_id=? AND p.kind='workflow-run'",
+        )
+        .get(run.runId);
+      return row?.status === "idle";
+    }, `published workflow worker ${user.login}`);
+    let result;
+    await wait(async () => {
+      result = await userRequest(user.login, `${base}/${run.runId}/result`);
+      assert.equal(result.status, 200);
+      if (["failed", "cancelled"].includes(result.body.run.status))
+        throw new Error(JSON.stringify(result.body));
+      return result.body.run.status === "succeeded";
+    }, `published workflow result ${user.login}`);
+    assert.equal(
+      result.body.text,
+      `Personal workflow-published-${user.login} completed`,
+    );
+    const listed = await userCommand(user.login, [
+      "agent-runs",
+      "list",
+      "--project",
+      project.projectId,
+      "--json",
+    ]);
+    assert.ok(listed.runs.some((item) => item.runId === run.runId));
+    const probe = JSON.parse(
+      await readFile(
+        `${user.home}/bb-personal-workflow-published-${user.login}.json`,
+        "utf8",
+      ),
+    );
+    assert.deepEqual(probe, {
+      uid: user.uid,
+      home: user.home,
+      cwd: project.cwd,
+    });
+    const next = await userRequest(
+      user.login,
+      `${definitions}/${source.body.id}`,
+      {
+        method: "PUT",
+        body: {
+          expectedRevision: 1,
+          script: script.replace(
+            "return await agent(args)",
+            'return "edited-source"',
+          ),
+          args: "example",
+        },
+      },
+    );
+    assert.equal(next.status, 200, JSON.stringify(next.body));
+    const newer = await sendAdmin(
+      `/control-plane/admin/profiles/${agent.body.profile.id}/versions`,
+      {
+        definition: {
+          ...profile.body.version.definition,
+          workflow: { ...workflow, revision: 2 },
+        },
+      },
+      adminToken,
+    );
+    assert.equal(newer.status, 201, JSON.stringify(newer.body));
+    assert.notEqual(newer.body.version.id, agent.body.version.id);
+    assert.equal(
+      (
+        await userRequest(user.login, `${definitions}/${source.body.id}`, {
+          method: "DELETE",
+        })
+      ).status,
+      200,
+    );
+    const repeat = await userRequest(user.login, base, {
+      method: "POST",
+      body,
+    });
+    assert.equal(repeat.status, 201, JSON.stringify(repeat.body));
+    assert.equal(repeat.body.runId, run.runId);
+    const invalid = await userRequest(user.login, base, {
+      method: "POST",
+      body: { ...body, idempotencyKey: "too-long", input: "x".repeat(201) },
+    });
+    assert.equal(invalid.status, 400, JSON.stringify(invalid.body));
+    const chat = await userRequest(user.login, "/control-plane/user/threads", {
+      method: "POST",
+      body: {
+        projectId: project.projectId,
+        profileVersionId: body.profileVersionId,
+        message: "must not become chat",
+      },
+    });
+    assert.equal(chat.status, 409);
+    const replay = await userCommand(
+      user.login,
+      [
+        "workflows",
+        "start",
+        "--project",
+        project.projectId,
+        "--profile-version",
+        body.profileVersionId,
+        "--script-stdin",
+        "--args",
+        JSON.stringify(body.input),
+        "--resume",
+        run.runId,
+        "--json",
+      ],
+      script,
+    );
+    await wait(
+      async () =>
+        (
+          await userRequest(
+            user.login,
+            `/control-plane/user/workflows/${replay.id}`,
+          )
+        ).body.status === "succeeded",
+      `published workflow replay ${user.login}`,
+    );
+    const history = await userCommand(user.login, [
+      "workflows",
+      "history",
+      run.runId,
+      "--json",
+    ]);
+    assert.equal(history.calls.length, 1);
+    assert.ok(history.calls[0].childThreadId);
+    const workerBinding = db
+      .prepare(
+        "SELECT b.owner_user_id,b.profile_version_id FROM control_plane_threads c JOIN control_plane_job_bindings b ON b.id=c.job_binding_id WHERE c.thread_id=?",
+      )
+      .get(history.calls[0].childThreadId);
+    assert.equal(workerBinding.owner_user_id, user.id);
+    assert.equal(workerBinding.profile_version_id, body.profileVersionId);
+    const foreign = subjects.find((item) => item.user.id !== user.id);
+    for (const suffix of ["", "/result", "/events"])
+      assert.equal(
+        (await userRequest(foreign.user.login, `${base}/${run.runId}${suffix}`))
+          .status,
+        404,
+      );
+    assert.equal(
+      (
+        await userRequest(foreign.user.login, `${base}/${run.runId}/cancel`, {
+          method: "POST",
+        })
+      ).status,
+      404,
+    );
+    assert.equal(
+      (await userRequest(foreign.user.login, base, { method: "POST", body }))
+        .status,
+      404,
+    );
+    published.push({ subject, body, run });
+  }
+  return {
+    verification: {
+      publishedWorkflowAgentsNativeUidHomeCwdTwoUsers: true,
+      publishedWorkflowAgentsPinnedSourceAndContracts: true,
+      publishedWorkflowAgentsIdempotencyAndForeignAccessDenied: true,
+      publishedWorkflowAgentsNativeHistoryAndReplay: true,
+    },
+    async afterRestart() {
+      const item = published.find((row) => row.subject.user.login === "alice");
+      const result = await userRequest(
+        "alice",
+        `${base}/${item.run.runId}/result`,
+      );
+      assert.equal(result.status, 200);
+      assert.equal(result.body.run.status, "succeeded");
+      const retried = await userRequest("alice", base, {
+        method: "POST",
+        body: item.body,
+      });
+      assert.equal(retried.status, 201, JSON.stringify(retried.body));
+      assert.equal(retried.body.runId, item.run.runId);
+      return { publishedWorkflowAgentsIdentityAndResultAfterRestart: true };
+    },
+  };
+}
