@@ -252,7 +252,7 @@ function WorkspaceNavigation({
                     className="aria-[current=page]:bg-sidebar-accent"
                     onClick={() => openView("automations")}
                   >
-                    <Icon name="CalendarClock" />
+                    <Icon name="Calendar" />
                     <span>Automations</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

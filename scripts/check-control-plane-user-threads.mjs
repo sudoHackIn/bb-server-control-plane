@@ -703,6 +703,31 @@ export function createUserThreadFixture({ db, users }) {
         userRequest: (login, path, options = {}) =>
           send(path, { ...options, token: sessions.get(login).token }),
       });
+      let releasedIdleWorkers = 0;
+      for (const { user } of created) {
+        const idle = db
+          .prepare(
+            "SELECT t.id FROM threads t JOIN control_plane_threads c ON c.thread_id=t.id WHERE c.owner_user_id=? AND t.provider_id='qwen-server' AND t.status='idle' AND t.deleted_at IS NULL AND (c.run_source='manual' OR c.job_binding_id IS NOT NULL)",
+          )
+          .all(user.id);
+        for (const thread of idle) {
+          const released = await send(
+            `/control-plane/user/threads/${thread.id}/stop`,
+            { token: sessions.get(user.login).token, method: "POST" },
+          );
+          assert.ok(
+            [200, 404].includes(released.status),
+            JSON.stringify(released.body),
+          );
+          if (released.status === 200) releasedIdleWorkers++;
+        }
+      }
+      console.log(
+        JSON.stringify({
+          controlPlaneStage: "personal-idle-workers-released-before-browser",
+          count: releasedIdleWorkers,
+        }),
+      );
       const productionBrowser = await verifyExternalBrowser({
         origin,
         signal,

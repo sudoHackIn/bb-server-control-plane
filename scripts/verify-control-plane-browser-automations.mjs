@@ -1,3 +1,4 @@
+import { verifyPersonalSurface } from "./verify-control-plane-browser-ui.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -155,7 +156,7 @@ export async function verifyBrowserAutomations({
   );
   try {
     await visible(
-      page.getByText(`${run.id} · succeeded · manual`, { exact: true }),
+      page.getByRole("listitem", { name: `${run.id} · succeeded · manual` }),
     );
   } catch (error) {
     const response = await page
@@ -329,7 +330,9 @@ export async function verifyBrowserAutomations({
       .click(),
   );
   await visible(
-    page.getByText(`${cancelled.id} · cancelled · manual`, { exact: true }),
+    page.getByRole("listitem", {
+      name: `${cancelled.id} · cancelled · manual`,
+    }),
   );
   await proof(hanging, true);
   if (process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS) {
@@ -346,6 +349,12 @@ export async function verifyBrowserAutomations({
         ),
       });
   }
+  await verifyPersonalSurface(
+    page,
+    "Personal automations",
+    "automations",
+    "All schedules",
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   await page
     .getByRole("region", { name: "Personal automations" })
@@ -426,7 +435,9 @@ export async function verifyBrowserAutomations({
     201,
   );
   await visible(
-    page.getByText(`${scriptRun.id} · succeeded · manual`, { exact: true }),
+    page.getByRole("listitem", {
+      name: `${scriptRun.id} · succeeded · manual`,
+    }),
   );
   const output = await operation(
     `${scriptPath}/runs/${scriptRun.id}/output`,

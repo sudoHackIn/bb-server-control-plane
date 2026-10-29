@@ -1,5 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Input } from "@bb/shared-ui/input";
+import { Textarea } from "@bb/shared-ui/textarea";
+import { personalFieldClass, personalPanelClass } from "./PersonalWorkspaceUi";
 import { Button } from "@bb/shared-ui/button";
 import {
   controlPlaneAutomationCreateSchema,
@@ -165,12 +168,11 @@ export function PersonalAutomationEditor({
       save.reset();
     },
   });
-  const fieldClass =
-    "mt-1 block w-full rounded border bg-background p-2 text-sm";
+  const fieldClass = personalFieldClass;
   return (
     <form
       aria-label="Automation editor"
-      className="space-y-3 border-t pt-4"
+      className={personalPanelClass}
       onSubmit={(event) => {
         event.preventDefault();
         if (canExecute) save.mutate();
@@ -188,11 +190,11 @@ export function PersonalAutomationEditor({
       </p>
       <fieldset
         disabled={save.isPending || reload.isPending || !canExecute}
-        className="space-y-3"
+        className="space-y-4"
       >
         <label className="block text-sm">
           Automation name
-          <input
+          <Input
             className={fieldClass}
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -221,7 +223,7 @@ export function PersonalAutomationEditor({
           <label className="block text-sm" htmlFor={promptId}>
             {kind === "agent" ? "Agent task" : "Script source"}
           </label>
-          <textarea
+          <Textarea
             id={promptId}
             className={`${fieldClass} min-h-32`}
             value={kind === "agent" ? prompt : script}
@@ -242,7 +244,7 @@ export function PersonalAutomationEditor({
             </p>
             <label className="block text-sm">
               Script timeout (ms)
-              <input
+              <Input
                 type="number"
                 min={1}
                 max={900000}
@@ -273,7 +275,7 @@ export function PersonalAutomationEditor({
         {mode === "once" ? (
           <label className="block text-sm">
             Run at (local time)
-            <input
+            <Input
               type="datetime-local"
               className={fieldClass}
               value={at}
@@ -285,7 +287,7 @@ export function PersonalAutomationEditor({
           <>
             <label className="block text-sm">
               Cron expression
-              <input
+              <Input
                 className={fieldClass}
                 value={cron}
                 onChange={(event) => setCron(event.target.value)}
@@ -295,7 +297,7 @@ export function PersonalAutomationEditor({
             </label>
             <label className="block text-sm">
               Schedule timezone
-              <input
+              <Input
                 className={fieldClass}
                 value={timezone}
                 onChange={(event) => setTimezone(event.target.value)}

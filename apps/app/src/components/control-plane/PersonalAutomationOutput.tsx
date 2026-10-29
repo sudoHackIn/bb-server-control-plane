@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { personalCodeClass } from "./PersonalWorkspaceUi";
 import { Button } from "@bb/shared-ui/button";
 import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
 
@@ -64,11 +65,11 @@ export function PersonalAutomationOutput({
                   {output.data.result.truncated ? " · truncated" : ""}
                 </p>
                 <h4>Stdout</h4>
-                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words">
+                <pre className={personalCodeClass}>
                   {output.data.result.stdout}
                 </pre>
                 <h4>Stderr</h4>
-                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words">
+                <pre className={personalCodeClass}>
                   {output.data.result.stderr}
                 </pre>
               </>

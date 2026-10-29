@@ -1,0 +1,58 @@
+{
+  "scope": "Personal workspace UI aligned with native BB resource patterns",
+  "skill": "ui-ux-pro-max",
+  "screens": [
+    "workflows",
+    "saved workflow definitions",
+    "agents and background tasks",
+    "automations and schedule editor",
+    "integrations"
+  ],
+  "changes": {
+    "nativeThemeAndTypography": true,
+    "sharedBbControlsAndStatus": true,
+    "desktopListAndDetail": true,
+    "compactDetailAndBackNavigation": true,
+    "technicalConfigurationDisclosure": true,
+    "builtinIconNames": true,
+    "selectedRunOutsideLoadedPageVisible": true
+  },
+  "verification": {
+    "uiInteractionTestsPassed": 36,
+    "typecheckTasksPassed": 5,
+    "changedFileLintPassed": true,
+    "dockerStatus": "passed",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 695002,
+    "productionBrowserPassed": true,
+    "restartAndCrashRecoveryPassed": true,
+    "visualScreens": [
+      "agents",
+      "workflows",
+      "automations",
+      "integrations"
+    ],
+    "visualVariants": [
+      "desktop light",
+      "desktop dark",
+      "375x812 portrait",
+      "375x812 with 125% root text size",
+      "812x375 landscape"
+    ],
+    "noHorizontalOverflow": true,
+    "reducedMotionChecked": true,
+    "screenshotsVisuallyReviewed": true,
+    "fixtureIdleStopRequestsBeforeBrowser": 25,
+    "oomKillCountAfterBrowser": 0,
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/ui-bb-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only"
+  },
+  "limitations": [
+    "Visual viewport and theme checks use Chromium; Safari-specific verification was not performed."
+  ],
+  "verificationNotes": [
+    "An initial deployment attempt timed out on the existing manual-agent active-state probe before reaching the browser; subsequent runs advanced past it without server changes.",
+    "Browser assertions now address semantic history rows and distinguish plain string results from structured JSON.",
+    "One run suffered an OOM kill of the Automations process in the 4 GiB Docker VM; the fixture now stops completed idle owned worker sessions before the browser while retaining histories and active work.",
+    "The final full deployment passes; the OOM kill counter remains zero after the browser journey."
+  ]
+}

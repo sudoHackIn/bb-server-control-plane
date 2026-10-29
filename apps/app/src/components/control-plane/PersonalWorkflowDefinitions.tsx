@@ -4,6 +4,8 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Icon } from "@bb/shared-ui/icon";
+import { personalPanelClass } from "./PersonalWorkspaceUi";
 import { Button } from "@bb/shared-ui/button";
 import {
   controlPlaneWorkflowDefinitionCreateSchema,
@@ -124,12 +126,19 @@ export function PersonalWorkflowDefinitions({
   return (
     <section
       aria-label="Saved workflow definitions"
-      className="space-y-3 border-b pb-4"
+      className={personalPanelClass}
     >
-      <h2 className="text-base font-medium">Saved definitions</h2>
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <Icon
+          name="Layers"
+          className="size-4 text-muted-foreground"
+          aria-hidden
+        />
+        Saved definitions
+      </h2>
       <p className="text-sm text-muted-foreground">
-        Immutable source and default-argument revisions. Saved runs use the
-        definition's original conversation and current execution grants.
+        Reuse a saved version of your source and inputs in its original
+        conversation.
       </p>
       {definitions.isError ? (
         <p role="alert">
@@ -137,13 +146,17 @@ export function PersonalWorkflowDefinitions({
         </p>
       ) : (
         <>
-          <ul aria-label="Workflow definitions">
+          <ul
+            aria-label="Workflow definitions"
+            className="divide-y divide-border rounded-md border border-border bg-background"
+          >
             {definitions.data?.pages
               .flatMap((page) => page.definitions)
               .map((saved) => (
                 <li key={saved.id}>
                   <Button
                     variant="ghost"
+                    className="h-auto min-h-12 w-full justify-start whitespace-normal px-3 py-3 text-left"
                     disabled={load.isPending || change.isPending}
                     onClick={() => {
                       change.reset();
@@ -167,7 +180,7 @@ export function PersonalWorkflowDefinitions({
             </Button>
           )}
           {loaded && !load.isError && (
-            <div className="space-y-2">
+            <div className="space-y-3 rounded-md border border-border bg-surface-recessed/40 p-4">
               <p className="break-words text-sm">
                 Definition {loaded.id} · v{loaded.revision} ·{" "}
                 {loaded.enabled ? "enabled" : "disabled"}

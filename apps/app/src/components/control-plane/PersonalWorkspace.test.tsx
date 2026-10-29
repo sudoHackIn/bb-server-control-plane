@@ -388,7 +388,12 @@ it("opens workflows in the main workspace and keeps the conversation/sidebar nav
   expect(
     screen.queryByRole("textbox", { name: "Message your agent…" }),
   ).toBeNull();
-  expect(screen.queryByLabelText("Workflow source")).toBeNull();
+  expect(await screen.findByLabelText("Workflow source")).not.toBeNull();
+  expect(
+    screen
+      .getByRole("button", { name: "Run workflow" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
   expect(document.querySelector('[data-sidebar="sidebar"]')).not.toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Conversation" }));
   await screen.findByRole("heading", { name: "Project a" });

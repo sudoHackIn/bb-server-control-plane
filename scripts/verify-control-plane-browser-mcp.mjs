@@ -1,3 +1,4 @@
+import { verifyPersonalSurface } from "./verify-control-plane-browser-ui.mjs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -116,6 +117,12 @@ export async function verifyBrowserProjectMcp({
       await page.screenshot({
         path: join(artifacts, "project-integrations-" + user.login + ".png"),
       });
+      if (user.login === "alice")
+        await verifyPersonalSurface(
+          page,
+          "Project integrations",
+          "integrations",
+        );
       if (user.login === "bob") {
         await page.setViewportSize({ width: 390, height: 844 });
         await page.evaluate(

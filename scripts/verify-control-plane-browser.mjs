@@ -1,3 +1,4 @@
+import { verifyPersonalSurface } from "./verify-control-plane-browser-ui.mjs";
 import { verifyBrowserProjectMcp } from "./verify-control-plane-browser-mcp.mjs";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -211,11 +212,18 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     );
     await agentCatalog.getByRole("button", { name: /Personal alice/u }).click();
     await visible(alice.page.getByText("Help alice with project diagrams."));
+    await alice.page.getByText("Agent configuration", { exact: true }).click();
     await visible(
       alice.page.getByText("run_shell_command, read_file", { exact: true }),
     );
     await visible(
       alice.page.getByRole("button", { name: "Start conversation" }),
+    );
+    await verifyPersonalSurface(
+      alice.page,
+      "Available agents",
+      "agents",
+      "All agents",
     );
     await alice.page
       .getByRole("textbox", { name: "Background task" })
@@ -582,6 +590,13 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
           ),
         });
       }
+      if (user.login === "alice")
+        await verifyPersonalSurface(
+          page,
+          "Personal workflows",
+          "workflows",
+          "All runs",
+        );
       await page.reload();
       await visible(
         page.getByRole("heading", { name: "Workflows", exact: true }),
@@ -665,7 +680,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
         page
           .getByLabel("Selected workflow", { exact: true })
           .getByRole("status")
-          .filter({ hasText: /^cancelled(?: ·|$)/u }),
+          .filter({ hasText: /^cancelled(?:\s*·|$)/u }),
       );
       if (user.login === "alice") {
         await page.goto(
@@ -1193,10 +1208,11 @@ async function verifyBrowserDefinitions(page, foreign, user, origin, visible) {
     const run = await reply.json();
     await visible(page.getByText(`Run ${run.id}`, { exact: true }));
     await visible(page.getByLabel("Workflow result", { exact: true }));
+    const text = await page
+      .getByLabel("Workflow result", { exact: true })
+      .textContent();
     assert.deepEqual(
-      JSON.parse(
-        await page.getByLabel("Workflow result", { exact: true }).textContent(),
-      ),
+      typeof expected === "string" ? text : JSON.parse(text),
       expected,
     );
   }

@@ -106,6 +106,12 @@ it("starts and replays through the limited client, validates arguments and rende
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   await screen.findByLabelText("Workflow result");
   expect(screen.getByLabelText("Workflow result").textContent).toBe("null");
+  fireEvent.click(screen.getByRole("button", { name: "All runs" }));
+  expect(screen.queryByLabelText("Selected workflow")).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Workflow one · succeeded" }),
+  );
+  await screen.findByLabelText("Workflow result");
   expect(writes[0]?.body).toEqual({
     originThreadId: "origin-a",
     script:
@@ -170,7 +176,7 @@ it("paginates personal project runs and agent calls without requesting source or
   fireEvent.click(
     await screen.findByRole("button", { name: "More agent calls" }),
   );
-  await screen.findByText("1: Agent 1 · succeeded");
+  await screen.findByRole("listitem", { name: "1: Agent 1 · succeeded" });
   expect(paths).toContain(
     "/control-plane/user/workflows?projectId=a&cursor=next",
   );
@@ -292,6 +298,8 @@ it("starts a project workflow with a selected immutable approved profile without
           { status: 201 },
         );
       }
+      if (url.pathname.endsWith("/workflows"))
+        return Response.json({ runs: [], nextCursor: null });
       return read(url);
     },
     null,
@@ -309,6 +317,10 @@ it("starts a project workflow with a selected immutable approved profile without
   });
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   await waitFor(() => expect(writes).toHaveLength(1));
+  const selectedRun = await screen.findByRole("button", {
+    name: "Workflow one · succeeded",
+  });
+  expect(selectedRun.getAttribute("aria-pressed")).toBe("true");
   expect(writes[0]).toMatchObject({
     projectId: "a",
     profileVersionId: versionId,

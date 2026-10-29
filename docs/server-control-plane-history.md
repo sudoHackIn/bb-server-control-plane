@@ -3679,3 +3679,29 @@ forwarding through the plugin lifecycle facade; the fix has a regression test.
 The browser fixture reselects its approved profile after reload and returns to a
 conversation for saved-definition authoring. See the
 [P3.1 verification record](control-plane-phase-88-verification.json).
+
+
+## Personal workspace UI refresh
+
+Workflows, saved definitions, agents/tasks, automations/editors and integrations
+now share BB resource surfaces, controls, typography, icons and status indicators.
+Wide layouts pair a list with the selected detail. Compact layouts show the
+selection with an explicit back action. Workflow detail prioritizes agent calls
+and result; provider/retry information and agent configuration use disclosures.
+A selected workflow remains in the visible list even outside its loaded API page.
+Loaded workflow rows are ordered by creation time and show a compact timestamp.
+String results display as readable text; structured results retain JSON formatting.
+See [the UI notes](control-plane-ui.md).
+
+Verification passes 36 personal UI interaction tests, five typecheck tasks,
+changed-file lint, and the complete Docker production-browser journey: 63/63
+Turbo tasks, composite duration 695002 ms, including restart/crash recovery.
+Agents, workflows, automations and integrations are checked in light/dark themes,
+375-pixel portrait, increased text size and landscape, with overflow assertions
+and visual screenshot review. Updated browser assertions use semantic history
+rows instead of the old concatenated presentation text.
+
+The Docker fixture releases completed idle owned worker runtimes before the
+browser to avoid accumulated test processes exhausting its 4 GiB VM. It retains
+history and active work. The final browser run has an OOM-kill count of zero.
+See [the UI verification record](control-plane-phase-89-verification.json).

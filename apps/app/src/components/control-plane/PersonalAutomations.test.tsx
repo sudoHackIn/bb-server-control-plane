@@ -239,7 +239,7 @@ it("reuses an unacknowledged dispatch key, paginates history and links only retu
   expect(keys[0]).toEqual(keys[1]);
   expect(keys[0]).toMatchObject({ idempotencyKey: expect.any(String) });
   fireEvent.click(screen.getByRole("button", { name: "More automation runs" }));
-  await screen.findByText("older · succeeded · manual");
+  await screen.findByRole("listitem", { name: "older · succeeded · manual" });
   expect(more).toBe(true);
   fireEvent.click(
     screen.getByRole("button", { name: "Open origin conversation" }),
