@@ -585,3 +585,294 @@ it.each([
     }
   },
 );
+
+it.each([
+  "revoked-step",
+  "foreign-source",
+  "foreign-project",
+  "foreign-environment",
+  "missing-source",
+  "replay-of-replay",
+] as const)(
+  "rechecks persisted step and source authority before cached consumption: %s",
+  async (failure) => {
+    const test = fixture();
+    const stepVersion = randomUUID();
+    let revoked = false;
+    const spawn = vi
+      .spyOn(test.authority, "startWorker")
+      .mockResolvedValue({ threadId: "child", bindingId: randomUUID() });
+    vi.spyOn(test.authority, "stopWorker").mockResolvedValue(undefined);
+    vi.spyOn(test.authority, "getWorker").mockResolvedValue({
+      threadId: "child",
+      status: "idle",
+      output: "private result",
+      error: null,
+      idleSequence: 1,
+    });
+    vi.spyOn(test.authority, "resolveWorkerProfile").mockImplementation(
+      (_id, requested) => {
+        if (revoked && requested === stepVersion)
+          throw new Error("Step profile revoked");
+        return {
+          profileVersionId: requested ?? test.profileVersionId,
+          providerId: "qwen-server",
+          model: "pinned-model",
+          reasoningLevel: "none",
+          permissionMode: "full",
+        };
+      },
+    );
+    const { parseAgentOptions } = await import("./validation.js");
+    const { toJsonValue } = await import("./json-value.js");
+    vi.spyOn(test.authority, "evaluateWorkflow").mockImplementation(
+      async (_id, _input, signal, _event, onAgent) => {
+        if (!onAgent) throw new Error("Missing scoped agent bridge");
+        return onAgent(
+          "Inspect project",
+          toJsonValue(
+            parseAgentOptions({ profileVersionId: stepVersion }),
+            "options",
+          ),
+          signal,
+        );
+      },
+    );
+    const input = {
+      ...test.input,
+      originThreadId: null,
+      profileVersionId: test.profileVersionId,
+    };
+    async function execute(
+      service: ReturnType<typeof createWorkflowService>,
+      id: string,
+      status: "succeeded" | "failed",
+    ) {
+      test.setCaller(null);
+      const controller = new AbortController();
+      const worker = service.runWorker(controller.signal);
+      try {
+        await vi.waitFor(() =>
+          expect(getRunRequired(test.db, id).status).toBe(status),
+        );
+      } finally {
+        controller.abort();
+        await worker;
+        test.setCaller(test.owner);
+      }
+    }
+    try {
+      const original = await test.service.start(input);
+      await execute(test.service, original.id, "succeeded");
+      expect(spawn).toHaveBeenCalledTimes(1);
+      let sourceId = original.id;
+      if (failure === "replay-of-replay") {
+        const second = createWorkflowService(test.bb, test.db);
+        const replay = await second.start({
+          ...input,
+          resumedFromRunId: sourceId,
+        });
+        await execute(second, replay.id, "succeeded");
+        sourceId = replay.id;
+        expect(spawn).toHaveBeenCalledTimes(1);
+      }
+      const restarted = createWorkflowService(test.bb, test.db);
+      const pending = await restarted.start({
+        ...input,
+        resumedFromRunId: sourceId,
+      });
+      if (failure === "revoked-step") revoked = true;
+      else if (failure === "foreign-source" || failure === "foreign-project") {
+        const source = original.authorityBindingId
+          ? test.bindings.get(original.authorityBindingId)
+          : null;
+        if (!source) throw new Error("Missing source authority");
+        const foreign = randomUUID();
+        if (failure === "foreign-source") {
+          test.db
+            .prepare("UPDATE workflow_runs SET owner_user_id=? WHERE id=?")
+            .run(foreign, original.id);
+          test.bindings.set(source.id, { ...source, ownerUserId: foreign });
+        } else {
+          test.db
+            .prepare("UPDATE workflow_runs SET project_id=? WHERE id=?")
+            .run(foreign, original.id);
+          test.bindings.set(source.id, { ...source, projectId: foreign });
+        }
+      } else if (failure === "foreign-environment") {
+        test.db
+          .prepare("UPDATE workflow_runs SET environment_id=? WHERE id=?")
+          .run(randomUUID(), original.id);
+      } else if (original.authorityBindingId)
+        test.bindings.delete(original.authorityBindingId);
+      await execute(restarted, pending.id, "failed");
+      expect(getRunRequired(test.db, pending.id).resultJson).toBeNull();
+      expect(spawn).toHaveBeenCalledTimes(1);
+    } finally {
+      await test.harness.dispose();
+    }
+  },
+);
+
+it("rejects an idle child's result if its selected profile is revoked while awaiting the worker", async () => {
+  const test = fixture();
+  const stepVersion = randomUUID();
+  let revoked = false;
+  vi.spyOn(test.authority, "startWorker").mockResolvedValue({
+    threadId: "child",
+    bindingId: randomUUID(),
+  });
+  vi.spyOn(test.authority, "stopWorker").mockResolvedValue(undefined);
+  vi.spyOn(test.authority, "getWorker").mockImplementation(async () => {
+    revoked = true;
+    return {
+      threadId: "child",
+      status: "idle",
+      output: "must not consume",
+      error: null,
+      idleSequence: 1,
+    };
+  });
+  vi.spyOn(test.authority, "resolveWorkerProfile").mockImplementation(
+    (_id, requested) => {
+      if (revoked && requested === stepVersion)
+        throw new Error("Step profile revoked");
+      return {
+        profileVersionId: requested ?? test.profileVersionId,
+        providerId: "qwen-server",
+        model: "pinned-model",
+        reasoningLevel: "none",
+        permissionMode: "full",
+      };
+    },
+  );
+  const { parseAgentOptions } = await import("./validation.js");
+  const { toJsonValue } = await import("./json-value.js");
+  vi.spyOn(test.authority, "evaluateWorkflow").mockImplementation(
+    async (_id, _input, signal, _event, onAgent) => {
+      if (!onAgent) throw new Error("Missing scoped agent bridge");
+      return onAgent(
+        "Inspect project",
+        toJsonValue(
+          parseAgentOptions({ profileVersionId: stepVersion }),
+          "options",
+        ),
+        signal,
+      );
+    },
+  );
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  try {
+    const run = await test.service.start({
+      ...test.input,
+      originThreadId: null,
+      profileVersionId: test.profileVersionId,
+    });
+    test.setCaller(null);
+    worker = test.service.runWorker(controller.signal);
+    await vi.waitFor(() =>
+      expect(getRunRequired(test.db, run.id).status).toBe("failed"),
+    );
+    expect(getRunRequired(test.db, run.id).resultJson).toBeNull();
+    expect(getRunRequired(test.db, run.id).error).toContain("revoked");
+  } finally {
+    controller.abort();
+    await worker;
+    await test.harness.dispose();
+  }
+});
+
+it.each(["step-result", "run-result"] as const)(
+  "retains a pending %s during UID maintenance without repeating execution",
+  async (boundary) => {
+    const test = fixture();
+    let paused = false;
+    let pauseObserved = false;
+    const maintenance = () =>
+      Object.assign(new Error("maintenance"), {
+        name: "ControlPlaneJobError",
+        reason: "maintenance",
+      });
+    const pause = () => {
+      if (!pauseObserved) {
+        pauseObserved = true;
+        paused = true;
+        test.pausedOwners.add(test.owner);
+      }
+    };
+    const withAuthority = test.authority.withAuthority.bind(test.authority);
+    vi.spyOn(test.authority, "withAuthority").mockImplementation((id, run) => {
+      if (paused) throw maintenance();
+      return withAuthority(id, run);
+    });
+    vi.spyOn(test.authority, "resolveWorkerProfile").mockImplementation(() => {
+      if (paused) throw maintenance();
+      return {
+        profileVersionId: test.profileVersionId,
+        providerId: "qwen-server",
+        model: "pinned-model",
+        reasoningLevel: "none",
+        permissionMode: "full",
+      };
+    });
+    const spawn = vi
+      .spyOn(test.authority, "startWorker")
+      .mockResolvedValue({ threadId: "child", bindingId: randomUUID() });
+    vi.spyOn(test.authority, "stopWorker").mockResolvedValue(undefined);
+    vi.spyOn(test.authority, "getWorker").mockImplementation(async () => {
+      pause();
+      return {
+        threadId: "child",
+        status: "idle",
+        output: "safe result",
+        error: null,
+        idleSequence: 1,
+      };
+    });
+    const { parseAgentOptions } = await import("./validation.js");
+    const { toJsonValue } = await import("./json-value.js");
+    const evaluate = vi
+      .spyOn(test.authority, "evaluateWorkflow")
+      .mockImplementation(async (_id, _input, signal, _event, onAgent) => {
+        if (boundary === "run-result") {
+          pause();
+          return "safe result";
+        }
+        if (!onAgent) throw new Error("Missing scoped agent bridge");
+        return onAgent(
+          "Inspect project",
+          toJsonValue(parseAgentOptions(undefined), "options"),
+          signal,
+        );
+      });
+    const controller = new AbortController();
+    let worker: Promise<void> | undefined;
+    try {
+      const run = await test.service.start({
+        ...test.input,
+        originThreadId: null,
+        profileVersionId: test.profileVersionId,
+      });
+      test.setCaller(null);
+      worker = test.service.runWorker(controller.signal);
+      await vi.waitFor(() => expect(paused).toBe(true));
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "running",
+        resultJson: null,
+      });
+      paused = false;
+      test.pausedOwners.clear();
+      await vi.waitFor(() =>
+        expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
+      );
+      expect(getRunRequired(test.db, run.id).resultJson).toBe('"safe result"');
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(spawn).toHaveBeenCalledTimes(boundary === "step-result" ? 1 : 0);
+    } finally {
+      controller.abort();
+      await worker;
+      await test.harness.dispose();
+    }
+  },
+);

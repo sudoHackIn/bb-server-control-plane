@@ -32,6 +32,7 @@ import {
   createWorkflowRunId,
   deleteTerminalRuns,
   getCall,
+  getCallById,
   getCallByChildThread,
   getLatestRunForOriginThread,
   getRun,
@@ -980,8 +981,81 @@ export function createWorkflowService(
     return `${header}\n\n${prompt}\n\nUse bb_workflow_result to return your final response in the requested structured format. You MUST call this tool exactly once at the end of your response with {"value": ...} to provide the structured output. The value must satisfy this JSON Schema:\n${JSON.stringify(options.outputSchema, null, 2)}\nIf the tool is unavailable during startup, return only the JSON value in your final response as a fallback. If the tool reports validation errors, correct the value and retry. You have at most ${MAX_REPAIR_ATTEMPTS} corrective retries.`;
   }
 
-  function canReplayCall(run: WorkflowRunRow): boolean {
+  function canReplayCall(
+    run: WorkflowRunRow,
+    current: WorkflowRunRow = run,
+  ): boolean {
+    if (backgroundJobs) {
+      const source = bindingFor(run);
+      const target = bindingFor(current);
+      if (
+        !source ||
+        !target ||
+        source.ownerUserId !== target.ownerUserId ||
+        source.projectId !== target.projectId ||
+        source.profileVersionId !== target.profileVersionId ||
+        run.environmentId !== current.environmentId ||
+        (run.originThreadId === null) !== (current.originThreadId === null)
+      )
+        throw new Error("Workflow replay authority mismatch");
+      backgroundJobs.withAuthority(target.id, () => null);
+    }
     return run.replaySafetyVersion === 1;
+  }
+
+  function assertReplayCallAuthority(
+    call: WorkflowCallRow,
+    current: WorkflowRunRow,
+  ) {
+    if (!backgroundJobs) return;
+    const binding = bindingFor(current);
+    if (!binding) throw new Error("Workflow binding is unavailable");
+    const visited = new Set<string>();
+    let candidate: WorkflowCallRow | null = call;
+    while (candidate) {
+      if (visited.has(candidate.id) || visited.size >= 32)
+        throw new Error("Workflow replay ancestry is invalid");
+      visited.add(candidate.id);
+      const source = getRunRequired(db, candidate.runId);
+      if (!canReplayCall(source, current))
+        throw new Error("Workflow replay authority is unavailable");
+      const options = parseStoredAgentOptions(
+        parseJson(candidate.optionsJson, "workflow call options"),
+      );
+      const sourceBinding = bindingFor(source);
+      if (!sourceBinding)
+        throw new Error("Workflow replay authority is unavailable");
+      backgroundJobs.resolveWorkerProfile(
+        binding.id,
+        options.profileVersionId ?? sourceBinding.profileVersionId,
+      );
+      if (candidate.replayedFromCallId === null) break;
+      candidate = getCallById(db, candidate.replayedFromCallId);
+      if (!candidate) throw new Error("Workflow replay source is unavailable");
+    }
+  }
+
+  function assertCallAuthority(call: WorkflowCallRow) {
+    if (!backgroundJobs) return;
+    const run = getRunRequired(db, call.runId);
+    const binding = bindingFor(run);
+    if (!binding) throw new Error("Workflow binding is unavailable");
+    const options = parseStoredAgentOptions(
+      parseJson(call.optionsJson, "workflow call options"),
+    );
+    backgroundJobs.resolveWorkerProfile(
+      binding.id,
+      options.profileVersionId ?? null,
+    );
+  }
+
+  async function assertWorkerResultAuthority(call: WorkflowCallRow) {
+    if (!backgroundJobs) return;
+    const parent = getRunRequired(db, call.runId).authorityBindingId;
+    if (!parent || !call.childThreadId)
+      throw new Error("Workflow worker authority is unavailable");
+    await backgroundJobs.getWorker(parent, call.childThreadId);
+    assertCallAuthority(call);
   }
 
   function waitForCall(
@@ -991,6 +1065,7 @@ export function createWorkflowService(
     if (signal.aborted) return Promise.reject(new Error("Workflow cancelled"));
     const latest = getCall(db, call.runId, call.callIndex);
     if (latest?.status === "succeeded" && latest.resultJson !== null) {
+      assertCallAuthority(latest);
       return Promise.resolve(
         parseJson(latest.resultJson, "workflow call result"),
       );
@@ -1050,7 +1125,7 @@ export function createWorkflowService(
       if (replay.prefix) {
         if (sameRunCall !== null) {
           const sourceRun = getRunRequired(db, run.id);
-          if (!canReplayCall(sourceRun)) {
+          if (!canReplayCall(sourceRun, run)) {
             replay.prefix = false;
           }
           if (replay.prefix) {
@@ -1063,6 +1138,7 @@ export function createWorkflowService(
               result,
             });
             if (sameRunCall.cacheKey === cacheKey && reuse.reusable) {
+              assertReplayCallAuthority(sameRunCall, run);
               markCallReplayedSameRun(db, sameRunCall.id);
               publishRunsChanged(run.originThreadId);
               return reuse.result;
@@ -1072,7 +1148,10 @@ export function createWorkflowService(
         } else if (run.resumedFromRunId !== null) {
           const currentRun = getRunRequired(db, run.id);
           const sourceRun = getRunRequired(db, run.resumedFromRunId);
-          if (!canReplayCall(currentRun) || !canReplayCall(sourceRun)) {
+          if (
+            !canReplayCall(currentRun) ||
+            !canReplayCall(sourceRun, currentRun)
+          ) {
             replay.prefix = false;
           }
           if (replay.prefix) {
@@ -1088,6 +1167,7 @@ export function createWorkflowService(
               candidate === null ? null : { status: candidate.status, result },
             );
             if (candidate?.cacheKey === cacheKey && reuse.reusable) {
+              assertReplayCallAuthority(candidate, run);
               startCall(db, {
                 runId: run.id,
                 callIndex,
@@ -1193,10 +1273,7 @@ export function createWorkflowService(
             while (true) {
               throwIfCancelled(signal);
               try {
-                backgroundJobs.withAuthority(
-                  run.authorityBindingId,
-                  () => null,
-                );
+                assertCallAuthority(call);
                 const current = await backgroundJobs.getWorker(
                   run.authorityBindingId,
                   child.id,
@@ -1290,6 +1367,7 @@ export function createWorkflowService(
     const latest = getCall(db, call.runId, call.callIndex);
     if (latest?.status === "succeeded" && latest.resultJson !== null) {
       try {
+        assertCallAuthority(latest);
         waiter.resolve(parseJson(latest.resultJson, "workflow call result"));
       } catch (error) {
         waiter.reject(
@@ -1307,6 +1385,7 @@ export function createWorkflowService(
   ): Promise<void> {
     const call = getCallByChildThread(db, threadId);
     if (call === null || call.status !== "running") return;
+    await assertWorkerResultAuthority(call);
     const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
     if (options.outputSchema !== null) {
       if (call.resultJson !== null) {
@@ -1441,6 +1520,10 @@ export function createWorkflowService(
     idleHandlers.add(call.id);
     const task = handleThreadIdle(threadId, output)
       .catch((error) => {
+        if (isUidMaintenanceFailure(error)) {
+          observedIdleSequences.delete(threadId);
+          return;
+        }
         bb.log.error(
           `Could not handle idle workflow worker ${threadId}: ${message(error)}`,
         );
@@ -1477,6 +1560,7 @@ export function createWorkflowService(
         error: "This thread is not an active workflow worker",
       };
     }
+    await assertWorkerResultAuthority(call);
     const options = parseStoredAgentOptions(JSON.parse(call.optionsJson));
     if (options.outputSchema === null) {
       return {
@@ -1881,6 +1965,18 @@ export function createWorkflowService(
         const validation = validateValue(parsed.metadata.outputSchema, result);
         if (!validation.valid) {
           throw new Error(`Workflow result is invalid: ${validation.error}`);
+        }
+      }
+      if (backgroundJobs && managedBinding) {
+        while (true) {
+          throwIfCancelled(signal);
+          try {
+            backgroundJobs.withAuthority(managedBinding.id, () => null);
+            break;
+          } catch (error) {
+            if (!isUidMaintenanceFailure(error)) throw error;
+            await sleep(100, signal);
+          }
         }
       }
       await settleRunAndStopOutstanding({

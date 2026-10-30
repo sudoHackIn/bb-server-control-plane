@@ -1,0 +1,51 @@
+{
+  "scope": "P3 managed workflow step authority and persisted replay provenance",
+  "changes": {
+    "stepProfilesPinnedAndCurrentGrantsRechecked": true,
+    "workerResultParentScopeRechecked": true,
+    "idleStructuredAndCachedResultAdmissionChecked": true,
+    "replayOfReplayProvenanceChecked": true,
+    "sourceOwnerProjectEnvironmentRootProfileModeChecked": true,
+    "replaySourceCallBudget": 32,
+    "pendingResultsRetainedDuringUidMaintenance": true,
+    "rootAuthorityCheckedBeforeSuccess": true,
+    "nativeHistoryAndProfileGrantSemanticsRetained": true
+  },
+  "verification": {
+    "uniqueTestsPassed": 446,
+    "testsByPackage": {
+      "workflowsPlugin": 295,
+      "serverControlPlane": 151
+    },
+    "typecheckTasksPassed": 8,
+    "changedFileLintPassed": true,
+    "dockerStatus": "passed",
+    "testFilesPassed": 57,
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 705308,
+    "nativeWorkflowProofs": {
+      "productionBrowserRenderingVerified": true,
+      "publishedWorkflowAgentCatalogTaskResultBrowser": true,
+      "publishedWorkflowAgentsNativeUidHomeCwdTwoUsers": true,
+      "publishedWorkflowAgentsPinnedSourceAndContracts": true,
+      "publishedWorkflowAgentsIdempotencyAndForeignAccessDenied": true,
+      "publishedWorkflowAgentsNativeHistoryAndReplay": true,
+      "publishedWorkflowStepsPinnedProfileAndForeignChildScope": true,
+      "publishedWorkflowAgentsIdentityAndResultAfterRestart": true,
+      "publishedWorkflowStepRevocationAndRegrantReplayAfterRestart": true
+    },
+    "productionBrowserPassed": true,
+    "restartAndCrashRecoveryPassed": true,
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-step-authority-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only"
+  },
+  "verificationNotes": [
+    "An early server test run hit ENOSPC. Removing restorable archives from this repository Turbo cache freed roughly 4 GiB; all 151 server tests passed on retry.",
+    "An intermediate Docker run timed out in the unchanged ordinary Qwen manual-run fixture before the workflow scenarios, with server/daemon event-loop stalls and no OOM kill. Its assertions and timeouts were retained.",
+    "The final composite passes all 63 tasks. Runtime code was unchanged after the infrastructure timeout; owner/project/environment replay tests were strengthened separately."
+  ],
+  "limitations": [
+    "The detailed run tree, reviewer/developer diagnostic grants and developer test-run UI remain P3.3\u2013P3.5.",
+    "No new delegation allowlist or hooks are introduced; they remain later stages.",
+    "Docker uses deterministic model fixtures and the reviewed stock Qwen CLI; corporate harness authorization is not verified by this suite."
+  ]
+}

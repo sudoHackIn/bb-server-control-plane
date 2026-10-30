@@ -9,6 +9,7 @@ This is the active backlog. Completed increments, verification records and deplo
 - A **trigger** starts a run. Chat and manual background execution come first; schedule, webhook and task-source polling follow. Its saved owner and project determine authority. Event payloads cannot choose them.
 - Agents call approved agents or workflows through a server-checked invocation that carries user/project authority, ancestry and execution limits.
 - Users see agents, conversations and work. Workflow source and scheduler mechanics are authoring and diagnostic details.
+- A run has a user-facing summary and an authorized diagnostic view over the same native records. Administrators retain full visibility; developers and reviewers receive explicit project-scoped diagnostic access, separate from permission to invoke an agent.
 
 ## Working baseline
 
@@ -44,8 +45,31 @@ See the [P3.1 verification record](control-plane-phase-88-verification.json).
 
 Goal: an administrator publishes an agent whose background task uses a versioned workflow. Users still invoke an agent.
 
-- [ ] Resolve every workflow `agent()` step through a pinned approved profile and the saved user/project authority. Verify child thread/result/replay scope and revocation after restart.
-- [ ] Show workflow progress and child work in the agent run detail. Keep source editing in administrator or advanced authoring surfaces.
+Managed workflow steps now resolve pinned approved profiles under the saved
+user/project authority. Result admission and replay provenance recheck current
+step grants, including revocation/regrant after restart. UID maintenance retains
+pending results without repeating execution. See the
+[step authority verification](control-plane-phase-91-verification.json).
+
+Deliver diagnostics in the following independently testable slices. The first
+useful increment is a run tree with links to native child conversations; authoring
+and test-run controls follow. Reuse native workflow calls/history and BB timelines.
+
+#### P3.3 — Run inspection and child conversations
+
+- [ ] Keep the ordinary user view focused on the task, meaningful progress, requests for user input, result and bounded failure. For a viewer with diagnostic access, open a detailed view of that same run rather than a copied execution log.
+- [ ] Show the workflow's call hierarchy, ordering and parallel work, phases, status and attempts. Every live agent invocation links to its actual BB worker thread. Open its native timeline with recorded prompts/messages, tool calls/results and available file changes, with navigation back to the run. A plain conversation agent opens its single thread directly.
+- [ ] Show run and step inputs/outputs, pinned agent/profile/workflow revisions, effective provider/model/reasoning and permissions, timing, contract failures and retry errors. Distinguish live execution from successful-prefix replay; cached calls point to the original work under current read authority and do not imply a new chat or model invocation.
+
+#### P3.4 — Reviewer and developer access
+
+- [ ] Let administrators inspect all runs through their full administrative mode. Add explicit diagnostic grants for developers/reviewers on authorized projects, independent of agent invocation grants. Publishing or developing an agent does not by itself grant access to its users' conversations or production run inputs.
+- [ ] Keep inspection read-only. Scope run trees, child threads, tool details, original replay results, artifacts and subscriptions at the backend; independently authorize execution controls. Verify direct foreign-ID reads, grant revocation, role changes and restart with Alice, Bob, a scoped reviewer and an administrator.
+
+#### P3.5 — Developer test runs
+
+- [ ] From an inspected run, create a separate test run with its captured input, a selected draft or published revision and an explicitly authorized test project. Preserve links to the inspected run and exact tested configuration without modifying its history or an immutable published version. Use the selected project's registered UID/HOME/cwd and current permissions.
+- [ ] Keep workflow source editing and revision selection in administrative or advanced authoring surfaces. Expose inspection and test-run operations through the limited API, SDK and CLI alongside the UI; verify the publish/invoke/inspect/test journey in Docker.
 
 ### P4 — Agent and workflow delegation
 

@@ -8,15 +8,18 @@ export async function verifyPublishedWorkflowAgents({
   sendAdmin,
   adminToken,
   wait,
+  password,
   db,
 }) {
   const published = [];
   const base = "/control-plane/user/agent-runs";
   const definitions = "/control-plane/user/workflow-definitions";
-  const script =
-    'export const meta={name:"published-workflow-agent",description:"Published agent native worker",inputSchema:{type:"string",maxLength:200},outputSchema:{type:"string"}};return await agent(args);';
+  const metadata =
+    'export const meta={name:"published-workflow-agent",description:"Published agent native worker",inputSchema:{type:"string",maxLength:200},outputSchema:{type:"string"}};';
   for (const subject of subjects) {
     const { user, project, thread, profile } = subject;
+    const invocation = `return await agent(args,{profileVersionId:${JSON.stringify(profile.body.version.id)}});`;
+    const script = metadata + invocation;
     const source = await userRequest(user.login, definitions, {
       method: "POST",
       body: { originThreadId: thread.id, script, args: "example" },
@@ -127,10 +130,7 @@ export async function verifyPublishedWorkflowAgents({
         method: "PUT",
         body: {
           expectedRevision: 1,
-          script: script.replace(
-            "return await agent(args)",
-            'return "edited-source"',
-          ),
+          script: script.replace(invocation, 'return "edited-source";'),
           args: "example",
         },
       },
@@ -218,7 +218,21 @@ export async function verifyPublishedWorkflowAgents({
       )
       .get(history.calls[0].childThreadId);
     assert.equal(workerBinding.owner_user_id, user.id);
-    assert.equal(workerBinding.profile_version_id, body.profileVersionId);
+    assert.equal(workerBinding.profile_version_id, profile.body.version.id);
+    assert.equal(history.calls[0].model, profile.body.version.definition.model);
+    assert.equal(
+      history.calls[0].reasoningLevel,
+      profile.body.version.definition.reasoningLevel,
+    );
+    assert.equal(
+      (
+        await userRequest(
+          user.login,
+          `/control-plane/user/threads/${history.calls[0].childThreadId}/profile`,
+        )
+      ).body.version.id,
+      profile.body.version.id,
+    );
     const foreign = subjects.find((item) => item.user.id !== user.id);
     for (const suffix of ["", "/result", "/events"])
       assert.equal(
@@ -239,7 +253,43 @@ export async function verifyPublishedWorkflowAgents({
         .status,
       404,
     );
-    published.push({ subject, body, run });
+    for (const suffix of ["", "/result", "/timeline", "/profile"])
+      assert.equal(
+        (
+          await userRequest(
+            foreign.user.login,
+            `/control-plane/user/threads/${history.calls[0].childThreadId}${suffix}`,
+          )
+        ).status,
+        404,
+      );
+    const denied = await userRequest(foreign.user.login, base, {
+      method: "POST",
+      body: {
+        ...body,
+        projectId: foreign.project.projectId,
+        idempotencyKey: `foreign-step-${user.login}`,
+      },
+    });
+    assert.equal(denied.status, 201, JSON.stringify(denied.body));
+    await wait(
+      async () =>
+        (await userRequest(foreign.user.login, `${base}/${denied.body.runId}`))
+          .body.status === "failed",
+      "ungranted workflow step rejected",
+    );
+    assert.equal(
+      (
+        await userCommand(foreign.user.login, [
+          "workflows",
+          "history",
+          denied.body.runId,
+          "--json",
+        ])
+      ).calls.length,
+      0,
+    );
+    published.push({ subject, body, run, script });
   }
   return {
     verification: {
@@ -247,6 +297,7 @@ export async function verifyPublishedWorkflowAgents({
       publishedWorkflowAgentsPinnedSourceAndContracts: true,
       publishedWorkflowAgentsIdempotencyAndForeignAccessDenied: true,
       publishedWorkflowAgentsNativeHistoryAndReplay: true,
+      publishedWorkflowStepsPinnedProfileAndForeignChildScope: true,
     },
     async afterRestart() {
       const item = published.find((row) => row.subject.user.login === "alice");
@@ -262,7 +313,92 @@ export async function verifyPublishedWorkflowAgents({
       });
       assert.equal(retried.status, 201, JSON.stringify(retried.body));
       assert.equal(retried.body.runId, item.run.runId);
-      return { publishedWorkflowAgentsIdentityAndResultAfterRestart: true };
+      const login = await sendAdmin("/control-plane/login", {
+        login: "operator",
+        password,
+      });
+      assert.equal(login.status, 200);
+      const access = `/control-plane/admin/profiles/${item.subject.profile.body.profile.id}/access/${item.subject.user.id}`;
+      const replayInput = {
+        projectId: item.body.projectId,
+        profileVersionId: item.body.profileVersionId,
+        script: item.script,
+        args: item.body.input,
+        resumeRunId: item.run.runId,
+      };
+      assert.equal(
+        (await sendAdmin(access, { allowed: false }, login.body.token, "PUT"))
+          .status,
+        200,
+      );
+      try {
+        const denied = await userRequest(
+          "alice",
+          "/control-plane/user/workflows",
+          { method: "POST", body: replayInput },
+        );
+        assert.equal(denied.status, 201, JSON.stringify(denied.body));
+        await wait(
+          async () =>
+            (
+              await userRequest(
+                "alice",
+                `/control-plane/user/workflows/${denied.body.id}`,
+              )
+            ).body.status === "failed",
+          "revoked cached step after restart",
+        );
+        const result = await userRequest(
+          "alice",
+          `/control-plane/user/workflows/${denied.body.id}/result`,
+        );
+        assert.equal(result.body.available, false);
+        assert.equal(
+          (
+            await userCommand("alice", [
+              "workflows",
+              "history",
+              denied.body.id,
+              "--json",
+            ])
+          ).calls.length,
+          0,
+        );
+      } finally {
+        assert.equal(
+          (await sendAdmin(access, { allowed: true }, login.body.token, "PUT"))
+            .status,
+          200,
+        );
+      }
+      const resumed = await userRequest(
+        "alice",
+        "/control-plane/user/workflows",
+        { method: "POST", body: replayInput },
+      );
+      assert.equal(resumed.status, 201, JSON.stringify(resumed.body));
+      await wait(
+        async () =>
+          (
+            await userRequest(
+              "alice",
+              `/control-plane/user/workflows/${resumed.body.id}`,
+            )
+          ).body.status === "succeeded",
+        "regranted cached step after restart",
+      );
+      const reused = await userCommand("alice", [
+        "workflows",
+        "history",
+        resumed.body.id,
+        "--json",
+      ]);
+      assert.equal(reused.calls.length, 1);
+      assert.equal(reused.calls[0].childThreadId, null);
+      return {
+        publishedWorkflowAgentsIdentityAndResultAfterRestart: true,
+        publishedWorkflowStepRevocationAndRegrantReplayAfterRestart: true,
+      };
     },
   };
 }

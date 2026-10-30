@@ -418,6 +418,17 @@ Native project workflow replay remains available through `workflows start
 source/arguments. Replays remain advanced workflow runs. Chat and scheduling
 for workflow agents are not enabled in this slice.
 
+Each managed workflow `agent()` step inherits the pinned run profile or selects
+an explicit `profileVersionId` currently granted to the saved owner. Model and
+reasoning overrides must match that profile. Step authority is rechecked at
+worker dispatch and result consumption, including cached replay after restart.
+Replay provenance must retain the same owner, project, environment, root profile
+and execution mode; cycles, missing source bindings and chains over 32 source
+calls are rejected. Revoking a step profile prevents its cached result from being
+used for new execution. UID maintenance waits for release without repeating
+completed work. Existing authorized historical reads remain available.
+
+
 
 `threads events <thread-id> [--after <sequence>] [--limit 1..200]` reads a page
 of persisted native events in sequence order, exclusive of `after` (default 0).

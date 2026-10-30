@@ -693,6 +693,7 @@ export function createUserThreadFixture({ db, users }) {
       });
 
       const workflowAgents = await verifyPublishedWorkflowAgents({
+        password,
         subjects: created,
         userRequest: (login, path, options = {}) =>
           send(path, { ...options, token: sessions.get(login).token }),

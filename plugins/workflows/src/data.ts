@@ -544,6 +544,10 @@ export function getCall(
   );
 }
 
+export function getCallById(db: Db, id: string): WorkflowCallRow | null {
+  return optionalCall(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(id));
+}
+
 export function getCallByChildThread(
   db: Db,
   threadId: string,

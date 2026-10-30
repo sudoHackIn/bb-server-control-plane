@@ -75,9 +75,33 @@ Advanced project workflow replay accepts this run as its source with the same
 pinned profile and environment. Replayed runs remain in advanced workflow history.
 Successful-prefix replay is not an exactly-once guarantee for external effects.
 
+## Step profiles and result authority
+
+A managed `agent()` invocation inherits the run's exact profile version or selects
+an explicit approved `profileVersionId`. Provider/model/reasoning overrides must
+match that selected version. The server derives the worker's user, project,
+UID/HOME/cwd and permissions from saved bindings; request text cannot replace them.
+
+Current step-profile authority is checked before dispatch, during polling, when
+accepting idle or structured results and before consuming a successful call.
+Final run success also requires current root authority. A UID maintenance pause
+retains the pending result until release without repeating agent execution;
+permanent revocation rejects the affected result. An unhandled denial fails the
+executing workflow.
+
+Replay validates the source's saved user, project, environment, root profile and
+execution mode, then checks the current grants for each cached step. Provenance
+is followed through replay-of-replay references; missing or inconsistent bindings
+fail closed. Traversal rejects cycles and chains exceeding 32 source calls.
+Cancelling an old run does not remove its historical completed work; a new replay
+still needs its own valid authority. Historical owned results remain readable
+under existing project-read policy; that read permission does not authorize reuse
+of the result in new execution.
+
 ## Remaining P3 work
 
-This slice publishes and invokes a background strategy. The next slices audit
-and complete per-step profile selection/revocation/recovery for published agents,
-and show phase/call/child progress directly in the agent task detail. Workflow
+Publication, invocation and per-step profile/result/replay authority are verified.
+See [the step authority record](control-plane-phase-91-verification.json).
+The next slices show phase/call/child progress directly in the agent task detail,
+add scoped reviewer/developer access and separate developer test runs. Workflow
 agent scheduling, interactive strategies and agent delegation are separate work.

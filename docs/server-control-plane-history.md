@@ -3745,3 +3745,38 @@ also releases completed owned idle sessions after the browser, retaining primary
 fixture conversations and active jobs; the final after-browser OOM-kill count is
 zero. See [the workflow agent guide](control-plane-workflow-agents.md) and
 [verification record](control-plane-phase-90-verification.json).
+
+
+## P3 — Step authority, result admission and replay provenance
+
+Every managed workflow step continues to inherit the pinned run profile or select
+an explicitly approved version. The worker keeps the saved user/project identity
+and registered UID/HOME/cwd. Result admission now rechecks step grants while
+polling, before accepting idle/structured output and before consuming success.
+The actual child thread must belong to the owning parent. Final workflow success
+also requires current root authority.
+
+Cached calls validate their saved owner, project, environment, root profile and
+execution mode, including references through replay-of-replay. Cycles, missing
+bindings and provenance deeper than 32 source calls fail closed. Old cancelled
+runs retain readable completed work; a new replay needs current execution grants.
+UID maintenance at the result boundary retains pending work until release and
+does not repeat the agent invocation. Existing historical read policy is retained.
+
+Verification passes 446 unique tests across 57 files, including 24 focused native
+SQLite authority tests, plus typechecks and lint. Docker passes 63/63 tasks
+(composite 705308 ms), with production-browser, restart and crash recovery. Its
+workflow agents explicitly select separate ordinary profile versions. Native
+history/thread reads verify those versions, effective model/reasoning, UID/HOME/cwd
+and foreign child/result denial. Granting the workflow agent alone does not grant
+its private step profile. After restart, step-profile revocation blocks cached
+reuse before any child call is admitted; regrant permits the cached replay with
+no new child thread.
+
+A server test attempt hit ENOSPC; removing restorable repository Turbo archives
+freed roughly 4 GiB, and all server tests passed on retry. A Docker attempt timed
+out in the unchanged ordinary Qwen fixture amid server/daemon event-loop stalls;
+its assertions and timeouts were retained. The final full deployment passes.
+No new API, database schema or provider/daemon wire fields are introduced.
+See [the verification record](control-plane-phase-91-verification.json).
+P3.3 run inspection, P3.4 diagnostic grants and P3.5 developer test runs remain open.
