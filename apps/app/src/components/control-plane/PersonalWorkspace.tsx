@@ -432,6 +432,7 @@ function WorkspaceNavigation({
           <RunInspections
             key={selectedProject.projectId}
             client={client.inspections}
+            testClient={client.testRuns}
             projectId={selectedProject.projectId}
           />
         ) : inspectionRunId && selectedProject ? (

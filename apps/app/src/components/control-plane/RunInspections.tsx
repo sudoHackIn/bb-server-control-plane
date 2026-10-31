@@ -1,3 +1,4 @@
+import { RunTestForm } from "./RunTestForm";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
@@ -9,9 +10,13 @@ import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
 export function RunInspections({
   client,
   projectId,
+  testClient,
+  administrator = false,
 }: {
   client: PersonalWorkspaceClient["inspections"];
   projectId: string;
+  testClient?: PersonalWorkspaceClient["testRuns"];
+  administrator?: boolean;
 }) {
   const location = useLocation(),
     navigate = useNavigate();
@@ -43,6 +48,7 @@ export function RunInspections({
       "inspectKind",
       "inspectCall",
       "inspectThread",
+      "testRun",
     ])
       query.delete(name);
     navigate({ search: `?${query}` });
@@ -62,13 +68,23 @@ export function RunInspections({
     );
   if (runId && kind === "workflow")
     return (
-      <PersonalRunInspection
-        key={runId}
-        client={client.forWorkflow(runId)}
-        runId={runId}
-        projectId={projectId}
-        cwd={data.project.cwd}
-      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {testClient && (
+          <RunTestForm
+            key={runId}
+            client={testClient}
+            sourceRunId={runId}
+            administrator={administrator}
+          />
+        )}
+        <PersonalRunInspection
+          key={runId}
+          client={client.forWorkflow(runId)}
+          runId={runId}
+          projectId={projectId}
+          cwd={data.project.cwd}
+        />
+      </div>
     );
   if (runId && kind === "thread")
     return (
@@ -128,6 +144,7 @@ export function RunInspections({
                 query.set("inspectRun", row.id);
                 query.delete("inspectCall");
                 query.delete("inspectThread");
+                query.delete("testRun");
                 navigate({ search: `?${query}` });
               }}
             >

@@ -660,6 +660,38 @@ export const controlPlaneJobBindings = sqliteTable(
   ],
 );
 
+export const controlPlaneTestRuns = sqliteTable(
+  "control_plane_test_runs",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id").notNull().unique(),
+    sourceRunId: text("source_run_id").notNull(),
+    sourceProjectId: text("source_project_id").notNull(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => controlPlaneProjects.projectId),
+    requestedBy: text("requested_by").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    targetJson: text("target_json").notNull(),
+    inputJson: text("input_json").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    testedSourceHash: text("tested_source_hash").notNull(),
+    profileJson: text("profile_json").notNull(),
+    script: text("script").notNull(),
+    state: text("state", { enum: ["pending", "started"] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_test_runs_request_idx").on(
+      table.requestedBy,
+      table.idempotencyKey,
+    ),
+  ],
+);
+
 export const controlPlaneTurnSources = sqliteTable(
   "control_plane_turn_sources",
   {

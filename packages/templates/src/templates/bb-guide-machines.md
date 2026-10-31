@@ -1152,3 +1152,59 @@ The limited run list covers managed conversation roots and workflow roots;
 script-automation output and unmanaged legacy objects retain their existing
 separate administrative surfaces. Artifact paths describe retained native
 history and never request an arbitrary filesystem read.
+
+### Separate workflow test runs
+
+From **Inspections**, open a workflow root and choose **Prepare separate test**.
+Choose an explicit test project and profile version. The advanced form accepts
+registered IDs; use `server access projects list`, `profiles list` and profile
+versions to find them. Published targets must be workflow agents. A draft target
+is an exact saved workflow-definition revision with an ordinary worker profile;
+source editing stays in advanced Workflows or administration.
+
+```bash
+bb server access test-runs start <source-run-id> --project <test-project-id> --profile-version <published-version-uuid> --idempotency-key reproduce-1 --json
+bb server access test-runs start <source-run-id> --project <test-project-id> --profile-version <worker-version-uuid> --draft <definition-id> --revision 1 --idempotency-key reproduce-draft-1 --json
+bb server access test-runs get <test-record-uuid> --json
+bb server access test-runs get <native-run-id> --run --json
+```
+
+Administrators add `--admin --execution-user <user-uuid>` when starting a test.
+That user's current project runner/owner role and profile grants are still
+required. Personal requests always execute as the authenticated user and cannot
+supply another identity. Reading the source requires current owner/diagnostic
+access; that permission alone does not authorize execution. Personal draft
+selection requires ownership/current access through the existing definitions
+API. Administrators can select registered enabled draft revisions across owners.
+
+The server copies the workflow root's bounded captured JSON input. It accepts no
+replacement input, script, tools, model, UID, HOME or cwd in this API. A new native
+workflow uses the test project's registered environment and execution user's
+UID/HOME, with no replay/cache inheritance from the source. Snapshots retain the
+source link/hash/input, selected definition or published version, script hash and
+profile configuration. Normal workflow inspection/results/cancellation use the
+returned `runId`; cancellation remains independently authorized.
+
+SDK: `testRuns.start({sourceRunId, projectId, target, idempotencyKey})`,
+`testRuns.get(id)` and `testRuns.find(nativeRunId)`. `target` is
+`{kind:"published", profileVersionId}` or
+`{kind:"draft", profileVersionId, definitionId, revision}`.
+`admin.testRuns` has the same methods, with required `executionUserId` on start.
+HTTP: `POST /control-plane/{user|admin}/test-runs`, `GET .../:id`,
+`GET .../by-run/:runId`. The diagnostic readers themselves remain read-only.
+
+Retry a failed admission with the same request key and unchanged configuration.
+A saved pending reservation retains the native run identity across restart;
+retrying invokes native idempotent admission. Pending tests are not automatically
+launched on server boot. This is not an exactly-once execution guarantee. A new
+configuration needs a new key. The UI preserves the key on retry and changes it
+when form values change.
+
+Reopening a native test workflow discovers its provenance without relying on a
+creation-time URL. Reading that snapshot requires current access to both source
+and test roots/projects. A pending reservation is readable only by its execution
+owner or an administrator. Data already copied into an admitted test cannot be
+recalled by revoking source read access. Execution continues under the test's
+current project/profile authority. Draft edits or publication do not rewrite an
+admitted snapshot. The workspace and runtime credentials are not copied or frozen;
+prepare any files/relative workflow sources in the selected test project.

@@ -18,6 +18,7 @@ import {
   noopNotifier,
   setControlPlaneProfileAccess,
   controlPlaneUsers,
+  controlPlaneTestRuns,
   controlPlaneProjectPolicies,
 } from "@bb/db";
 import { jsonValueSchema, CONTROL_PLANE_WORKFLOWS_PLUGIN_ID } from "@bb/domain";
@@ -120,6 +121,7 @@ it("separates diagnostic grants from invocation/project access, scopes worker re
       .default(fake.bb);
     let hold: { entered: () => void; wait: Promise<void> } | null = null;
     let mutationProbe = false;
+    let dropAdmissionReply = false;
     const rpc: ControlPlaneWorkflowRpc = async (method, input) => {
       if (isControlPlaneInspectionRead() && mutationProbe) {
         expect(() => facade.withAuthority("invalid", () => null)).toThrow(
@@ -133,7 +135,14 @@ it("separates diagnostic grants from invocation/project access, scopes worker re
         hold.entered();
         await hold.wait;
       }
-      return jsonValueSchema.parse(await fake.harness.callRpc(method, input));
+      const result = jsonValueSchema.parse(
+        await fake.harness.callRpc(method, input),
+      );
+      if (dropAdmissionReply && method === "controlPlaneAgentWorkflowStart") {
+        dropAdmissionReply = false;
+        throw new Error("Lost admission reply");
+      }
+      return result;
     };
     const inspection = createControlPlaneInspectionService(harness.deps, rpc);
     const ordinary = createControlPlaneWorkflowService(harness.db, rpc);
@@ -205,6 +214,7 @@ it("separates diagnostic grants from invocation/project access, scopes worker re
         originThreadId: subject.thread.id,
         script:
           'export const meta={name:"inspection",description:"read fixture"}; return null;',
+        args: "Captured test input",
       });
       const parent = harness.db
         .select()
@@ -358,6 +368,219 @@ it("separates diagnostic grants from invocation/project access, scopes worker re
       await expect(
         reviewApi.inspections.workflows.inspect(b.runId),
       ).rejects.toThrow("404");
+      const draftScript =
+        'export const meta={name:"test-target",description:"Immutable draft target",inputSchema:{type:"string"},outputSchema:{type:"string"}};return args;';
+      const draft = await aliceApi.workflows.definitions.create({
+        originThreadId: alice.thread.id,
+        script: draftScript,
+        args: null,
+      });
+      const original = await aliceApi.profiles.get(alice.profile.profileId);
+      const published = await admin.admin.profiles.create({
+        slug: "test-target",
+        name: "Test target",
+        definition: {
+          ...original.version.definition,
+          workflow: { definitionId: draft.id, revision: draft.revision },
+        },
+      });
+      const request = {
+        sourceRunId: a.runId,
+        projectId: alice.project.id,
+        target: {
+          kind: "draft" as const,
+          profileVersionId: alice.profile.versionId,
+          definitionId: draft.id,
+          revision: draft.revision,
+        },
+        idempotencyKey: "native-test-draft",
+      };
+      await expect(bobApi.testRuns.start(request)).rejects.toThrow("404");
+      await expect(reviewApi.testRuns.start(request)).rejects.toThrow("404");
+      await expect(admin.admin.testRuns.start(request)).rejects.toThrow("400");
+      expect(
+        (
+          await raw(
+            tokens.get(alice.user.id) ?? "",
+            "/control-plane/user/test-runs",
+            "POST",
+            {
+              ...request,
+              cwd: "/etc",
+              uid: 0,
+              input: "replace captured input",
+            },
+          )
+        ).status,
+      ).toBe(400);
+      const tested = await aliceApi.testRuns.start(request);
+      expect(tested.state).toBe("started");
+      expect(tested.runId).not.toBe(a.runId);
+      expect(tested.input).toBe("Captured test input");
+      expect(tested.sourceRunId).toBe(a.runId);
+      expect(tested.profile).toEqual(original.version.definition);
+      expect((await reviewApi.testRuns.get(tested.id)).runId).toBe(
+        tested.runId,
+      );
+      expect((await aliceApi.testRuns.start(request)).id).toBe(tested.id);
+      await expect(
+        aliceApi.testRuns.start({ ...request, projectId: bob.project.id }),
+      ).rejects.toThrow("404");
+      await aliceApi.workflows.definitions.update(draft.id, {
+        expectedRevision: 1,
+        script: draftScript + "\n",
+        args: "new default",
+      });
+      await expect(
+        aliceApi.testRuns.start({
+          ...request,
+          target: { ...request.target, revision: 2 },
+        }),
+      ).rejects.toThrow("409");
+      await expect(
+        aliceApi.testRuns.start({ ...request, executionUserId: alice.user.id }),
+      ).rejects.toThrow("400");
+      const administered = await admin.admin.testRuns.start({
+        ...request,
+        idempotencyKey: "admin-test",
+        executionUserId: alice.user.id,
+      });
+      expect(administered.ownerUserId).toBe(alice.user.id);
+      const crossUserTest = await admin.admin.testRuns.start({
+        ...request,
+        projectId: bob.project.id,
+        executionUserId: bob.user.id,
+        idempotencyKey: "explicit-bob-execution",
+        target: { ...request.target, profileVersionId: bob.profile.versionId },
+      });
+      expect(crossUserTest.ownerUserId).toBe(bob.user.id);
+      expect(crossUserTest.projectId).toBe(bob.project.id);
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneJobBindings)
+          .where(eq(controlPlaneJobBindings.objectId, crossUserTest.runId))
+          .get()?.ownerUserId,
+      ).toBe(bob.user.id);
+      const jsonScript =
+        'export const meta={name:"json-test",description:"JSON input"}; return args;';
+      const jsonDraft = await aliceApi.workflows.definitions.create({
+        originThreadId: alice.thread.id,
+        script: jsonScript,
+        args: null,
+      });
+      const jsonSource = await aliceApi.workflows.start({
+        originThreadId: alice.thread.id,
+        script: jsonScript,
+        args: { task: "exact input", count: 3 },
+      });
+      const jsonTest = await admin.admin.testRuns.start({
+        ...request,
+        sourceRunId: jsonSource.id,
+        idempotencyKey: "json-test",
+        executionUserId: alice.user.id,
+        target: {
+          kind: "draft",
+          profileVersionId: alice.profile.versionId,
+          definitionId: jsonDraft.id,
+          revision: 1,
+        },
+      });
+      expect(jsonTest.input).toEqual({ task: "exact input", count: 3 });
+
+      await expect(bobApi.testRuns.get(tested.id)).rejects.toThrow("404");
+      expect((await admin.admin.testRuns.get(tested.id)).ownerUserId).toBe(
+        alice.user.id,
+      );
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneTestRuns)
+          .where(eq(controlPlaneTestRuns.id, tested.id))
+          .get()?.script,
+      ).toBe(draftScript);
+      await aliceApi.workflows.definitions.setEnabled(draft.id, false);
+      await expect(
+        aliceApi.testRuns.start({
+          ...request,
+          idempotencyKey: "disabled-draft",
+        }),
+      ).rejects.toThrow("404");
+      await aliceApi.workflows.definitions.setEnabled(draft.id, true);
+      expect(
+        (
+          await raw(
+            tokens.get(alice.user.id) ?? "",
+            `/control-plane/user/test-runs/${tested.id}?unexpected=1`,
+          )
+        ).status,
+      ).toBe(400);
+      dropAdmissionReply = true;
+      const lostRequest = {
+        ...request,
+        idempotencyKey: "lost-admission-reply",
+      };
+      await expect(aliceApi.testRuns.start(lostRequest)).rejects.toThrow("500");
+      const pendingTest = harness.db
+        .select()
+        .from(controlPlaneTestRuns)
+        .where(
+          eq(controlPlaneTestRuns.idempotencyKey, lostRequest.idempotencyKey),
+        )
+        .get();
+      expect(pendingTest?.state).toBe("pending");
+      if (!pendingTest) throw new Error("Missing reserved test");
+      expect((await aliceApi.testRuns.get(pendingTest.id)).state).toBe(
+        "pending",
+      );
+      const recoveredTest = await aliceApi.testRuns.start(lostRequest);
+      expect(recoveredTest.id).toBe(pendingTest.id);
+      expect(recoveredTest.runId).toBe(pendingTest.runId);
+      expect(recoveredTest.state).toBe("started");
+      await admin.admin.profiles.setAccess(
+        published.profile.id,
+        alice.user.id,
+        true,
+      );
+      const versionTest = await aliceApi.testRuns.start({
+        ...request,
+        idempotencyKey: "native-test-published",
+        target: { kind: "published", profileVersionId: published.version.id },
+      });
+      await expect(
+        admin.admin.testRuns.start({
+          ...request,
+          projectId: bob.project.id,
+          executionUserId: bob.user.id,
+          idempotencyKey: "admin-cannot-bypass-profile",
+          target: { kind: "published", profileVersionId: published.version.id },
+        }),
+      ).rejects.toThrow("404");
+      expect(
+        (await aliceApi.testRuns.find(versionTest.runId)).testRun?.id,
+      ).toBe(versionTest.id);
+      expect(versionTest.target).toEqual({
+        kind: "published",
+        profileVersionId: published.version.id,
+      });
+      expect(
+        (await aliceApi.inspections.workflows.inspect(a.runId)).sourceHash,
+      ).toBe(tested.sourceHash);
+      await admin.admin.profiles.setAccess(
+        published.profile.id,
+        alice.user.id,
+        false,
+      );
+      await expect(
+        aliceApi.testRuns.start({
+          ...request,
+          idempotencyKey: "revoked-test",
+          target: { kind: "published", profileVersionId: published.version.id },
+        }),
+      ).rejects.toThrow("404");
+      expect((await aliceApi.testRuns.get(versionTest.id)).runId).toBe(
+        versionTest.runId,
+      );
       native.replayReference(a.callId, b.callId);
       expect(
         (await reviewApi.inspections.workflows.inspectCall(a.runId, a.callId))
@@ -439,6 +662,7 @@ it("separates diagnostic grants from invocation/project access, scopes worker re
       });
       release();
       await rejected;
+      await expect(reviewApi.testRuns.get(tested.id)).rejects.toThrow("404");
       hold = null;
       await expect(
         reviewApi.inspections.workflows.inspectCall(a.runId, a.callId),

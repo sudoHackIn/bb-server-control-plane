@@ -8,6 +8,89 @@ export function registerServerInspectionCommands(
   access: Command,
   client: () => ReturnType<typeof createControlPlaneClient>,
 ) {
+  const tests = access
+    .command("test-runs")
+    .description("Create a separate workflow test from captured input");
+  tests
+    .command("get <id>")
+    .option("--run", "Find provenance by native run ID")
+    .option("--admin")
+    .option("--json")
+    .action(
+      action(async (id: string, o: { admin?: boolean; run?: boolean }) =>
+        console.log(
+          JSON.stringify(
+            await (o.run
+              ? (o.admin ? client().admin.testRuns : client().testRuns).find(id)
+              : (o.admin ? client().admin.testRuns : client().testRuns).get(
+                  id,
+                )),
+            null,
+            2,
+          ),
+        ),
+      ),
+    );
+  tests
+    .command("start <source-run-id>")
+    .requiredOption("--project <id>")
+    .requiredOption("--profile-version <uuid>")
+    .requiredOption("--idempotency-key <key>")
+    .option("--draft <definition-id>")
+    .option("--revision <number>")
+    .option("--execution-user <uuid>")
+    .option("--admin")
+    .option("--json")
+    .action(
+      action(
+        async (
+          sourceRunId: string,
+          o: {
+            project: string;
+            profileVersion: string;
+            idempotencyKey: string;
+            draft?: string;
+            revision?: string;
+            executionUser?: string;
+            admin?: boolean;
+          },
+        ) => {
+          if ((o.draft === undefined) !== (o.revision === undefined))
+            throw new Error("--draft and --revision must be supplied together");
+          const target =
+            o.draft && o.revision
+              ? {
+                  kind: "draft" as const,
+                  profileVersionId: o.profileVersion,
+                  definitionId: o.draft,
+                  revision: z.coerce
+                    .number()
+                    .int()
+                    .positive()
+                    .parse(o.revision),
+                }
+              : {
+                  kind: "published" as const,
+                  profileVersionId: o.profileVersion,
+                };
+          console.log(
+            JSON.stringify(
+              await (
+                o.admin ? client().admin.testRuns : client().testRuns
+              ).start({
+                sourceRunId,
+                projectId: o.project,
+                target,
+                idempotencyKey: o.idempotencyKey,
+                executionUserId: o.executionUser,
+              }),
+              null,
+              2,
+            ),
+          );
+        },
+      ),
+    );
   const group = access
     .command("inspections")
     .description("Read project runs under explicit diagnostic authority");

@@ -100,8 +100,17 @@ and [P3.4 verification](control-plane-phase-95-verification.json).
 
 #### P3.5 — Developer test runs
 
-- [ ] From an inspected run, create a separate test run with its captured input, a selected draft or published revision and an explicitly authorized test project. Preserve links to the inspected run and exact tested configuration without modifying its history or an immutable published version. Use the selected project's registered UID/HOME/cwd and current permissions.
-- [ ] Keep workflow source editing and revision selection in administrative or advanced authoring surfaces. Expose inspection and test-run operations through the limited API, SDK and CLI alongside the UI; verify the publish/invoke/inspect/test journey in Docker.
+- [x] From an inspected run, create a separate test run with its captured input, a selected draft or published revision and an explicitly authorized test project. Preserve links to the inspected run and exact tested configuration without modifying its history or an immutable published version. Use the selected project's registered UID/HOME/cwd and current permissions.
+- [x] Keep workflow source editing and revision selection in administrative or advanced authoring surfaces. Expose inspection and test-run operations through the limited API, SDK and CLI alongside the UI; verify the publish/invoke/inspect/test journey in Docker.
+
+Separate native workflow tests are implemented for published workflow agents and
+saved unpublished definition revisions. The inspector's advanced form and the
+limited API/SDK/CLI use captured JSON input, an explicitly authorized test project
+and execution owner, and immutable configuration/provenance snapshots. Native
+workflow history remains authoritative, including after restart; source editing
+stays in advanced authoring. Conversation-only turn selection is outside this
+workflow-root test path. See [the test contract](control-plane-workflow-agents.md#separate-workflow-tests)
+and [P3.5 verification](control-plane-phase-96-verification.json).
 
 ### P4 — Agent and workflow delegation
 

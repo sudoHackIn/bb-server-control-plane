@@ -1,0 +1,90 @@
+{
+  "scope": "P3.5 separate workflow tests from captured native input",
+  "changes": {
+    "separateTestApiSdkCliAndAdvancedInspectorForm": true,
+    "publishedWorkflowAndSavedDraftRevisionTargets": true,
+    "capturedJsonInputAndImmutableConfigurationProvenance": true,
+    "executionProjectAndUserExplicitlyAuthorized": true,
+    "canonicalNativeStartAndFreshWorkflowWithoutReplayInheritance": true,
+    "durableReservationAndExplicitIdempotentRetry": true,
+    "provenanceDiscoveryByNativeRunId": true,
+    "hostDaemonWireChanged": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 541,
+    "testFilesPassed": 78,
+    "testsByPackage": {
+      "serverControlPlane": 156,
+      "nativeWorkflows": 305,
+      "ui": 80
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "dockerStatus": "passed",
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane-inspections.test.ts",
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane src/components/settings/AdminDiagnosticAccess.test.tsx src/components/settings/AdminProjectRoles.test.tsx src/components/thread/timeline/ThreadTimelineRows.presentation.test.tsx src/App.project-settings-routes.test.tsx",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane/RunTestForm.test.tsx",
+      "pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/cli --filter=bb-plugin-workflows"
+    ],
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-test-runs-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 745181,
+    "nativeAndBrowserProofs": {
+      "separateWorkflowDraftTestFromInspectorBrowser": true,
+      "testProvenanceDiscoveredAfterReloadAndSourceNavigation": true,
+      "productionBrowserRenderingVerified": true,
+      "separateCertificateBrowserContexts": true,
+      "uncaughtPageErrors": 0,
+      "separatePublishedDraftAndJsonTestRunsActualUidHomeCwd": true,
+      "separateTestProvenanceAndResultsSurviveRestart": true,
+      "abruptCrashWorkflowRecoveryVerified": true,
+      "resumedThreadAfterRestart": true,
+      "crashRecoveryRetainsIdentityAndThreads": true
+    },
+    "manualVisualReview": [
+      "desktop advanced draft preparation",
+      "mobile upper draft preparation with bounded scrolling",
+      "desktop test provenance/source navigation"
+    ],
+    "automatedResponsiveChecks": [
+      "desktop",
+      "dark",
+      "375px mobile",
+      "125% mobile text",
+      "landscape"
+    ],
+    "finalImageBuildStatus": "passed",
+    "finalImageBuildTurboTasksPassed": 62,
+    "changedFileFormat": "passed",
+    "finalTypecheck": "passed"
+  },
+  "limits": {
+    "testRequestBytes": 4096,
+    "capturedJsonInputBytes": 131072,
+    "workflowScriptBytes": 524288
+  },
+  "limitations": [
+    "Source selection is a native workflow root. Conversation-only threads need an explicit turn/input selection contract and are not accepted as workflow test sources.",
+    "Targets are published workflow profiles or saved unpublished definition revisions with an allowed ordinary worker profile. The API accepts references, not raw scripts or configuration overrides.",
+    "The advanced form uses registered IDs and explicit execution identity; it does not edit source or provide a new general authoring surface.",
+    "Reservations with pending admission are retried explicitly with the same key. No automatic boot queue, snapshot restore or exactly-once guarantee is claimed.",
+    "The test project supplies files, relative workflow sources, current MCP access and execution-owner credentials. Source files/credentials are not cloned or frozen.",
+    "Revoking source read authority hides provenance on further reads; already-admitted copied inputs/results cannot be recalled. Execution remains under current test-project/profile authority.",
+    "A test record state of started describes admission. Current execution state and results come from native workflow history.",
+    "Docker uses stock Qwen and a deterministic model fixture, not corporate harness authorization."
+  ],
+  "verificationNotes": [
+    "The real migrated-SQLite/native plugin integration covers owner/reviewer/admin source access, independent project/profile execution authorization, explicit admin execution owner, forbidden caller input/cwd/UID fields, exact string and JSON capture, pinned draft/published snapshots, idempotency conflict after draft revision update, foreign record denial and provenance loss after source revocation.",
+    "UI regressions exercise lost admission response retry with the same key, exact request references without replacement input, reopening provenance by native run ID, pinned revision/profile labels and navigation to the source.",
+    "The existing private native agent-workflow admission accepts JSON arguments through its existing bounded native validation. Published string requests retain their contract; publication itself still requires text input/output metadata. No host wire or public Plugin SDK surface changed.",
+    "An initial profile-publication fixture omitted required text input/output metadata; the fixture now follows the actual publication contract. Draft tests use the separate administrative exact-revision reader rather than applying publication-only restrictions.",
+    "The initially unused owner index was removed by regenerating the uncommitted migration/snapshot through Drizzle; production snapshots were not manually edited.",
+    "Final readonly provenance labels and CLI guide text are added after the composite image was built; focused UI checks and a final image rebuild verify/package those additions.",
+    "The full Docker composite passed all 63 Turbo tasks (745181 ms), including published/draft/JSON tests, actual test UID/HOME/cwd, UI creation from an inspected source, provenance rediscovery without its original URL pointer, source navigation, native restart and crash recovery. Final snapshot-label text, CLI guide regeneration and the unused-index migration cleanup are included in a subsequent image rebuild; final migrated-SQLite and focused UI checks cover those changes.",
+    "Final focused checks also simulate loss of the native admission response after root creation, then recover the same reservation/native ID; reject disabled draft definitions and unknown query fields; and retain normal historical reads. Those admission/query restrictions are included in the final rebuilt image after the passing composite. No conforming composite request changed.",
+    "The final native-SQLite case also starts an administrator-selected test under Bob from Alice's inspected input and verifies the actual core workflow binding belongs to Bob/test project, while an ungranted profile still fails. This distinguishes explicit execution identity from source ownership."
+  ]
+}

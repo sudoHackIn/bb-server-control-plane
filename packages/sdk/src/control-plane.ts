@@ -1,3 +1,4 @@
+import { createControlPlaneTestRunClient } from "./control-plane-test-runs.js";
 import {
   createControlPlaneInspectionClient,
   createControlPlaneDiagnosticGrantClient,
@@ -183,6 +184,7 @@ export function createControlPlaneClient(args: {
   const agentRuns = createControlPlaneAgentRunClient(request, requestResponse);
   return {
     agentRuns,
+    testRuns: createControlPlaneTestRunClient(request, "user"),
     async browserContext(signal?: AbortSignal) {
       return controlPlaneBrowserContextSchema.parse(
         await request(
@@ -231,6 +233,7 @@ export function createControlPlaneClient(args: {
     profiles: profileReader("/control-plane/user/profiles"),
     mcp: mcp.user,
     admin: {
+      testRuns: createControlPlaneTestRunClient(request, "admin"),
       inspections: createControlPlaneInspectionClient(
         request,
         requestResponse,

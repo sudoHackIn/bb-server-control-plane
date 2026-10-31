@@ -1,3 +1,4 @@
+import { createControlPlaneTestRunService } from "./test-runs.js";
 import { z } from "zod";
 import { ApiError } from "../errors.js";
 import { createControlPlaneThreadStreams } from "./thread-stream.js";
@@ -19,6 +20,7 @@ export function createControlPlaneInspectionService(
   deps: AppDeps,
   rpc: ControlPlaneWorkflowRpc,
 ) {
+  const execution = createControlPlaneWorkflowService(deps.db, rpc);
   const streamPool = createControlPlaneThreadStreams(deps.hub);
   return {
     close: () => streamPool.close(),
@@ -119,6 +121,13 @@ export function createControlPlaneInspectionService(
       }
       return {
         workflows,
+        tests: createControlPlaneTestRunService({
+          db: deps.db,
+          actor,
+          policy,
+          inspect: workflows.inspect,
+          execution,
+        }),
         threads,
         async list(projectId: string, after: string | null, limit: number) {
           const project = policy.project(projectId);

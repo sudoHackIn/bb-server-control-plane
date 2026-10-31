@@ -20,6 +20,8 @@ export function AdminRunInspectionsView() {
       <RunInspections
         key={projectId}
         client={client.admin.inspections}
+        testClient={client.admin.testRuns}
+        administrator
         projectId={projectId}
       />
     </div>

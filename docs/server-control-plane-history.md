@@ -3780,3 +3780,39 @@ Fixture preparation now provisions the new reviewer before role maintenance and
 assigns Alice's UID/GID to its two negative-content test files, preserving the
 privileged helper's ownership checks. See [the verification record](control-plane-phase-95-verification.json).
 Developer test runs remain P3.5.
+
+## P3.5 — Separate tests from inspected workflow roots
+
+A user or administrator can create a separate native workflow from a readable
+workflow root's exact captured JSON input. The target is a published immutable
+workflow agent or a saved unpublished definition revision with an ordinary
+worker profile. Personal requests use the session user; administration requires
+an explicit execution user. Source diagnostics do not imply target execution
+rights: current project runner/owner and profile grants are rechecked through the
+canonical native admission, which resolves registered UID/HOME/cwd and retains
+existing child-profile/tool/MCP policy.
+
+The core database reserves a deterministic native identity and stores source,
+input, target revision, script hash and profile snapshots before admission.
+A repeated key recovers the same admission; changed configuration conflicts.
+Pending reservations are retried explicitly, not automatically on boot. A lost
+native admission reply is tested after the native root already exists, then
+recovered with the same record/run ID. This does not claim exactly-once effects.
+The original workflow/publication is never modified or used as a replay source.
+
+The separate limited API, SDK and CLI expose start, get and native-ID discovery.
+An inline advanced inspector form selects references; source editing remains in
+advanced authoring. Reopening a native test discovers its provenance without a
+creation-time URL and links back to the source. Reading snapshots requires both
+source and test access; copied results already admitted under test authority
+cannot be recalled by later source-read revocation. The source filesystem and
+credentials are not cloned. Conversation-only threads require a separate turn
+selection contract and are not workflow-root test sources.
+
+Verification: 541 unique tests in 78 files, typechecks and lint/format pass.
+Docker passes 63/63 tasks (745181 ms), including actual Qwen test UID/HOME/cwd,
+published/draft/JSON input, idempotency and draft revision conflicts, browser
+creation/provenance/source navigation, clean restart and abrupt crash recovery.
+Readonly profile/revision labels and regenerated CLI guide/schema packaging are
+included in a final image rebuild after the composite; focused migrated-SQLite
+and UI tests cover those additions. See [the verification record](control-plane-phase-96-verification.json).

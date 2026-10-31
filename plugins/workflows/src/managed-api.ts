@@ -54,7 +54,7 @@ const contract = defineRpcContract({
         projectId: id,
         profileVersionId: z.string().uuid(),
         script: z.string().min(1).max(524288),
-        args: z.string().min(1).max(131072),
+        args: z.unknown(),
       })
       .strict(),
     output: run,
@@ -174,7 +174,7 @@ export function registerManagedWorkflowApi(
           originThreadId: null,
           profileVersionId: input.profileVersionId,
           source: input.script,
-          args: input.args,
+          args: toJsonValue(input.args, "args"),
           resumedFromRunId: null,
         }),
       );

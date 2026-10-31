@@ -103,7 +103,7 @@ of the result in new execution.
 Publication, invocation and per-step profile/result/replay authority are verified.
 See [the step authority record](control-plane-phase-91-verification.json).
 Run inspection now exposes phase/call/child progress, and explicit scoped
-reviewer/developer grants are available. Separate developer test runs remain. Workflow
+reviewer/developer grants are available. Separate workflow test runs are described below. Workflow
 agent scheduling, interactive strategies and agent delegation are separate work.
 
 ## Owner execution inspection
@@ -248,3 +248,41 @@ Use `createControlPlaneClient().inspections`, `.admin.inspections` and
 `.admin.diagnosticGrants`, or `bb server access inspections --help`. The same
 project settings grant form uses compare-and-set revisions and displays stale
 update failures. See [the CLI guide](../packages/templates/src/templates/bb-guide-machines.md#shared-server-diagnostic-access).
+
+## Separate workflow tests
+
+P3.5 adds an explicit operation from an inspected native workflow root to a fresh
+workflow in a selected test project. Published workflow-agent versions and saved
+unpublished definition revisions are supported. A draft uses an allowed ordinary
+worker profile; a published target uses its immutable saved workflow snapshot.
+Captured JSON input is copied exactly rather than accepting replacement input or
+using draft defaults. The original history and publications are untouched.
+
+The execution owner is the authenticated user, or an explicitly selected user in
+administration. Current project runner/owner and profile permissions are checked
+independently of source diagnostics, including after awaited reads. The native
+start resolves the selected project's registered environment and that user's
+UID/HOME/cwd. Nested worker profiles and tool/MCP execution retain their existing
+current-grant checks. Source editing stays in advanced authoring, never in the
+test form. The limited API accepts references, not arbitrary source or runtime
+configuration.
+
+Core stores a separate provenance record with source/test run IDs, source
+project/hash/input, selected revision and profile snapshot, and tested script
+hash. Native workflow history/results remain authoritative. Reopening the test
+finds its provenance by native run ID; metadata and input require current access
+to both roots/projects. Pending records have no target root yet and are restricted
+to the execution owner/administrator. Read access to copied test results already
+admitted under the test's own authority is not recalled by a later source grant
+revocation.
+
+Reservations precede admission and retain deterministic native identity. An
+explicit retry with the same configuration/key recovers admission after a lost
+response or restart. There is no automatic boot queue or exactly-once claim.
+Draft edits and newly published versions cannot replace an existing snapshot.
+This path tests workflow roots; conversation-only threads require a separately
+defined turn/input selection contract. It does not clone the source filesystem,
+relative workflow files or credentials into the test project.
+
+API/SDK/CLI details are in the
+[CLI guide](../packages/templates/src/templates/bb-guide-machines.md#separate-workflow-test-runs).

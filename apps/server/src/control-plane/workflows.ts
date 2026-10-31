@@ -245,7 +245,7 @@ export function createControlPlaneWorkflowService(
         projectId: string;
         profileVersionId: string;
         script: string;
-        args: string;
+        args: JsonValue;
       },
     ) {
       const row = controlPlaneWorkflowRunSchema.parse(

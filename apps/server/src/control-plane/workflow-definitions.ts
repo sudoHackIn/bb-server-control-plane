@@ -1,5 +1,8 @@
+import { and, eq, isNull } from "drizzle-orm";
+import { hasActiveControlPlaneAdministrativeRequest } from "./access.js";
 import { z } from "zod";
 import {
+  controlPlaneJobBindings,
   requireControlPlaneThreadDispatch,
   getControlPlaneProject,
   listControlPlaneJobBindings,
@@ -67,6 +70,55 @@ export function createControlPlaneWorkflowDefinitions(
     return row;
   }
   return {
+    async getForAdministration(input: {
+      definitionId: string;
+      revision: number;
+    }) {
+      if (!hasActiveControlPlaneAdministrativeRequest())
+        throw new ApiError(
+          403,
+          "administrator_required",
+          "Administrator required",
+        );
+      const saved = db
+        .select()
+        .from(controlPlaneJobBindings)
+        .where(
+          and(
+            eq(controlPlaneJobBindings.kind, "workflow-definition"),
+            eq(controlPlaneJobBindings.objectId, input.definitionId),
+            eq(controlPlaneJobBindings.revision, 1),
+            isNull(controlPlaneJobBindings.deletedAt),
+          ),
+        )
+        .get();
+      if (!saved)
+        throw new ApiError(
+          404,
+          "workflow_not_found",
+          "Workflow definition not found",
+        );
+      const row = controlPlaneWorkflowDefinitionSchema.parse(
+        await rpc("controlPlaneDefinitionGet", {
+          id: input.definitionId,
+          revision: input.revision,
+        }),
+      );
+      if (
+        row.id !== input.definitionId ||
+        row.revision !== input.revision ||
+        row.projectId !== saved.projectId ||
+        row.originThreadId !== saved.originThreadId ||
+        !row.enabled ||
+        !saved.enabled
+      )
+        throw new ApiError(
+          404,
+          "workflow_not_found",
+          "Workflow definition not found",
+        );
+      return row;
+    },
     get: (userId: string, id: string, revision?: number) =>
       read(
         userId,

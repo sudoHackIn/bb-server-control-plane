@@ -813,6 +813,7 @@ export function createUserThreadFixture({ db, users }) {
           send(path, { ...options, token: sessions.get(login).token }),
         userCommand: command,
       });
+      await releaseIdleSessions(false);
       const productionBrowser = await verifyExternalBrowser({
         reviewer: diagnosticAccess.browser,
         origin,

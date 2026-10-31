@@ -1,7 +1,10 @@
 import type { Context, Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { controlPlaneDiagnosticGrantInputSchema } from "@bb/domain";
+import {
+  controlPlaneDiagnosticGrantInputSchema,
+  controlPlaneTestRunStartSchema,
+} from "@bb/domain";
 import {
   controlPlaneTimelinePageSchema,
   controlPlaneTimelineDetailsSchema,
@@ -24,12 +27,14 @@ import type { ControlPlaneInspectionService } from "./inspections.js";
 import type { InspectionActor } from "./inspection-policy.js";
 
 export function isControlPlaneInspectionPath(path: string, method: string) {
+  if (method === "POST") return path === "/control-plane/user/test-runs";
+  if (method !== "GET") return false;
   return (
-    method === "GET" &&
-    (path === "/control-plane/user/inspections" ||
-      /^\/control-plane\/user\/inspections\/(?:workflows\/[^/]+\/(?:inspection|result|trace|calls\/[^/]+|threads\/[^/]+(?:\/(?:events|stream|timeline|timeline-details|result))?)|threads\/[^/]+(?:\/(?:events|stream|timeline|timeline-details|result))?)$/u.test(
-        path,
-      ))
+    path === "/control-plane/user/inspections" ||
+    /^\/control-plane\/user\/test-runs\/(?:by-run\/)?[^/]+$/u.test(path) ||
+    /^\/control-plane\/user\/inspections\/(?:workflows\/[^/]+\/(?:inspection|result|trace|calls\/[^/]+|threads\/[^/]+(?:\/(?:events|stream|timeline|timeline-details|result))?)|threads\/[^/]+(?:\/(?:events|stream|timeline|timeline-details|result))?)$/u.test(
+      path,
+    )
   );
 }
 const page = z
@@ -104,6 +109,23 @@ export function installControlPlaneInspectionRoutes(
       c.header("cache-control", "no-store");
       return service.forActor(actor(c));
     }
+    app.use(`/control-plane/${mode}/test-runs`, controlPlaneBodyLimit(4096));
+    app.post(`/control-plane/${mode}/test-runs`, async (c) => {
+      query(z.object({}).strict(), c);
+      const parsed = controlPlaneTestRunStartSchema.safeParse(
+        await readControlPlaneJson(c),
+      );
+      if (!parsed.success) return c.json({ error: "invalid_request" }, 400);
+      return c.json(await reader(c).tests.start(parsed.data), 201);
+    });
+    app.get(`/control-plane/${mode}/test-runs/by-run/:id`, (c) => {
+      query(z.object({}).strict(), c);
+      return c.json(reader(c).tests.find(c.req.param("id")));
+    });
+    app.get(`/control-plane/${mode}/test-runs/:id`, (c) => {
+      query(z.object({}).strict(), c);
+      return c.json(reader(c).tests.get(c.req.param("id")));
+    });
     app.get(base, async (c) => {
       const p = query(page, c);
       return c.json(

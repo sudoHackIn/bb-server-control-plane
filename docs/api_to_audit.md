@@ -4037,3 +4037,30 @@ rendering retains its defaults. No daemon wire or public Plugin SDK change.
 Only the Plugin Guide's existing internal background-jobs inventory includes
 this member. Stabilization requires the four-actor scope, revocation, lifecycle,
 in-flight read and restart contract tests; the internal facade remains private.
+
+### Shared-server separate workflow tests
+
+The existing private builtin Workflows `controlPlaneAgentWorkflowStart` admission
+now accepts JSON arguments. Older string requests retain their behavior. The
+handler narrows through `toJsonValue` and the native service's bounded JSON and
+input-schema validation. Both published-agent execution and separate tests use
+the same canonical native start, deterministic identity, core job binding,
+project environment and current worker-profile permission checks. There is no
+new Plugin SDK member or host-daemon wire change.
+
+Core exposes separate `/control-plane/{user|admin}/test-runs` commands, outside
+the read-only diagnostic namespace. Source inspection uses its existing
+actor/grant/epoch checks; execution uses the selected authenticated/explicit user
+and an authorized test project/profile. The core administrative definition reader
+requires an active administrative request and a registered definition binding,
+then checks the exact revision and project/origin identity. It does not use the
+publication validator: a draft test may have JSON input, while published workflow
+agents continue to require their existing text input/output publication contract.
+
+A new shared database reservation stores immutable source/configuration snapshots
+before admission. Repeating a key uses the same native identity and rejects
+configuration changes. Pending admission is retried explicitly, not during boot.
+The test record is provenance, not a new authority or durable workflow engine.
+Snapshot reads require source and target access; registered root bindings remain
+the authority for native history, workers and execution. No script/model/tool/path
+or caller-selected personal UID override is accepted in the limited test API.

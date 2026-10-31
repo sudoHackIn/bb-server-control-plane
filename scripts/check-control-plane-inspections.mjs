@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 
 export async function verifyDiagnosticAccess({
@@ -185,8 +186,17 @@ export async function verifyDiagnosticAccess({
       controlPlaneStage: "diagnostic-reviewer-admin-scopes-verified",
     }),
   );
+  const tests = await verifySeparateTests({
+    alice,
+    bob,
+    inspection,
+    userRequest,
+    userCommand,
+    wait,
+  });
   return {
     browser: {
+      tests: tests.browser,
       login: "reviewer",
       userId: reviewer.id,
       projectId,
@@ -198,6 +208,7 @@ export async function verifyDiagnosticAccess({
       diagnosticAdminForeignRunInspection: true,
       diagnosticGrantRevocationRoleChangeAndCas: true,
       diagnosticReadDoesNotGrantExecution: true,
+      separatePublishedDraftAndJsonTestRunsActualUidHomeCwd: true,
     },
     async afterRestart(currentAdminToken) {
       const saved = await sendAdmin(grantPath, undefined, currentAdminToken);
@@ -205,7 +216,280 @@ export async function verifyDiagnosticAccess({
       assert.equal(saved.body.grant.role, "reviewer");
       assert.ok(saved.body.grant.revision >= 4);
       await verifyRead(currentAdminToken);
-      return { diagnosticGrantsReadOnlyAndForeignDenialSurviveRestart: true };
+      return {
+        diagnosticGrantsReadOnlyAndForeignDenialSurviveRestart: true,
+        ...(await tests.afterRestart()),
+      };
+    },
+  };
+}
+
+async function verifySeparateTests({
+  alice,
+  bob,
+  inspection,
+  userRequest,
+  userCommand,
+  wait,
+}) {
+  const marker = "BB_PERSONAL_test-reproduce-alice";
+  const script =
+    'export const meta={name:"captured-test-source",description:"Captured production input"};return args;';
+  const source = await userRequest("alice", "/control-plane/user/workflows", {
+    method: "POST",
+    body: {
+      projectId: alice.project.projectId,
+      profileVersionId: alice.profile.body.version.id,
+      script,
+      args: marker,
+    },
+  });
+  assert.equal(source.status, 201, JSON.stringify(source.body));
+  const target = await userCommand("alice", [
+    "projects",
+    "create",
+    "workflow-tests",
+    "--name",
+    "Workflow test project",
+    "--json",
+  ]);
+  const published = await userRequest(
+    "alice",
+    `/control-plane/user/inspections/workflows/${inspection.runId}/inspection`,
+  );
+  assert.equal(published.status, 200);
+  const profileVersionId = published.body.profileVersionId;
+  async function terminal(id) {
+    let result;
+    await wait(async () => {
+      result = await userRequest(
+        "alice",
+        `/control-plane/user/workflows/${id}`,
+      );
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.ok(
+        !["failed", "cancelled"].includes(result.body.status),
+        JSON.stringify(result.body),
+      );
+      return result.body.status === "succeeded";
+    }, "separate workflow test completion");
+    return result.body;
+  }
+  await terminal(source.body.id);
+  const captured = await userRequest(
+    "alice",
+    `/control-plane/user/inspections/workflows/${source.body.id}/inspection`,
+  );
+  const start = (args) =>
+    userCommand("alice", [
+      "test-runs",
+      "start",
+      source.body.id,
+      "--project",
+      target.projectId,
+      ...args,
+      "--json",
+    ]);
+  const tested = await start([
+    "--profile-version",
+    profileVersionId,
+    "--idempotency-key",
+    "published-test",
+  ]);
+  assert.equal(tested.input, marker);
+  assert.notEqual(tested.runId, source.body.id);
+  await terminal(tested.runId);
+  assert.equal(
+    (
+      await start([
+        "--profile-version",
+        profileVersionId,
+        "--idempotency-key",
+        "published-test",
+      ])
+    ).id,
+    tested.id,
+  );
+  const proof = JSON.parse(
+    await readFile(
+      `${alice.user.home}/bb-personal-test-reproduce-alice.json`,
+      "utf8",
+    ),
+  );
+  assert.deepEqual(proof, {
+    uid: alice.user.uid,
+    home: alice.user.home,
+    cwd: target.cwd,
+  });
+  const draftScript =
+    'export const meta={name:"draft-test",description:"Saved draft selection"};return args;';
+  const draft = await userRequest(
+    "alice",
+    "/control-plane/user/workflow-definitions",
+    {
+      method: "POST",
+      body: {
+        originThreadId: alice.thread.id,
+        script: draftScript,
+        args: "do not use defaults",
+      },
+    },
+  );
+  assert.equal(draft.status, 201, JSON.stringify(draft.body));
+  const draftTest = await start([
+    "--profile-version",
+    alice.profile.body.version.id,
+    "--draft",
+    draft.body.id,
+    "--revision",
+    "1",
+    "--idempotency-key",
+    "draft-test",
+  ]);
+  await terminal(draftTest.runId);
+  assert.equal(
+    (
+      await userRequest(
+        "alice",
+        `/control-plane/user/workflows/${draftTest.runId}/result`,
+      )
+    ).body.value,
+    marker,
+  );
+  const update = await userRequest(
+    "alice",
+    `/control-plane/user/workflow-definitions/${draft.body.id}`,
+    {
+      method: "PUT",
+      body: {
+        expectedRevision: 1,
+        script: draftScript + "\n",
+        args: "new defaults",
+      },
+    },
+  );
+  assert.equal(update.status, 200, JSON.stringify(update.body));
+  const conflict = await userRequest("alice", "/control-plane/user/test-runs", {
+    method: "POST",
+    body: {
+      sourceRunId: source.body.id,
+      projectId: target.projectId,
+      target: {
+        kind: "draft",
+        profileVersionId: alice.profile.body.version.id,
+        definitionId: draft.body.id,
+        revision: 2,
+      },
+      idempotencyKey: "draft-test",
+    },
+  });
+  assert.equal(conflict.status, 409, JSON.stringify(conflict.body));
+  assert.equal(
+    (await userRequest("bob", `/control-plane/user/test-runs/${tested.id}`))
+      .status,
+    404,
+  );
+  assert.equal(
+    (
+      await userRequest("reviewer", "/control-plane/user/test-runs", {
+        method: "POST",
+        body: {
+          sourceRunId: inspection.runId,
+          projectId: target.projectId,
+          target: { kind: "published", profileVersionId },
+          idempotencyKey: "no-execution-grants",
+        },
+      })
+    ).status,
+    404,
+  );
+  const jsonInput = { task: "preserve JSON", items: [1, 2, 3] };
+  const jsonSource = await userRequest(
+    "alice",
+    "/control-plane/user/workflows",
+    {
+      method: "POST",
+      body: {
+        projectId: alice.project.projectId,
+        profileVersionId: alice.profile.body.version.id,
+        script,
+        args: jsonInput,
+      },
+    },
+  );
+  assert.equal(jsonSource.status, 201, JSON.stringify(jsonSource.body));
+  await terminal(jsonSource.body.id);
+  const jsonTest = await userCommand("alice", [
+    "test-runs",
+    "start",
+    jsonSource.body.id,
+    "--project",
+    target.projectId,
+    "--profile-version",
+    alice.profile.body.version.id,
+    "--draft",
+    draft.body.id,
+    "--revision",
+    "1",
+    "--idempotency-key",
+    "json-test",
+    "--json",
+  ]);
+  await terminal(jsonTest.runId);
+  assert.deepEqual(
+    (
+      await userRequest(
+        "alice",
+        `/control-plane/user/workflows/${jsonTest.runId}/result`,
+      )
+    ).body.value,
+    jsonInput,
+  );
+  const finalSource = await userRequest(
+    "alice",
+    `/control-plane/user/inspections/workflows/${source.body.id}/inspection`,
+  );
+  assert.equal(finalSource.body.sourceHash, captured.body.sourceHash);
+  assert.equal(finalSource.body.run.status, "succeeded");
+  assert.equal(finalSource.body.callCounts.total, 0);
+  console.log(
+    JSON.stringify({
+      controlPlaneStage: "separate-test-runs-published-draft-json-uid-verified",
+    }),
+  );
+  return {
+    browser: {
+      sourceRunId: source.body.id,
+      testProjectId: target.projectId,
+      profileVersionId,
+      workerProfileVersionId: alice.profile.body.version.id,
+      draftDefinitionId: draft.body.id,
+      executionUserId: alice.user.id,
+      input: marker,
+    },
+    async afterRestart() {
+      for (const item of [tested, draftTest, jsonTest]) {
+        const stored = await userCommand("alice", [
+          "test-runs",
+          "get",
+          item.runId,
+          "--run",
+          "--json",
+        ]);
+        assert.equal(stored.testRun.id, item.id);
+        assert.equal(stored.testRun.testedSourceHash, item.testedSourceHash);
+        assert.equal(stored.testRun.state, "started");
+        assert.equal(
+          (
+            await userRequest(
+              "alice",
+              `/control-plane/user/workflows/${item.runId}/result`,
+            )
+          ).status,
+          200,
+        );
+      }
+      return { separateTestProvenanceAndResultsSurviveRestart: true };
     },
   };
 }

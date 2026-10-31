@@ -1032,6 +1032,8 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       ...administration,
       scopedReviewerInspectionBrowserReadOnly: true,
       administratorDiagnosticGrantsAndInspectionBrowser: true,
+      separateWorkflowDraftTestFromInspectorBrowser: true,
+      testProvenanceDiscoveredAfterReloadAndSourceNavigation: true,
       ...projectMcp,
       personalScriptEditorSourceTimeoutReloadAndRevision: true,
       personalScriptOutputStdoutStderrAndExitRendered: true,
@@ -1381,6 +1383,75 @@ async function verifyAdministrativeDefinitions({
     page,
     "Run inspection",
     "administrator-inspection",
+  );
+  const testCase = ready.reviewer.tests;
+  assert.ok(testCase?.sourceRunId && testCase?.testProjectId);
+  const sourceUrl = `${ready.origin}/settings/projects/${projectId}/inspections?inspectKind=workflow&inspectRun=${testCase.sourceRunId}`;
+  await page.goto(sourceUrl);
+  await visible(
+    page.getByRole("button", { name: "Prepare separate test", exact: true }),
+  );
+  await page
+    .getByRole("button", { name: "Prepare separate test", exact: true })
+    .click();
+  await page
+    .getByLabel("Execution user UUID", { exact: true })
+    .fill(testCase.executionUserId);
+  await page
+    .getByLabel("Test project ID", { exact: true })
+    .fill(testCase.testProjectId);
+  await page
+    .getByLabel("Profile version UUID", { exact: true })
+    .fill(testCase.workerProfileVersionId);
+  await page
+    .getByLabel("Test configuration", { exact: true })
+    .selectOption("draft");
+  await page
+    .getByLabel("Draft workflow definition ID", { exact: true })
+    .fill(testCase.draftDefinitionId);
+  await verifyPersonalSurface(
+    page,
+    "Test preparation",
+    "workflow-test-preparation",
+  );
+  const testReply = page.waitForResponse(
+    (reply) =>
+      new URL(reply.url()).pathname === "/control-plane/admin/test-runs" &&
+      reply.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Start separate test", exact: true })
+    .click();
+  const testResponse = await testReply;
+  assert.equal(testResponse.status(), 201, await testResponse.text());
+  const tested = await testResponse.json();
+  assert.notEqual(tested.runId, testCase.sourceRunId);
+  assert.equal(tested.ownerUserId, testCase.executionUserId);
+  assert.equal(tested.projectId, testCase.testProjectId);
+  assert.equal(tested.target.revision, 1);
+  assert.equal(tested.input, testCase.input);
+  await page.waitForURL(
+    (url) => url.searchParams.get("inspectRun") === tested.runId,
+  );
+  await visible(
+    page.getByRole("button", { name: "Open source run", exact: true }),
+  );
+  const withoutPointer = new URL(page.url());
+  withoutPointer.searchParams.delete("testRun");
+  await page.goto(withoutPointer.href);
+  await visible(
+    page.getByRole("button", { name: "Open source run", exact: true }),
+  );
+  await verifyPersonalSurface(
+    page,
+    "Test preparation",
+    "workflow-test-provenance",
+  );
+  await page
+    .getByRole("button", { name: "Open source run", exact: true })
+    .click();
+  await page.waitForURL(
+    (url) => url.searchParams.get("inspectRun") === testCase.sourceRunId,
   );
   await page.goto(`${ready.origin}/control-plane/logout`);
   await page
