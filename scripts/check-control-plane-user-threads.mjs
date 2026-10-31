@@ -97,6 +97,24 @@ export function createUserThreadFixture({ db, users }) {
         : ";setInterval(()=>{},1000)"
       : "";
     const code = `const fs=require("node:fs");${previousExecution}fs.writeFileSync(process.env.HOME+"/bb-personal-${marker}.json",JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()${sharedProbe}}))${hang}`;
+    const artifactPending =
+      marker.startsWith("workflow-published-") &&
+      !body.messages.some(
+        (message) =>
+          message.role === "tool" &&
+          message.tool_call_id === `artifact_${marker}`,
+      );
+    const artifactUser = artifactPending
+      ? users.find((user) => marker === `workflow-published-${user.login}`)
+      : null;
+    if (artifactPending) {
+      assert.ok(artifactUser);
+      assert.equal(typeof artifactUser.projects_root, "string");
+      assert.ok(artifactUser.projects_root.startsWith("/"));
+      assert.ok(
+        body.tools.some((tool) => tool.function?.name === "write_file"),
+      );
+    }
     const delta = first
       ? {
           role: "assistant",
@@ -116,18 +134,36 @@ export function createUserThreadFixture({ db, users }) {
             },
           ],
         }
-      : {
-          role: "assistant",
-          content:
-            marker.startsWith("workflow-json") ||
-            (marker === "workflow-repair-alice" &&
-              JSON.stringify(body.messages).includes("Corrective turn"))
-              ? JSON.stringify({ value: 42 })
-              : `Personal ${marker} completed`,
-        };
+      : artifactPending
+        ? {
+            role: "assistant",
+            tool_calls: [
+              {
+                index: 0,
+                id: `artifact_${marker}`,
+                type: "function",
+                function: {
+                  name: "write_file",
+                  arguments: JSON.stringify({
+                    file_path: `${artifactUser.projects_root}/personal-api/${marker}.puml`,
+                    content: "@startuml\nAlice -> Bob: hello\n@enduml\n",
+                  }),
+                },
+              },
+            ],
+          }
+        : {
+            role: "assistant",
+            content:
+              marker.startsWith("workflow-json") ||
+              (marker === "workflow-repair-alice" &&
+                JSON.stringify(body.messages).includes("Corrective turn"))
+                ? JSON.stringify({ value: 42 })
+                : `Personal ${marker} completed`,
+          };
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.end(
-      `data: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: first ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
+      `data: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: first || artifactPending ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
     );
     return true;
   }
@@ -319,7 +355,7 @@ export function createUserThreadFixture({ db, users }) {
               model: "qwen-job-test",
               reasoningLevel: "none",
               permissionMode: "full",
-              tools: ["run_shell_command"],
+              tools: ["run_shell_command", "write_file"],
               mcpServers: [],
             },
           },
@@ -496,6 +532,7 @@ export function createUserThreadFixture({ db, users }) {
         });
       }
       const [alice, bob] = created;
+      await releaseIdleSessions(false);
       const manualRuns = [];
       for (const subject of [alice, bob]) {
         const key = `manual-${subject.user.login}-one`;
@@ -577,6 +614,7 @@ export function createUserThreadFixture({ db, users }) {
           ).runs.some((item) => item.runId === run.runId),
         );
         manualRuns.push(run);
+        await releaseIdleSessions(false);
       }
       assert.equal(
         (

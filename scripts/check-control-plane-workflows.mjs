@@ -711,7 +711,21 @@ export async function verifyNativeWorkflows({
           "SELECT count(*) AS count FROM control_plane_threads t JOIN control_plane_job_bindings b ON b.id = t.job_binding_id WHERE b.source_binding_id = ?",
         )
         .get(row.authority_binding_id).count;
+      const entries = agentStorage
+        .prepare(
+          "SELECT kind,created_at,message,thread_id FROM workflow_call_diagnostics WHERE call_id=? ORDER BY id",
+        )
+        .all(call.id);
+      assert.ok(entries.every((entry) => entry.created_at > 0));
       if (marker.includes("retry")) {
+        assert.ok(
+          entries.some(
+            (entry) =>
+              entry.kind === "provider-retry" &&
+              /ECONNRESET|Provider connection closed/u.test(entry.message) &&
+              entry.thread_id,
+          ),
+        );
         assert.equal(call.provider_retry_attempts, 1);
         assert.equal(workers, 2);
         assert.equal(
@@ -722,10 +736,18 @@ export async function verifyNativeWorkflows({
         assert.equal(call.provider_retry_attempts, 0);
         assert.equal(workers, 1);
         if (marker.includes("repair")) {
+          assert.equal(
+            entries.filter((entry) => entry.kind === "repair").length,
+            1,
+          );
           assert.equal(call.repair_attempts, 1);
           assert.deepEqual(JSON.parse(row.result_json), { value: 42 });
         }
         if (marker.includes("invalid")) {
+          assert.equal(
+            entries.filter((entry) => entry.kind === "repair").length,
+            3,
+          );
           assert.equal(call.repair_attempts, 3);
           assert.match(
             row.error,

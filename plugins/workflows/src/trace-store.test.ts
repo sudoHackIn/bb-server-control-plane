@@ -17,7 +17,17 @@ import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 function createFixture(oldSchema = false) {
   const { bb, harness } = createFakePluginHost({ pluginId: "workflows" });
   const db = bb.storage.database();
-  bb.storage.migrate(db, oldSchema ? migrations.slice(0, -1) : migrations);
+  bb.storage.migrate(
+    db,
+    oldSchema
+      ? migrations.slice(
+          0,
+          migrations.findIndex((sql) =>
+            sql.includes("CREATE TABLE workflow_trace_attempts"),
+          ),
+        )
+      : migrations,
+  );
   const run = createRun(db, {
     projectId: "project",
     environmentId: "env",

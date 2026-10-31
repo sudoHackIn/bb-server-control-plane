@@ -65,6 +65,57 @@ export const controlPlaneWorkflowCallInspectionSchema = z
       .array(z.object({ threadId: z.string(), archived: z.boolean() }).strict())
       .max(100),
     workersTruncated: z.boolean(),
+    diagnostics: z
+      .object({
+        recordedSince: z.number().nullable(),
+        entries: z
+          .array(
+            z
+              .object({
+                id: z.number().int().positive(),
+                kind: z.enum([
+                  "started",
+                  "provider-retry",
+                  "repair",
+                  "failure",
+                ]),
+                createdAt: z.number(),
+                threadId: z.string().nullable(),
+                message: z.string().max(8192).nullable(),
+                attempt: z.number().int().nonnegative().nullable(),
+              })
+              .strict(),
+          )
+          .max(100),
+        truncated: z.boolean(),
+      })
+      .strict(),
+    fileArtifacts: z
+      .object({
+        entries: z
+          .array(
+            z
+              .object({
+                eventId: z.string(),
+                threadId: z.string(),
+                sequence: z.number().int(),
+                createdAt: z.number(),
+                path: z.string().max(4096),
+                kind: z.enum(["add", "delete", "update", "write_file", "edit"]),
+                movePath: z.string().max(4096).nullable(),
+                status: z.string().max(128),
+                diff: z.string().max(65536).nullable(),
+                diffTruncated: z.boolean(),
+                output: z.string().max(65536).nullable(),
+                outputTruncated: z.boolean(),
+              })
+              .strict(),
+          )
+          .max(100),
+        truncated: z.boolean(),
+        unavailableWorkers: z.number().int().nonnegative(),
+      })
+      .strict(),
   })
   .strict();
 

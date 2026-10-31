@@ -1,3 +1,7 @@
+import {
+  recordCallDiagnostic,
+  readCallDiagnostics,
+} from "./call-diagnostics.js";
 import { createTraceEmitter, traceEventSchema } from "./execution-trace.js";
 import { createStoredWorkflowTrace, readWorkflowTrace } from "./trace-store.js";
 import { createHash } from "node:crypto";
@@ -288,6 +292,7 @@ export interface WorkflowService {
     call: WorkflowCallInspection;
     workers: Array<{ threadId: string; archived: boolean }>;
     workersTruncated: boolean;
+    diagnostics: ReturnType<typeof readCallDiagnostics>;
     replayedFrom: { runId: string; callId: string } | null;
   } | null;
   inspectPage(
@@ -851,6 +856,7 @@ export function createWorkflowService(
     const workers = callWorkers(db, runId, callId);
     return {
       call: inspectCall(call),
+      diagnostics: readCallDiagnostics(db, call),
       workers: workers.slice(0, 100),
       workersTruncated: workers.length > 100,
       replayedFrom:
@@ -1385,6 +1391,9 @@ export function createWorkflowService(
         throwIfCancelled(signal);
         const delay = PROVIDER_RETRY_DELAYS_MS[call.providerRetryAttempts];
         if (delay === undefined || !isRetryableProviderFailure(error)) {
+          const current = getCallById(db, call.id);
+          if (current?.status === "queued")
+            recordCallDiagnostic(db, current, "failure", message(error), null);
           throw error;
         }
         const detail = message(error);
@@ -1481,17 +1490,17 @@ export function createWorkflowService(
         }
       }
 
-      const attempts = incrementRepairAttempts(db, call.id);
-      if (attempts === null) {
-        wakeCall(call);
-        return;
-      }
-      publishRunProgress(call.runId);
       const detail = fallback.parsed
         ? fallback.validation.valid
           ? "a structured result was already recorded"
           : fallback.validation.error
         : fallback.error;
+      const attempts = incrementRepairAttempts(db, call.id, detail);
+      if (attempts === null) {
+        wakeCall(call);
+        return;
+      }
+      publishRunProgress(call.runId);
       if (attempts > MAX_REPAIR_ATTEMPTS) {
         const error = `Structured output failed after ${MAX_REPAIR_ATTEMPTS} corrective turns: ${detail}`;
         settleCall(db, { id: call.id, status: "failed", result: null, error });
@@ -1644,7 +1653,7 @@ export function createWorkflowService(
         error: "This workflow call is no longer active",
       };
     }
-    const attempts = incrementRepairAttempts(db, call.id);
+    const attempts = incrementRepairAttempts(db, call.id, validation.error);
     if (attempts === null) {
       return {
         ok: false,

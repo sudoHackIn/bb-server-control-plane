@@ -74,13 +74,28 @@ export function createMessageSourceFixture({ db, users }) {
           token,
         );
         assert.equal(started.status, 201, JSON.stringify(started.body));
-        await wait(
-          () =>
-            db
-              .prepare("SELECT status FROM threads WHERE id=?")
-              .get(started.body.id)?.status === "idle",
-          `message source ${user.login} ready`,
-        );
+        try {
+          await wait(
+            () =>
+              db
+                .prepare("SELECT status FROM threads WHERE id=?")
+                .get(started.body.id)?.status === "idle",
+            `message source ${user.login} ready`,
+          );
+        } catch (cause) {
+          const state = db
+            .prepare("SELECT status FROM threads WHERE id=?")
+            .get(started.body.id);
+          const lastEvents = db
+            .prepare(
+              "SELECT type,item_kind AS kind FROM events WHERE thread_id=? ORDER BY sequence DESC LIMIT 6",
+            )
+            .all(started.body.id);
+          throw new Error(
+            `Message source readiness failed: ${JSON.stringify({ login: user.login, state, modelRequests: calls.get(`BB_MESSAGE_SOURCE_${user.login.toUpperCase()}_START`) ?? 0, lastEvents })}`,
+            { cause },
+          );
+        }
         const stopped = await send(
           `/api/v1/threads/${started.body.id}/stop`,
           {},

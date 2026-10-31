@@ -1,3 +1,7 @@
+import {
+  callDiagnosticsMigration,
+  recordCallDiagnostic,
+} from "./call-diagnostics.js";
 import { interruptWorkflowTraces } from "./trace-store.js";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -276,6 +280,7 @@ export const migrations = [
      created_at INTEGER NOT NULL, finished_at INTEGER, call_index INTEGER, call_id TEXT, cache_key TEXT, source TEXT,
      PRIMARY KEY(attempt_id,ordinal), UNIQUE(attempt_id,node_id)
    );`,
+  callDiagnosticsMigration,
 ];
 
 export function createWorkflowRunId() {
@@ -695,7 +700,9 @@ export function startCall(
       now,
       finishedAt: args.replay === null ? null : now,
     });
-    return getCall(db, args.runId, args.callIndex)!;
+    const call = getCall(db, args.runId, args.callIndex)!;
+    recordCallDiagnostic(db, call, "started", null, null);
+    return call;
   })();
 }
 
@@ -738,17 +745,30 @@ export function queueCallProviderRetry(
   callId: string,
   error: string,
 ): WorkflowCallRow | null {
-  const changed = db
-    .prepare(
-      `UPDATE workflow_calls SET status = 'queued', child_thread_id = NULL,
+  return db.transaction(() => {
+    const previous = optionalCall(
+      db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId),
+    );
+    const changed = db
+      .prepare(
+        `UPDATE workflow_calls SET status = 'queued', child_thread_id = NULL,
        provider_retry_attempts = provider_retry_attempts + 1,
        error = ?, started_at = NULL, last_activity_at = ?, finished_at = NULL
        WHERE id = ? AND status IN ('queued', 'failed') AND result_json IS NULL`,
-    )
-    .run(error, Date.now(), callId).changes;
-  return changed === 0
-    ? null
-    : optionalCall(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId));
+      )
+      .run(error, Date.now(), callId).changes;
+    if (changed && previous)
+      recordCallDiagnostic(
+        db,
+        previous,
+        "provider-retry",
+        error,
+        previous.providerRetryAttempts + 1,
+      );
+    return changed === 0
+      ? null
+      : optionalCall(db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId));
+  })();
 }
 
 export function storeStructuredResult(
@@ -780,20 +800,27 @@ export function storeStructuredResult(
   })();
 }
 
-export function incrementRepairAttempts(db: Db, callId: string): number | null {
-  const changed = db
-    .prepare(
-      `UPDATE workflow_calls SET repair_attempts = repair_attempts + 1,
+export function incrementRepairAttempts(
+  db: Db,
+  callId: string,
+  error: string,
+): number | null {
+  return db.transaction(() => {
+    const changed = db
+      .prepare(
+        `UPDATE workflow_calls SET repair_attempts = repair_attempts + 1,
        last_activity_at = ?
        WHERE id = ? AND status = 'running' AND result_json IS NULL`,
-    )
-    .run(Date.now(), callId).changes;
-  if (changed === 0) return null;
-  const row = optionalCall(
-    db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId),
-  );
-  if (row === null) throw new Error(`Unknown workflow call ${callId}`);
-  return row.repairAttempts;
+      )
+      .run(Date.now(), callId).changes;
+    if (changed === 0) return null;
+    const row = optionalCall(
+      db.prepare(`${CALL_SELECT} WHERE id = ?`).get(callId),
+    );
+    if (row === null) throw new Error(`Unknown workflow call ${callId}`);
+    recordCallDiagnostic(db, row, "repair", error, row.repairAttempts);
+    return row.repairAttempts;
+  })();
 }
 
 export function settleCall(
@@ -805,18 +832,28 @@ export function settleCall(
     error: string | null;
   },
 ): void {
-  db.prepare(
-    `UPDATE workflow_calls SET status = @status,
+  db.transaction(() => {
+    const changed = db
+      .prepare(
+        `UPDATE workflow_calls SET status = @status,
        result_json = COALESCE(result_json, @resultJson), error = @error,
        finished_at = @now WHERE id = @id AND status IN ('queued', 'running')`,
-  ).run({
-    id: args.id,
-    status: args.status,
-    resultJson:
-      args.status === "succeeded" ? JSON.stringify(args.result) : null,
-    error: args.error,
-    now: Date.now(),
-  });
+      )
+      .run({
+        id: args.id,
+        status: args.status,
+        resultJson:
+          args.status === "succeeded" ? JSON.stringify(args.result) : null,
+        error: args.error,
+        now: Date.now(),
+      }).changes;
+    if (changed && args.status === "failed" && args.error !== null) {
+      const call = optionalCall(
+        db.prepare(`${CALL_SELECT} WHERE id = ?`).get(args.id),
+      );
+      if (call) recordCallDiagnostic(db, call, "failure", args.error, null);
+    }
+  })();
 }
 
 function equalJsonValues(left: JsonValue, right: JsonValue): boolean {

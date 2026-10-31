@@ -1,3 +1,4 @@
+import { readWorkflowFileArtifacts } from "./workflow-file-artifacts.js";
 import { createControlPlaneWorkflowDefinitions } from "./workflow-definitions.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -399,6 +400,7 @@ export function createControlPlaneWorkflowService(
     async inspectCall(userId: string, runId: string, callId: string) {
       await get(userId, runId);
       const value = controlPlaneWorkflowCallInspectionSchema
+        .omit({ fileArtifacts: true })
         .nullable()
         .parse(
           await withControlPlaneUser(userId, () =>
@@ -413,8 +415,27 @@ export function createControlPlaneWorkflowService(
           "Invalid workflow call identity",
         );
       const saved = binding(userId, runId);
+      const capturedWorkers = new Set(
+        value.diagnostics.entries.flatMap((entry) =>
+          entry.threadId === null ? [] : [entry.threadId],
+        ),
+      );
+      if (value.call.childThreadId !== null)
+        capturedWorkers.add(value.call.childThreadId);
+      const artifactWorkers = value.workers.filter((worker) =>
+        capturedWorkers.has(worker.threadId),
+      );
+      const fileArtifacts = readWorkflowFileArtifacts(
+        db,
+        userId,
+        saved.projectId,
+        artifactWorkers,
+      );
+      fileArtifacts.unavailableWorkers +=
+        value.workers.length - artifactWorkers.length;
       return {
         ...value,
+        fileArtifacts,
         call: {
           ...value.call,
           profileVersionId:

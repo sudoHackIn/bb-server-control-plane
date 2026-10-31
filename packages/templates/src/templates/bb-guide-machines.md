@@ -418,7 +418,11 @@ and `bb server access workflows call <run-id> <call-id> --json`, or
 Inspection returns recorded input, output contract, source hash, pinned root
 profile/workflow revision, bounded step summaries, timing and effective execution
 selection. Call inspection returns its prompt/result, contract, recorded worker
-thread IDs and readable replay provenance. Use existing scoped thread timeline
+thread IDs, readable replay provenance, `diagnostics` (individual retry/repair
+errors and timestamps) and `fileArtifacts` (retained native patches/edit-tool
+results). Both lists are bounded with explicit truncation/availability; legacy
+calls may lack complete diagnostic coverage. Artifact paths never read the live
+filesystem. Use existing scoped thread timeline
 operations to read the actual worker chat. Cached replay creates no new worker.
 Only the owner with current project read access can use this limited surface;
 being able to invoke the same agent grants no access to another user's runs.

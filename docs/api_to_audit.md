@@ -3995,3 +3995,22 @@ change. Current daemon commands, fields and protocol semantics are unchanged.
 The Plugin Guide's existing `bb-sdk` card inventories the same internal member.
 Stabilization remains part of the internal background-job authority audit, with
 malformed scope, replay/restart, bounded capture and foreign-read tests.
+
+
+### Shared-server call inspection diagnostics
+
+The existing builtin Workflows `controlPlaneWorkflowCallInspection` RPC now
+includes its native transactional call journal. Only that plugin writes retry,
+repair and terminal-error entries; the control-plane service validates the
+response under current owner/project authority. The existing limited API/SDK/CLI
+call inspection and personal inspector use this path. No public Plugin SDK member
+or host-daemon message was added.
+
+Core augments the read with retained native fileChange patches or Qwen edit-tool
+results. Worker references must match the current call or its captured cache-key
+journal and current owner/project access. Artifact paths are metadata, never
+filesystem read requests. Core uses the existing bounded native retained-output
+hydration helper and preserves preview truncation after expiry. Legacy coverage,
+response limits and unavailable worker artifacts remain explicit. Publish/invoke,
+read-only inspection, foreign-ID denial, replay and restart continue through the
+same limited contracts; reviewer grants remain a separate stage.

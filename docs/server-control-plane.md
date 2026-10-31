@@ -77,7 +77,13 @@ Capture truncation is explicit and does not change execution results. The runtim
 existing one-child-level limit is unchanged. See the
 [structure verification record](control-plane-phase-93-verification.json).
 
-- [ ] Preserve individual retry errors/timestamps and available file-change artifacts beyond existing call counters/error and native tool results, then expose them in the same inspector.
+Individual retry/repair errors and timestamps are now retained in the native
+call journal. The inspector shows these entries and a separate file-artifact
+section from retained patches or Qwen edit-tool results, including status and
+worker/event provenance. Current ownership/project checks, cache identity,
+legacy gaps, bounded output and unavailable artifacts are explicit. The same
+call inspection contract serves API, SDK and CLI. See the
+[diagnostics verification record](control-plane-phase-94-verification.json).
 
 #### P3.4 — Reviewer and developer access
 

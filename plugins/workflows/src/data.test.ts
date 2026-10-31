@@ -1,3 +1,4 @@
+import { readCallDiagnostics } from "./call-diagnostics.js";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
@@ -96,6 +97,108 @@ describe("workflow durable data", () => {
     expect(claimQueuedRun(db, 1, [])?.id).toBe(alice.id);
   });
 
+  it("retains retry and repair errors across success, recovery and call replacement", () => {
+    const run = newRun();
+    claimQueuedRun(db, 1);
+    const input = {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "original",
+      prompt: "answer",
+      options: {
+        selection: null,
+        outputSchema: null,
+        title: null,
+        phase: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    };
+    let call = startCall(db, input);
+    attachCallThread(db, call.id, "worker-1");
+    settleCall(db, {
+      id: call.id,
+      status: "failed",
+      result: null,
+      error: "ECONNRESET",
+    });
+    call = queueCallProviderRetry(db, call.id, "ECONNRESET")!;
+    attachCallThread(db, call.id, "worker-2");
+    incrementRepairAttempts(db, call.id, "expected a number");
+    settleCall(db, {
+      id: call.id,
+      status: "succeeded",
+      result: 42,
+      error: null,
+    });
+    const history = readCallDiagnostics(db, call);
+    expect(history.entries.map((row) => row.kind)).toEqual([
+      "started",
+      "failure",
+      "provider-retry",
+      "repair",
+    ]);
+    expect(history.entries[2]).toMatchObject({
+      threadId: "worker-1",
+      message: "ECONNRESET",
+      attempt: 1,
+    });
+    expect(history.entries[3]).toMatchObject({
+      threadId: "worker-2",
+      message: "expected a number",
+      attempt: 1,
+    });
+    expect(history.entries.every((row) => row.createdAt > 0)).toBe(true);
+    expect(incrementRepairAttempts(db, call.id, "late")).toBeNull();
+    expect(queueCallProviderRetry(db, call.id, "late")).toBeNull();
+    recoverInterruptedRuns(db);
+    expect(readCallDiagnostics(db, call)).toEqual(history);
+    claimQueuedRun(db, 1);
+    const replaced = startCall(db, { ...input, cacheKey: "changed" });
+    expect(
+      readCallDiagnostics(db, replaced).entries.map((row) => row.kind),
+    ).toEqual(["started"]);
+    expect(readCallDiagnostics(db, call)).toEqual(history);
+    db.prepare("DELETE FROM workflow_runs WHERE id=?").run(run.id);
+    expect(
+      db.prepare("SELECT count(*) AS n FROM workflow_call_diagnostics").get(),
+    ).toEqual({ n: 0 });
+  });
+
+  it("bounds diagnostic history and leaves legacy absence explicit", () => {
+    const run = newRun();
+    claimQueuedRun(db, 1);
+    const call = startCall(db, {
+      runId: run.id,
+      callIndex: 0,
+      cacheKey: "key",
+      prompt: "answer",
+      options: {
+        selection: null,
+        outputSchema: null,
+        title: null,
+        phase: null,
+      },
+      selection: resolvedSelection,
+      replay: null,
+    });
+    db.prepare("DELETE FROM workflow_call_diagnostics").run();
+    expect(readCallDiagnostics(db, call)).toEqual({
+      recordedSince: null,
+      entries: [],
+      truncated: false,
+    });
+    attachCallThread(db, call.id, "worker");
+    for (let i = 0; i < 110; i++)
+      incrementRepairAttempts(db, call.id, "Я".repeat(10000));
+    const history = readCallDiagnostics(db, call);
+    expect(history.entries).toHaveLength(100);
+    expect(history.truncated).toBe(true);
+    expect(
+      Buffer.byteLength(history.entries[0]?.message ?? ""),
+    ).toBeLessThanOrEqual(8192);
+    expect(history.entries[0]?.message).not.toContain("�");
+  });
   function legacyRun() {
     const id = "legacy-run";
     const originThreadId = "legacy-origin";
@@ -707,10 +810,10 @@ describe("workflow durable data", () => {
     });
     attachCallThread(db, call.id, "child-repair");
 
-    expect(incrementRepairAttempts(db, call.id)).toBe(1);
-    expect(incrementRepairAttempts(db, call.id)).toBe(2);
+    expect(incrementRepairAttempts(db, call.id, "invalid result")).toBe(1);
+    expect(incrementRepairAttempts(db, call.id, "invalid result")).toBe(2);
     expect(storeStructuredResult(db, call.id, null)).toBe("accepted");
-    expect(incrementRepairAttempts(db, call.id)).toBeNull();
+    expect(incrementRepairAttempts(db, call.id, "invalid result")).toBeNull();
 
     expect(recoverInterruptedRuns(db)).toEqual(["child-repair"]);
     expect(getRunRequired(db, run.id).status).toBe("queued");

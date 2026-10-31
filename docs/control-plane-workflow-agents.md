@@ -178,6 +178,41 @@ cannot grant execution or read authority. The fixed local evaluator protocol is
 version 2; rebuild/redeploy that artifact with the server. No host-daemon protocol
 or launcher identity/permission behavior changes.
 
-Individual retry error history and independent file-change artifacts remain a
-following P3.3 slice. Reviewer/developer grants remain P3.4; administrators retain
-existing full native BB/Workflows interfaces.
+Call inspection also returns `diagnostics` and `fileArtifacts` through the same
+owner/project-scoped route, SDK `workflows.inspectCall` and CLI `workflows call`.
+The native plugin journal records call admission, provider retry decisions,
+structured-output rejections and terminal errors with receipt timestamps, worker
+references and attempt counters. A rejection counter does not imply that a new
+corrective turn was admitted: the final over-budget rejection is recorded too.
+Messages are bounded to 8 KiB with a truncation suffix; at most 100 journal
+entries are returned. `recordedSince: null` means complete coverage is unknown
+for an old call, not that no error happened. Available partial entries still show.
+Journal writes share the state-change transaction and native call retention.
+A captured cache key isolates the current call from prior overwritten records;
+replay does not manufacture new provider attempts or copy original error history.
+
+File artifacts are read from retained native `item/completed` events: normalized
+`fileChange` patches and Qwen `write_file`/`edit` results. They include event/worker
+identity, time, path, native status and available patch/result text, including
+failed edit attempts. The service checks each worker's current owner/project
+access and only uses its current call reference or a matching journal reference.
+Unbound historical workers and deleted/unreadable workers are explicitly counted
+as unavailable. No file path is opened by this read API. File artifacts are not
+filesystem snapshots, a proof every attempted edit succeeded, or a complete
+record of arbitrary shell writes. Missing/retention-pruned events mean no
+available artifact, not no file modification. Cached resumed runs link to their
+readable original work instead of copying artifacts.
+
+The response admits at most 100 artifacts from the first 100 candidate events,
+64 KiB per patch/result and 1 MiB aggregate patch/result bytes. Malformed or
+oversized event payloads and excess entries are explicitly marked omitted;
+individual patch/result truncation is separate. Native retained tool outputs are
+hydrated within a 1 MiB event read budget; expired or oversized retained outputs
+keep their existing preview and truncation indicator. Paths are display metadata,
+never an API capability to read arbitrary filesystem content. No host-daemon
+protocol or provider behavior changes are required by this inspection slice.
+Deploy the server, builtin Workflows bundle and limited SDK/CLI clients together:
+the strict call-inspection response now includes diagnostics and file artifacts.
+
+Reviewer/developer grants remain P3.4; administrators retain existing full native
+BB/Workflows interfaces.

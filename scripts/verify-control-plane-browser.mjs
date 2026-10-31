@@ -424,6 +424,27 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       .click();
     await visible(alice.page.getByRole("heading", { name: "Step input" }));
     await visible(alice.page.getByRole("heading", { name: "Step output" }));
+    await visible(
+      alice.page.getByRole("region", { name: "Retry and error history" }),
+    );
+    const fileArtifactsRegion = alice.page.getByRole("region", {
+      name: "Recorded file changes",
+    });
+    await visible(fileArtifactsRegion);
+    const fileSummary = fileArtifactsRegion
+      .locator("summary")
+      .filter({ hasText: "workflow-published-alice.puml" });
+    await visible(fileSummary);
+    await fileSummary.click();
+    assert.ok(
+      (await fileArtifactsRegion.locator("pre").first().textContent()).length >
+        0,
+    );
+    await verifyPersonalSurface(
+      alice.page,
+      "Run inspection",
+      "workflow-artifacts",
+    );
     await verifyPersonalSurface(
       alice.page,
       "Run inspection",
@@ -993,6 +1014,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       publishedWorkflowAgentCatalogTaskResultBrowser: true,
       workflowInspectionBrowserNativeThreadAndNavigation: true,
       workflowTraceTreeAndParallelBrowser: true,
+      workflowCallDiagnosticsAndArtifactsBrowser: true,
       browserVersion: browser.version(),
       separateCertificateBrowserContexts: true,
       certificateLoginPreservesConversationAndMessageFragment: true,

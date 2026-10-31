@@ -1,0 +1,76 @@
+{
+  "scope": "P3.3 individual retry/repair errors and retained file-change artifacts",
+  "changes": {
+    "nativeTransactionalDiagnosticJournal": true,
+    "providerRetryAndRepairMessagesTimestampsAndWorkerReferences": true,
+    "cacheIdentityAndLegacyCoverageExplicit": true,
+    "retainedNativePatchesAndQwenEditToolArtifacts": true,
+    "currentWorkerOwnerAndProjectReadChecks": true,
+    "noFilesystemReadByArtifactEndpoint": true,
+    "apiSdkCliAndPersonalInspector": true,
+    "boundedResponsesAndExplicitOmissions": true,
+    "hostDaemonWireChanged": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 518,
+    "testFilesPassed": 71,
+    "testsByPackage": {
+      "workflowsPlugin": 305,
+      "serverControlPlane": 155,
+      "personalUi": 58
+    },
+    "typecheck": "passed",
+    "changedFileLint": "passed",
+    "changedFileFormat": "passed",
+    "dockerStatus": "passed",
+    "commands": [
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=bb-plugin-workflows -- src/data.test.ts",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane-workflow-artifacts.test.ts",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane",
+      "pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/cli --filter=bb-plugin-workflows"
+    ],
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-diagnostics-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 745063,
+    "nativeAndBrowserProofs": {
+      "workflowCallDiagnosticsAndNativeEditArtifacts": true,
+      "workflowCallDiagnosticsAndArtifactsBrowser": true,
+      "workflowInspectionNativeMetadataCliAndForeignDenial": true,
+      "workflowInspectionBrowserNativeThreadAndNavigation": true,
+      "workflowTraceStructureSurvivesRestart": true,
+      "resumedThreadAfterRestart": true,
+      "crashRecoveryRetainsIdentityAndThreads": true,
+      "abruptCrashWorkflowRecoveryVerified": true
+    },
+    "dockerCgroupOomKillCountAfterBrowser": 0,
+    "postSuiteArtifactDescriptionCopyImageBuild": "passed",
+    "finalImageBuildTurboTasksPassed": 62
+  },
+  "limits": {
+    "diagnosticEntries": 100,
+    "diagnosticMessageBytes": 8192,
+    "candidateFileEvents": 100,
+    "fileArtifacts": 100,
+    "artifactTextBytesEach": 65536,
+    "aggregateArtifactTextBytes": 1048576
+  },
+  "limitations": [
+    "Historical error coverage is not reconstructed from counters. Legacy/partial coverage and truncated history remain explicit.",
+    "Artifact responses use retained native events and bound worker references; they are not current filesystem snapshots or a complete record of shell writes.",
+    "Qwen edit-tool artifacts report the native operation/result/status; a patch is shown only when a native fileChange event retained one.",
+    "Resumed cached runs link to currently readable original work; they do not copy its diagnostics or artifacts.",
+    "Diagnostic reviewer/developer grants remain P3.4; this limited inspector retains owner/current-project-read authority.",
+    "Docker uses stock Qwen and deterministic model fixtures, not corporate harness authorization."
+  ],
+  "verificationNotes": [
+    "The initial new durability test incorrectly attempted to restart a call while its recovered parent run was queued. The test now claims that parent before the next invocation; production state admission is unchanged. All 27 data tests passed after correction, alongside the other 278 workflow tests.",
+    "The deployed fixture grants write_file in the pinned test profile and requests a real file edit in each published workflow worker, then verifies the on-disk file and native edit artifact through the restricted call inspection API/CLI.",
+    "The first Docker run was stopped after ordinary user-thread checks to cover native retained-output hydration. A real-database regression now verifies bounded hydration and expired-preview truncation; the server typecheck passed after that change.",
+    "The next Docker run timed out in the unchanged message-source Bob readiness check before personal workflow/trace/artifact scenarios. No cause is inferred from that timeout; assertions and deadlines are retained for retry.",
+    "A second early retry timed out on message-source Alice readiness. The fixture now includes thread state, model request count and recent event types on failure without changing deadlines. The subsequent run passed that readiness check and native retry/repair assertions, then correctly rejected a missing file after an edit-tool artifact. Its model fixture had used camelCase projectsRoot for a raw SQL user row; projects_root is now validated, a model regression covers the absolute path, and native assertions require both exact cwd/path and completed status before the on-disk check.",
+    "After the path regression passed, a later run timed out in the ordinary manual Bob task before workflow scenarios (oom_kill=0). Existing idle-session release is now also invoked before manual tasks and after each completed manual task, preserving both primary conversations, active jobs and stored history. The next run passed both manual tasks. Old restorable Turbo archives were removed when host disk free space reached 1 GiB; source files and Docker data were not removed.",
+    "The final composite passed all 63 Turbo tasks in 745063 ms, including both real write_file files, restricted API/CLI artifacts, the personal inspector, restart and crash recovery. The post-browser cgroup snapshot reported oom_kill=0. A final copy-only clarification labels both patches and edit-tool results; that copy is checked by lint/format and included in a subsequent image rebuild. No execution/API behavior changed after the passing suite."
+  ]
+}

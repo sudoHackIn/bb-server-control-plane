@@ -123,6 +123,40 @@ function mount(
               ? []
               : [{ threadId: "worker", archived: true }],
           workersTruncated: false,
+          diagnostics: {
+            recordedSince: null,
+            entries: [
+              {
+                id: 1,
+                kind: "provider-retry",
+                createdAt: 2,
+                threadId: "worker",
+                message: "ECONNRESET",
+                attempt: 1,
+              },
+            ],
+            truncated: true,
+          },
+          fileArtifacts: {
+            entries: [
+              {
+                eventId: "event",
+                threadId: "worker",
+                sequence: 7,
+                createdAt: 2,
+                path: "diagram.puml",
+                kind: "update",
+                movePath: null,
+                status: "completed",
+                diff: "+@startuml",
+                diffTruncated: true,
+                output: null,
+                outputTruncated: false,
+              },
+            ],
+            truncated: false,
+            unavailableWorkers: 0,
+          },
         });
       if (path.endsWith("/result"))
         return Response.json({
@@ -171,6 +205,17 @@ it("opens the actual worker timeline read-only and navigates back through the sa
   await screen.findByText("Recorded prompt");
   expect(screen.getByText("PlantUML")).toBeTruthy();
   expect(screen.getByText("high / full")).toBeTruthy();
+  expect(
+    screen.getByRole("region", { name: "Retry and error history" }),
+  ).toBeTruthy();
+  expect(screen.getByText("Provider retry 1")).toBeTruthy();
+  expect(screen.getByText("ECONNRESET")).toBeTruthy();
+  expect(
+    screen.getByText("Only the first 100 diagnostic entries are shown."),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByText("update · diagram.puml"));
+  expect(screen.getByText("+@startuml")).toBeTruthy();
+  expect(screen.getByText("This patch is truncated.")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "worker · archived" }));
   await screen.findByText("Native timeline worker");
   expect(screen.queryByRole("textbox")).toBeNull();

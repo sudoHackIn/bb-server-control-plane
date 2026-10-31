@@ -276,6 +276,33 @@ export async function verifyPublishedWorkflowAgents({
       history.calls[0].id,
       "--json",
     ]);
+    assert.equal(inspectedCall.diagnostics.recordedSince > 0, true);
+    assert.ok(
+      inspectedCall.diagnostics.entries.some(
+        (entry) => entry.kind === "started",
+      ),
+    );
+    const artifact = inspectedCall.fileArtifacts.entries.find(
+      (entry) => entry.kind === "write_file",
+    );
+    assert.ok(artifact, JSON.stringify(inspectedCall.fileArtifacts));
+    assert.equal(
+      artifact.path,
+      `${project.cwd}/workflow-published-${user.login}.puml`,
+    );
+    assert.equal(artifact.status, "completed", JSON.stringify(artifact));
+    assert.equal(artifact.threadId, history.calls[0].childThreadId);
+    assert.equal(artifact.outputTruncated, false);
+    assert.ok(artifact.output);
+    const cwd = db
+      .prepare(
+        "SELECT e.path FROM threads t JOIN environments e ON e.id=t.environment_id WHERE t.id=?",
+      )
+      .get(artifact.threadId).path;
+    assert.match(
+      await readFile(`${cwd}/workflow-published-${user.login}.puml`, "utf8"),
+      /@startuml/,
+    );
     assert.equal(inspectedCall.input, body.input);
     assert.equal(inspectedCall.outputAvailable, true);
     assert.equal(inspectedCall.output, result.body.text);
@@ -416,6 +443,7 @@ export async function verifyPublishedWorkflowAgents({
     verification: {
       workflowInspectionNativeMetadataCliAndForeignDenial: true,
       workflowTraceNestedScopesParallelAndReplay: true,
+      workflowCallDiagnosticsAndNativeEditArtifacts: true,
       workflowInspectionReplayProvenance: true,
       publishedWorkflowAgentsNativeUidHomeCwdTwoUsers: true,
       publishedWorkflowAgentsPinnedSourceAndContracts: true,

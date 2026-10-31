@@ -1,3 +1,4 @@
+import { PersonalCallDiagnostics } from "./PersonalCallDiagnostics";
 import { PersonalWorkflowTrace } from "./PersonalWorkflowTrace";
 import { personalInspectionSearch } from "./personal-inspection-navigation";
 import type { JsonValue } from "@bb/domain";
@@ -253,6 +254,7 @@ export function PersonalRunInspection({
                           current access.
                         </p>
                       )}
+                    <PersonalCallDiagnostics detail={selected} />
                     <h3 className="font-medium">
                       Recorded worker conversations
                     </h3>
