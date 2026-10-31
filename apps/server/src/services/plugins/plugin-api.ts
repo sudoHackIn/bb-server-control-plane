@@ -1067,6 +1067,10 @@ export function createPluginApi(options: {
     const source = getBackgroundJobs();
     if (source === null) return (backgroundJobs = null);
     backgroundJobs = {
+      get internal_DO_NOT_USE_inspectionRead() {
+        assertLive();
+        return source.internal_DO_NOT_USE_inspectionRead;
+      },
       get userId() {
         assertLive();
         return source.userId;

@@ -64,7 +64,11 @@ export function registerWorkflowInspectionApi(
   service: WorkflowService,
 ) {
   function managed() {
-    if (!bb.server.internal_DO_NOT_USE_backgroundJobs?.userId)
+    if (
+      !bb.server.internal_DO_NOT_USE_backgroundJobs?.userId &&
+      !bb.server.internal_DO_NOT_USE_backgroundJobs
+        ?.internal_DO_NOT_USE_inspectionRead
+    )
       throw new Error("A managed workflow user is required");
   }
   bb.rpc.register(contract, {

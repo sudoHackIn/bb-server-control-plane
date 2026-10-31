@@ -668,11 +668,13 @@ export async function verifyNativeWorkflows({
     await writeFile(`${nestedDir}/oversized.js`, "x".repeat(524289), {
       mode: 0o644,
     });
+    await chown(`${nestedDir}/oversized.js`, alice.user.uid, alice.user.uid);
     await rejectNested("oversized", /exceeds byte limit/u);
     await rejectNested({ scriptPath: ".bb/workflows" }, /regular file/u);
     await writeFile(`${nestedDir}/invalid-utf8.js`, Buffer.from([255]), {
       mode: 0o644,
     });
+    await chown(`${nestedDir}/invalid-utf8.js`, alice.user.uid, alice.user.uid);
     await rejectNested("invalid-utf8", /not valid.*utf-8/u);
 
     for (const marker of [

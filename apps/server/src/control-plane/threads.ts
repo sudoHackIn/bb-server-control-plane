@@ -52,11 +52,25 @@ import {
 } from "../services/threads/thread-data.js";
 import { resolveThreadHostCommandEnvironment } from "../services/threads/thread-command-environment.js";
 
-export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
-  const streams = createControlPlaneThreadStreams(deps.hub);
+export function createControlPlaneThreadService({
+  deps,
+  inspectionRead,
+  streamPool,
+}: {
+  deps: AppDeps;
+  streamPool?: ReturnType<typeof createControlPlaneThreadStreams>;
+  inspectionRead?: (
+    userId: string,
+    id: string,
+  ) => {
+    row: NonNullable<ReturnType<typeof getControlPlaneThread>>;
+    thread: NonNullable<ReturnType<typeof getThread>>;
+  };
+}) {
+  const streams = streamPool ?? createControlPlaneThreadStreams(deps.hub);
   const windows = createThreadTimelineWindows(deps);
   function snapshot(userId: string, id: string) {
-    const { thread } = read(userId, id);
+    const { thread } = readInspection(userId, id);
     return {
       type: "thread-timeline" as const,
       target: {
@@ -83,7 +97,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
     id: string,
     options: { after: number; limit: number },
   ) {
-    read(userId, id);
+    readInspection(userId, id);
     const rows = listThreadEventRows(deps.db, {
       threadId: id,
       afterSeq: options.after,
@@ -105,6 +119,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     return { row, thread };
   }
+  const readInspection = inspectionRead ?? read;
   function executable(userId: string, id: string) {
     const value = read(userId, id);
     assertExecutionAdmission(deps.db);
@@ -113,7 +128,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
     return { thread: value.thread, context };
   }
   function get(userId: string, id: string) {
-    const { row } = read(userId, id);
+    const { row } = readInspection(userId, id);
     return {
       id: row.id,
       projectId: row.projectId,
@@ -490,7 +505,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       id: string,
       beforeCursor: TimelinePaginationCursor,
     ) {
-      const { thread } = read(userId, id);
+      const { thread } = readInspection(userId, id);
       return windows.read(
         thread,
         {
@@ -507,7 +522,7 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
       id: string,
       input: ControlPlaneTimelineDetails,
     ) {
-      const { thread } = read(userId, id);
+      const { thread } = readInspection(userId, id);
       const settings = getAppSettings(deps.db);
       return buildTimelineTurnSummaryDetails(deps.db, thread, {
         ...input,
@@ -535,13 +550,13 @@ export function createControlPlaneThreadService({ deps }: { deps: AppDeps }) {
         authorized: () => boolean;
       },
     ) {
-      read(userId, id);
+      readInspection(userId, id);
       return streams.open({
         userId,
         threadId: id,
         ...options,
         authorized: () => {
-          read(userId, id);
+          readInspection(userId, id);
           return options.authorized();
         },
         events: (after) => events(userId, id, { after, limit: 32 }),

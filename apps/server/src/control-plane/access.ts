@@ -1,3 +1,4 @@
+import { assertControlPlaneInspectionMutationAllowed } from "./inspection-context.js";
 import {
   controlPlaneBodyLimit,
   readControlPlaneJson,
@@ -117,6 +118,9 @@ export function createControlPlaneAccess(
 
   return {
     close: () => users?.close(),
+    administrator(context: Context) {
+      return session(context)?.login ?? null;
+    },
     get publicOrigin() {
       return config.publicOrigin;
     },
@@ -414,15 +418,19 @@ export function createControlPlaneAccess(
           ? context.redirect("/control-plane/login", 303)
           : context.json({ ok: true });
       });
-      users?.install(app, (context) => {
-        const token = getCookie(context, cookieName);
-        if (token) revoke(tokenKey(token));
-        deleteCookie(context, cookieName, {
-          path: "/",
-          secure,
-          sameSite: "Strict",
-        });
-      });
+      users?.install(
+        app,
+        (context) => {
+          const token = getCookie(context, cookieName);
+          if (token) revoke(tokenKey(token));
+          deleteCookie(context, cookieName, {
+            path: "/",
+            secure,
+            sameSite: "Strict",
+          });
+        },
+        (context) => session(context)?.login ?? null,
+      );
     },
     attachSockets(server: WebSocketServer) {
       server.on("connection", (socket, request) => {
@@ -464,6 +472,7 @@ export function createControlPlaneAccess(
       input: RequestInfo | URL,
       init?: RequestInit,
     ): Promise<Response> {
+      assertControlPlaneInspectionMutationAllowed();
       const request = new Request(input, init);
       const path = new URL(request.url).pathname;
       if (!path.startsWith("/api/v1/"))

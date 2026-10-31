@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-export async function verifyExternalBrowser({ origin, users, signal }) {
+export async function verifyExternalBrowser({
+  origin,
+  users,
+  reviewer,
+  signal,
+}) {
   if (process.env.BB_CONTROL_PLANE_BROWSER_TEST !== "1") return {};
-  console.log(`BB_BROWSER_READY ${JSON.stringify({ origin, users })}`);
+  console.log(
+    `BB_BROWSER_READY ${JSON.stringify({ origin, users, reviewer })}`,
+  );
   while (!signal.aborted) {
     try {
       const result = JSON.parse(

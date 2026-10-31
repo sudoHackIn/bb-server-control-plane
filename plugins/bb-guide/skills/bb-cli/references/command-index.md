@@ -119,6 +119,13 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access projects set-role`
 - `bb server access projects remove-role`
 - `bb server access projects role-operation`
+- `bb server access inspections`
+- `bb server access inspections list`
+- `bb server access inspections workflow`
+- `bb server access inspections thread`
+- `bb server access inspections grants list`
+- `bb server access inspections grants get`
+- `bb server access inspections grants set`
 - `bb server access workflows`
 - `bb server access agent-runs`
 - `bb server access agent-runs start`

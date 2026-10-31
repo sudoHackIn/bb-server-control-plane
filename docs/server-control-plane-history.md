@@ -2654,7 +2654,6 @@ the UI is unchanged and retains increment 51's browser baseline. See
 `control-plane-phase-56-verification.json` for final proof and earlier fixture
 corrections. The full goal remains open.
 
-
 ## Fifty-seventh increment: parent/system notices and unowned legacy backfill
 
 Managed parent changes now check both saved owners and current project access
@@ -2709,7 +2708,6 @@ Server bundle and QA script SHA-256 match the final image. No browser UI changed
 this increment uses the browser baseline from 51. See
 [the verification record](control-plane-phase-57-verification.json).
 
-
 ## Fifty-eighth increment: bound RPC targets and managed attachment reads
 
 The common host-RPC admission path now checks managed command targets before
@@ -2746,14 +2744,12 @@ This increment adds no wire fields, public SDK members, CLI flags or migration.
 Host daemon protocol remains 253 and Plugin SDK remains 0.6.80. No UI changes
 require a new browser baseline.
 
-
 Managed daemon batches also cannot append server-owned input, rejection,
 operation, manager-message or provisioning events. This prevents reuse of an
 existing canonical request ID to replace its body through the machine endpoint.
 All seven filtered types and an allowed provider event are tested together;
 accepted indexes retain the existing wire shape. Docker repeats canonical-input
 forgery against both users' live native Qwen threads.
-
 
 Verification passed: 948 selected server tests in 104 files, all 658 database
 tests in 59 files, seven typecheck tasks, and strict lint/formatting for all 11
@@ -2777,7 +2773,6 @@ to check actual path ownership without enabling service-account setup scripts.
 A superseded live run was stopped to add the event-forgery checks; final evidence
 comes from the complete replacement run. No test deadlines were extended.
 See [the verification record](control-plane-phase-58-verification.json).
-
 
 ## Fifty-ninth increment: native workspace execution under registered UID
 
@@ -2804,7 +2799,6 @@ central plugins or legacy provider recovery execute under user UIDs. The wider
 machine/action, composite background and product acceptance requirements remain
 open. Detailed final evidence is recorded in
 [the verification record](control-plane-phase-59-verification.json).
-
 
 Verification passed: 951 selected server tests in 105 files, all 658 database
 tests in 59 files, 819 daemon tests in 77 files (12 existing platform skips),
@@ -2834,7 +2828,6 @@ JSON wire sizes while avoiding Node/zlib-specific gzip byte counts. Earlier
 passing Docker runs were superseded after strengthening descendant checks and
 finalizing IPC/client handling; acceptance uses the complete rebuilt final run.
 
-
 ## Sixtieth increment: registered environment provider lifecycle policy
 
 Core no longer invokes service-account environment provider callbacks for managed
@@ -2856,7 +2849,6 @@ SDK member, CLI command or migration is introduced. Arbitrary central plugin cod
 remains trusted; the complete machine/action and composite background acceptance
 requirements remain open. Final evidence is recorded in
 [the verification record](control-plane-phase-60-verification.json).
-
 
 Verification passed: 1055 selected server tests in 110 files, including nine
 new migrated-SQLite authority tests, six typecheck tasks and strict lint/formatting
@@ -2880,7 +2872,6 @@ row without changing its creation status. That state transition was corrected,
 covered with lifecycle-first regression ordering, and verified in the complete
 replacement deployment. Test deadlines were not extended.
 
-
 ## Sixty-first increment: project MCP configuration and personal credentials
 
 Migration 0157 adds central connectors, user grants, project connection records
@@ -2902,7 +2893,6 @@ are rejected. Actual provider-to-MCP calls, profile policy, shared-project
 execution and project UI remain unchecked requirements. See
 [the configuration contract](control-plane-project-mcp.md) and
 [verification record](control-plane-phase-61-verification.json).
-
 
 Verification passed: 1061 selected server tests in 111 files, all 659 database
 tests in 60 files, all 136 SDK tests in 17 files, eight secret-storage tests in
@@ -2938,7 +2928,6 @@ and to identify the turn-source migration by SQL hash rather than assuming it is
 latest. Production migrations remain strict. An existing SDK test now explicitly
 narrows agent/script definitions. The CLI's generic JSON error prevents Node's
 parser from echoing malformed secret input.
-
 
 ## Sixty-second increment: server-owned project MCP execution
 
@@ -3005,7 +2994,6 @@ The complete project MCP feature remains open: actual shared-project workspace
 execution and project management UI are still required. No frontend code changes
 in this increment; browser baseline remains increment 51.
 
-
 ## Sixty-third increment: personal project integrations UI
 
 The personal native sidebar/composer shell has an **Integrations** view per
@@ -3031,7 +3019,6 @@ cancel reads on unmount. There are no new Plugin SDK members or daemon wire
 changes; protocol stays 255 and Plugin SDK stays 0.6.80. Documentation and the
 built CLI guide describe the same controls. Actual shared-project agent workspace
 execution and combined MCP worker/revocation acceptance remain open.
-
 
 Verification passed: all 47 personal UI tests in eight files, all 137 SDK tests
 in 18 files, six typecheck tasks and strict lint/formatting for all ten changed
@@ -3072,7 +3059,6 @@ assertions and VM resources are unchanged. The MCP browser fixture restores each
 caller's exact original conversation before subsequent scenarios, and failure
 diagnostics contain identity response metadata rather than credentials.
 
-
 ## Sixty-fourth increment: full server regression parity
 
 The full server test selection is green again. The builtin reservation test keeps
@@ -3102,7 +3088,6 @@ driver log contains no fixture PAT values. The browser baseline remains incremen
 
 This closes the two assertion mismatches recorded in 62–63. It does not close the
 remaining shared-project execution or other unchecked product requirements.
-
 
 ## Sixty-fifth increment: project directory ACL substrate
 
@@ -3135,7 +3120,6 @@ on recheck without changing code or deadlines. Five host/image artifacts match.
 Browser production code is unchanged. See [the verification
 record](control-plane-phase-65-verification.json). The shared execution feature
 and broader unchecked acceptance requirements remain open.
-
 
 ## Sixty-sixth increment: database authority for project ACL policy
 
@@ -3170,7 +3154,6 @@ revision and rejects old receipts and grants. Three source/image hashes match,
 including the actual migration; the compiled fixture is also fingerprinted.
 No production frontend changes require a new browser baseline. See
 [the verification record](control-plane-phase-66-verification.json).
-
 
 ## Sixty-seventh increment: UID lifetime leases and quiescent ACL mutation
 
@@ -3212,7 +3195,6 @@ verifies and removes only its own stopped-before-launch tombstone after testing;
 it preserves every other job and the original missing-directory assertion. No
 production stop fence, check or deadline was weakened.
 
-
 ## Sixty-eighth increment: persisted UID launch barriers
 
 The fixed launcher and typed server adapter can begin/read/finish root-owned,
@@ -3244,7 +3226,6 @@ post-restart helper check: it still rejects launch, rejects stale finish, then
 allows an explicitly released job under the same UID with preserved HOME content.
 Six source/image hashes match. Database schema/policy and production frontend are
 unchanged. See [the verification record](control-plane-phase-68-verification.json).
-
 
 ## Sixty-ninth increment: durable per-UID coordinator and launch generation seals
 
@@ -3298,7 +3279,6 @@ generation and coordinated deployment. Repackaging that documentation preserves
 all nine executable/migration/manifest hashes; the final focused Docker deployment
 passes 63 tasks in 19.323s and the skill matches its image copy exactly.
 
-
 ## Seventieth increment: durable project participant reconciliation
 
 Migration 0161 records complete participant/generation snapshots and fenced worker
@@ -3327,7 +3307,6 @@ and crash recovery. Eleven host/image artifacts match. The earlier concurrent
 full-deployment attempt hit its existing global deadline and is recorded as failed.
 See [the verification record](control-plane-phase-70-verification.json).
 
-
 ## Seventy-first increment: preserve queues during UID maintenance
 
 Internal thread/background authority errors distinguish a temporary maintenance
@@ -3352,7 +3331,6 @@ native Qwen/MCP, workspace/Git, workflows, automations, scripts, restart and cra
 recovery after the real user's generation advance. Eleven host/image artifacts
 and two compiled fixture hashes match the final image. The failed development
 attempts and their fixes are retained in [the verification record](control-plane-phase-71-verification.json).
-
 
 ## Seventy-second increment: native maintenance drain and startup recovery
 
@@ -3388,7 +3366,6 @@ native script cleanup after a crash all pass. Twenty-two host/image artifacts
 match; three compiled fixture hashes are recorded. The earlier failed and
 inconclusive deployment attempts remain in [the verification record](control-plane-phase-72-verification.json).
 
-
 ## Seventy-third increment: atomic private role change and cohort reservation
 
 The private project coordinator can now change one runner/viewer grant or remove
@@ -3416,7 +3393,6 @@ in 530.916s: 63/63 Turbo tasks pass in 10m40.377s. The server bundle and role
 scenario script match the image; the compiled project fixture hash is recorded.
 The full server suite required access to the user-owned npm cache used by its
 plugin packaging tests. See [the verification record](control-plane-phase-73-verification.json).
-
 
 ## Seventy-fourth increment: administrator project role HTTP API
 
@@ -3448,7 +3424,6 @@ budget with identical assertions. The optional external production-browser
 verification failed separately and is not counted as a pass. See [the
 verification record](control-plane-phase-74-verification.json).
 
-
 ## Seventy-fifth increment: limited project-role SDK and CLI
 
 The limited SDK exposes typed administrator project-role listing, revision-checked
@@ -3474,7 +3449,6 @@ The server entry, CLI entry and both deployment scripts match their image
 copies. The process-lifecycle CLI test and server plugin-packaging tests required
 access outside the filesystem sandbox to inspect their fixture process and use
 the existing npm cache. See [the verification record](control-plane-phase-75-verification.json).
-
 
 ## Seventy-sixth increment: administrator user directory
 
@@ -3502,7 +3476,6 @@ scenario but failed an existing composite thread-creation check with
 `environment_not_ready`; the subsequent complete deployment passed without
 code changes. See [the verification record](control-plane-phase-76-verification.json).
 
-
 ## Seventy-seventh increment: native administrator role controls
 
 The full administrator project settings page now includes a server-access
@@ -3529,7 +3502,6 @@ suite. The rebuilt Docker image passes the focused native/admin scenario in
 105.823s and the complete composite in 636.017s: 63/63 Turbo tasks pass in
 12m53.83s. The production project-settings JS module matches its image copy.
 See [the verification record](control-plane-phase-77-verification.json).
-
 
 ## Seventy-eighth increment: runner-owned Qwen in a shared project
 
@@ -3563,7 +3535,6 @@ server suite passes 3844 tests and fails three existing installer/plugin tests,
 which reproduce in isolation; it is not counted as green. See [the verification
 record](control-plane-phase-78-verification.json).
 
-
 ## Seventy-ninth increment: personal MCP credential in a shared Qwen project
 
 The project MCP connection remains attached to Bob's managed project, while an
@@ -3589,7 +3560,6 @@ for both changed deployment scripts. An earlier direct focused run stopped in
 the existing script-job process probe with `ESRCH`; the subsequent focused and
 complete deployment runs passed. Strict lint, Prettier and `git diff --check`
 pass. See [the verification record](control-plane-phase-79-verification.json).
-
 
 ## P1 — Manual background runs of published agents
 
@@ -3626,7 +3596,6 @@ recovery and immutable snapshots do not promise exactly-once external effects.
 Creating a schedule is not idempotent: repeated create calls produce distinct
 definitions. Subsequent management uses the returned schedule ID.
 
-
 Verification passes 16 focused server tests, 12 database authority tests,
 20 personal UI tests and 146 Automations tests. Thirteen typecheck tasks and
 lint pass (the broad app lint retains existing warnings). Docker's native
@@ -3639,7 +3608,6 @@ exposed two test setup mistakes: expecting 200 instead of 201 on creation and
 using an intentionally revoked Bob token to prepare the offline fixture. The
 fixture now uses administrative setup for that owner; authentication remains
 strict. See [the verification record](control-plane-phase-87-verification.json).
-
 
 ## P3.1 — Project workflow execution without an origin conversation
 
@@ -3667,7 +3635,6 @@ Remaining P3 work: publish an immutable agent with an approved workflow revision
 then route agent task admission and progress through that strategy. This increment
 does not mark P3 complete.
 
-
 Verification passes 28 focused server/security and plugin-facade tests, 13 database
 authority tests, 7 personal workflow UI tests and 283 Workflows tests (including
 the legacy SQLite migration). Twelve typecheck tasks and changed-file lint pass.
@@ -3679,7 +3646,6 @@ forwarding through the plugin lifecycle facade; the fix has a regression test.
 The browser fixture reselects its approved profile after reload and returns to a
 conversation for saved-definition authoring. See the
 [P3.1 verification record](control-plane-phase-88-verification.json).
-
 
 ## Personal workspace UI refresh
 
@@ -3705,7 +3671,6 @@ The Docker fixture releases completed idle owned worker runtimes before the
 browser to avoid accumulated test processes exhausting its 4 GiB VM. It retains
 history and active work. The final browser run has an OOM-kill count of zero.
 See [the UI verification record](control-plane-phase-89-verification.json).
-
 
 ## P3.2 — Published background workflow agents
 
@@ -3746,7 +3711,6 @@ fixture conversations and active jobs; the final after-browser OOM-kill count is
 zero. See [the workflow agent guide](control-plane-workflow-agents.md) and
 [verification record](control-plane-phase-90-verification.json).
 
-
 ## P3 — Step authority, result admission and replay provenance
 
 Every managed workflow step continues to inherit the pinned run profile or select
@@ -3780,3 +3744,39 @@ its assertions and timeouts were retained. The final full deployment passes.
 No new API, database schema or provider/daemon wire fields are introduced.
 See [the verification record](control-plane-phase-91-verification.json).
 P3.3 run inspection, P3.4 diagnostic grants and P3.5 developer test runs remain open.
+
+## P3.4 — Scoped reviewer/developer and administrator diagnostics
+
+Completed explicit per-project diagnostic grants with developer/reviewer roles,
+revision-checked updates and revocation tombstones in BB's shared SQLite database.
+Both roles currently permit read-only diagnostics and require current project
+read access; publishing/developing an agent or receiving invocation permission
+confers no conversation access. Administrators retain their full mode and gain a
+project-settings inspector and grant form.
+
+The dedicated limited API, SDK and CLI reuse native workflow history, trace,
+call diagnostics, retained file artifacts and BB timelines. Core authorizes the
+actor before/after native RPCs and validates exact root/worker bindings. A private
+read scope blocks execution/control methods and general internal SDK dispatch.
+Replay sources require independent read authority. Subscriptions fence credential,
+grant and project-policy changes; embedded history disables interactive plugin
+renderers and message actions. Script output/unmanaged legacy objects retain
+their existing separate administrative surfaces.
+
+A production-browser run also exposed an existing draft-loss race: automation
+and workflow views remounted when their delayed thread response arrived. Their
+keys now use stable route identity while execution still uses the validated
+thread. A delayed-response test fails with the former keys and passes with the
+fix. The existing reconnect test now awaits its React state alongside the stream
+request, retaining the same assertions and deadline.
+
+Verification: 539 unique tests in 77 files, typechecks, changed-file lint/format,
+and all 63 Docker tasks passed. Four actors exercise invocation/read separation,
+foreign IDs, native worker/artifact reads, grant revocation/role changes/CAS,
+post-await revocation, stream closure, browser grant editing, clean restart and
+abrupt crash recovery. The reviewer grant survives restart at revision 6; the
+browser reports zero uncaught errors and the post-browser cgroup has no OOM kills.
+Fixture preparation now provisions the new reviewer before role maintenance and
+assigns Alice's UID/GID to its two negative-content test files, preserving the
+privileged helper's ownership checks. See [the verification record](control-plane-phase-95-verification.json).
+Developer test runs remain P3.5.

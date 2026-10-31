@@ -57,11 +57,13 @@ export function readWorkflowFileArtifacts(
   userId: string,
   projectId: string,
   workers: Array<{ threadId: string }>,
+  authorizedThread?: (id: string) => boolean,
 ) {
-  const readable = workers.filter(
-    (worker) =>
-      getControlPlaneThread(db, userId, worker.threadId)?.projectId ===
-      projectId,
+  const readable = workers.filter((worker) =>
+    authorizedThread
+      ? authorizedThread(worker.threadId)
+      : getControlPlaneThread(db, userId, worker.threadId)?.projectId ===
+        projectId,
   );
   const entries: Array<{
     eventId: string;

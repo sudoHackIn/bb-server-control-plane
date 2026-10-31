@@ -141,6 +141,14 @@ export function registerManagedWorkflowApi(
     )
       throw new Error("A managed workflow user is required");
   }
+  function managedRead() {
+    const jobs = bb.server.internal_DO_NOT_USE_backgroundJobs;
+    if (
+      !jobs ||
+      (jobs.userId === null && !jobs.internal_DO_NOT_USE_inspectionRead)
+    )
+      throw new Error("A managed workflow reader is required");
+  }
   bb.rpc.register(contract, {
     async controlPlaneWorkflowStart(input) {
       managed();
@@ -181,7 +189,7 @@ export function registerManagedWorkflowApi(
       };
     },
     controlPlaneWorkflowGet({ runId }) {
-      managed();
+      managedRead();
       const row = service.get(runId);
       return { run: row ? workflowRunSummary(row) : null };
     },
@@ -190,7 +198,7 @@ export function registerManagedWorkflowApi(
       return { stopped: await service.stop(runId) };
     },
     controlPlaneWorkflowResult({ runId }) {
-      managed();
+      managedRead();
       const row = service.get(runId);
       return row
         ? {
@@ -205,7 +213,7 @@ export function registerManagedWorkflowApi(
         : null;
     },
     controlPlaneWorkflowHistory({ runId, after, limit }) {
-      managed();
+      managedRead();
       const page = service.inspectPage(runId, after, limit + 1);
       if (!page) return null;
       const calls = page.calls.slice(0, limit);

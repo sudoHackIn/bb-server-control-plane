@@ -1097,3 +1097,58 @@ Use `bb server access automations schedule <project-id> --profile-version <versi
 The SDK `automations.create` and POST `/control-plane/user/automations` accept `{projectId,name,target:{profileVersionId,input},trigger,enabled}`. Agent metadata includes `target`; scripts return null. `createdByThreadId` is nullable. Edit task input with SDK `automations.update(id,{expectedRevision,input})` or the existing CLI `automations update <id> --revision <n> --prompt <text>`. Prompt here means task input, not an agent system prompt. Pause, resume, run, stop, history and delete use the existing automation commands.
 
 Agent runs include `source: automation` beside manual runs. Results/events use the same `agent-runs` readers; cancellation delegates to the scheduler. History records failed/skipped dispatches even when no worker thread was created. One active run per definition: overlapping ticks are skipped, missed ticks coalesce into one catch-up run, and failed tasks are not automatically retried. Manual idempotency keys deduplicate admission, not external effects. Recovery is durable, not exactly-once execution.
+
+
+### Shared-server diagnostic access
+
+In the personal workspace, **Inspections** lists your own conversations and
+workflow roots, plus other owners' runs in projects where you have an explicit
+reviewer/developer diagnostic grant and current project read access. Agent
+invocation grants or publishing an agent do not grant conversation access.
+Both diagnostic roles are read-only. They do not permit sending, steering,
+cancelling, replaying or starting another owner's work.
+
+```bash
+bb server access inspections list <project-id> --limit 20 --json
+bb server access inspections workflow <run-id> --json
+bb server access inspections workflow <run-id> --call <call-id> --json
+bb server access inspections workflow <run-id> --trace --after -1 --limit 20 --json
+bb server access inspections workflow <run-id> --result --json
+bb server access inspections thread <worker-id> --workflow <run-id> --timeline --json
+bb server access inspections thread <worker-id> --workflow <run-id> --stream --after 0 --json
+bb server access inspections thread <conversation-id> --events --after 0 --json
+```
+
+List pagination uses `--cursor`; workflow inspection/trace use `--after`.
+Trace can pin `--attempt <uuid>`. Thread reads also support `--result` or
+`--details '<native-item-identity-json>'`; choose one output per command.
+Worker reads require their exact workflow root. Subscriptions recheck credentials,
+diagnostic grants and project policy and close when that authority changes.
+
+An administrator signs in with `server access login`, then adds `--admin` to
+inspection commands. Project settings offer the same full run inspector and
+**Manage diagnostic grants**. Grant commands use the administrative session:
+
+```bash
+bb server access inspections grants list <project-id> --json
+bb server access inspections grants get <project-id> <user-id> --json
+bb server access inspections grants set <project-id> <user-id> --role reviewer --revision 0 --json
+bb server access inspections grants set <project-id> <user-id> --role none --revision 1 --json
+```
+
+`--role` accepts `developer`, `reviewer` or `none`. `--revision` is the loaded
+revision (0 before the first grant); conflicts require reloading. Revocation
+retains a revision tombstone. Granting diagnostic access does not grant project
+read access: manage project roles separately.
+
+The limited SDK exposes `inspections.list`, `inspections.workflows` read methods,
+`inspections.threads` read methods and `inspections.forWorkflow(rootId)` for scoped
+worker reads. `admin.inspections` has the same read contract;
+`admin.diagnosticGrants.list/get/set` manages revision-checked grants. There are
+no execution methods on these readers. The HTTP read namespaces are
+`/control-plane/user/inspections` and `/control-plane/admin/inspections`.
+
+The limited run list covers managed conversation roots and workflow roots;
+script-automation output and unmanaged legacy objects retain their existing
+separate administrative surfaces. Artifact paths describe retained native
+history and never request an arbitrary filesystem read.

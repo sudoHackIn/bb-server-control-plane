@@ -985,6 +985,39 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       [],
     );
     assert.deepEqual(pageErrors, []);
+    assert.ok(ready.reviewer?.inspection?.runId);
+    const reviewer = await actor("reviewer");
+    const reviewerUrl = `${ready.origin}/projects/${ready.reviewer.projectId}?view=inspections&inspectKind=workflow&inspectRun=${ready.reviewer.inspection.runId}`;
+    await reviewer.page.goto(reviewerUrl);
+    await visible(
+      reviewer.page.getByRole("button", { name: "Войти как reviewer" }),
+    );
+    await reviewer.page
+      .getByRole("button", { name: "Войти как reviewer" })
+      .click();
+    await reviewer.page.waitForURL(reviewerUrl);
+    await visible(
+      reviewer.page.getByRole("region", { name: "Run inspection" }),
+    );
+    assert.equal(
+      await reviewer.page
+        .getByRole("textbox", { name: "Message your agent…" })
+        .count(),
+      0,
+    );
+    for (const path of [
+      `/control-plane/user/inspections/threads/${ready.reviewer.foreignThreadId}`,
+      `/control-plane/user/threads/${ready.reviewer.inspection.childThreadId}`,
+    ])
+      assert.equal(
+        (await reviewer.context.request.get(ready.origin + path)).status(),
+        404,
+      );
+    await verifyPersonalSurface(
+      reviewer.page,
+      "Run inspection",
+      "reviewer-inspection",
+    );
     const administration = await verifyAdministrativeDefinitions({
       browser,
       ready,
@@ -997,6 +1030,8 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     assert.deepEqual(pageErrors, []);
     return {
       ...administration,
+      scopedReviewerInspectionBrowserReadOnly: true,
+      administratorDiagnosticGrantsAndInspectionBrowser: true,
       ...projectMcp,
       personalScriptEditorSourceTimeoutReloadAndRevision: true,
       personalScriptOutputStdoutStderrAndExitRendered: true,
@@ -1302,6 +1337,51 @@ async function verifyAdministrativeDefinitions({
     await page.screenshot({
       path: join(artifacts, "administrative-definitions.png"),
     });
+  const projectId = ready.reviewer.projectId;
+  await page.goto(`${ready.origin}/settings/projects/${projectId}`);
+  await visible(page.getByRole("button", { name: "Manage diagnostic grants" }));
+  await page.getByRole("button", { name: "Manage diagnostic grants" }).click();
+  await page.getByLabel("Find user", { exact: true }).fill("reviewer");
+  await page
+    .getByLabel("Diagnostic user", { exact: true })
+    .selectOption({ label: "reviewer" });
+  await visible(page.getByText(/Current access: reviewer/u));
+  await page
+    .getByLabel("Diagnostic role", { exact: true })
+    .selectOption("developer");
+  await page.getByRole("button", { name: "Save diagnostic access" }).click();
+  await visible(page.getByText(/Current access: developer/u));
+  await page
+    .getByLabel("Diagnostic role", { exact: true })
+    .selectOption("reviewer");
+  await page.getByRole("button", { name: "Save diagnostic access" }).click();
+  await visible(page.getByText(/Current access: reviewer/u));
+  await page
+    .getByRole("link", { name: "Inspect all project runs as administrator" })
+    .click();
+  await visible(
+    page.getByRole("region", { name: "Run inspections", exact: true }),
+  );
+  const inspection = ready.reviewer.inspection;
+  await page.goto(
+    `${ready.origin}/settings/projects/${projectId}/inspections?inspectKind=workflow&inspectRun=${inspection.runId}`,
+  );
+  await visible(
+    page.getByRole("region", { name: "Run inspection", exact: true }),
+  );
+  await page.reload();
+  await visible(
+    page.getByRole("region", { name: "Run inspection", exact: true }),
+  );
+  assert.equal(
+    await page.getByRole("textbox", { name: "Message your agent…" }).count(),
+    0,
+  );
+  await verifyPersonalSurface(
+    page,
+    "Run inspection",
+    "administrator-inspection",
+  );
   await page.goto(`${ready.origin}/control-plane/logout`);
   await page
     .getByRole("button", { name: "Sign out of BB administration", exact: true })

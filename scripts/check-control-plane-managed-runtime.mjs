@@ -1130,7 +1130,9 @@ export async function verifyManagedRuntime({
     });
     providerRestartVerification = await providers.afterRestart();
     mcpRestartVerification = await mcp.afterRestart({ send, token });
-    personalRestartVerification = await personal.afterRestart();
+    personalRestartVerification = await personal.afterRestart({
+      adminToken: token,
+    });
     messageSourceRestartVerification = await messageSources.afterRestart(token);
     stage("message-sources-restart-complete");
     const secondSession = await wait(

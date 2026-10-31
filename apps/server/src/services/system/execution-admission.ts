@@ -1,3 +1,4 @@
+import { assertControlPlaneInspectionMutationAllowed } from "../../control-plane/inspection-context.js";
 import type { DbConnection } from "@bb/db";
 import { ApiError } from "../../errors.js";
 
@@ -12,6 +13,7 @@ export function isExecutionStopping(db: DbConnection): boolean {
 }
 
 export function assertExecutionAdmission(db: DbConnection): void {
+  assertControlPlaneInspectionMutationAllowed();
   if (isExecutionStopping(db)) {
     throw new ApiError(
       503,

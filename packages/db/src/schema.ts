@@ -345,6 +345,35 @@ export const controlPlaneProjectAccess = sqliteTable(
   ],
 );
 
+export const controlPlaneDiagnosticAccess = sqliteTable(
+  "control_plane_diagnostic_access",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => controlPlaneProjects.projectId, {
+        onDelete: "cascade",
+      }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["developer", "reviewer"] }),
+    revision: integer("revision").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    updatedBy: text("updated_by").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    index("control_plane_diagnostic_access_user_idx").on(
+      table.userId,
+      table.projectId,
+    ),
+    check(
+      "control_plane_diagnostic_access_revision",
+      sql`${table.revision} > 0 AND ${table.revision} <= 9007199254740991`,
+    ),
+  ],
+);
+
 export const controlPlaneProjectPolicies = sqliteTable(
   "control_plane_project_policies",
   {

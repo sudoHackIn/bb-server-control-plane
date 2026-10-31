@@ -1923,6 +1923,8 @@ export interface InternalDoNotUseBackgroundJobBinding {
 }
 
 export interface InternalDoNotUseBackgroundJobs {
+  /** Only true inside the core-controlled read-only diagnostic RPC adapter. Never grants execution authority. */
+  readonly internal_DO_NOT_USE_inspectionRead: boolean;
   /** Current UID maintenance owners within this builtin plugin's object kinds; user scope returns only the caller. This snapshot grants no execution authority. */
   internal_DO_NOT_USE_executionPausedUserIds(): readonly string[];
   /** Current caller on each access. Null means internal administrative/service scope. */

@@ -1,3 +1,4 @@
+import { isControlPlaneInspectionRead } from "./inspection-context.js";
 import { readWorkflowFileArtifacts } from "./workflow-file-artifacts.js";
 import { createControlPlaneWorkflowDefinitions } from "./workflow-definitions.js";
 import { and, eq, isNull } from "drizzle-orm";
@@ -56,6 +57,22 @@ export function createControlPlaneWorkflowRpc(
   plugins: () => PluginService,
 ): ControlPlaneWorkflowRpc {
   return async (method, input) => {
+    if (
+      isControlPlaneInspectionRead() &&
+      ![
+        "controlPlaneWorkflowGet",
+        "controlPlaneWorkflowInspection",
+        "controlPlaneWorkflowCallInspection",
+        "controlPlaneWorkflowTrace",
+        "controlPlaneWorkflowHistory",
+        "controlPlaneWorkflowResult",
+      ].includes(method)
+    )
+      throw new ApiError(
+        403,
+        "inspection_read_only",
+        "Inspection is read-only",
+      );
     const id = BUILTIN_WORKFLOWS_PLUGIN_ID;
     const installed = getInstalledPluginRegistration(db, id);
     if (
@@ -132,6 +149,14 @@ export function ownedWorkflowBinding(
 export function createControlPlaneWorkflowService(
   db: DbConnection,
   rpc: ControlPlaneWorkflowRpc,
+  inspection?: {
+    binding: (
+      userId: string,
+      runId: string,
+    ) => ReturnType<typeof ownedWorkflowBinding>;
+    rpc: (method: Operation, input: JsonValue) => Promise<JsonValue>;
+    thread: (threadId: string, runId: string) => boolean;
+  },
 ) {
   function notFound(): never {
     throw new ApiError(404, "workflow_not_found", "Workflow not found");
@@ -139,11 +164,18 @@ export function createControlPlaneWorkflowService(
   function binding(userId: string, runId: string) {
     return ownedWorkflowBinding(db, userId, runId, "workflow-run");
   }
+  const readBinding = inspection?.binding ?? binding;
+  async function readRpc(userId: string, method: Operation, input: JsonValue) {
+    return inspection
+      ? inspection.rpc(method, input)
+      : withControlPlaneUser(userId, () => rpc(method, input));
+  }
   function checked(
     userId: string,
     row: z.infer<typeof controlPlaneWorkflowRunSchema>,
+    resolve: typeof binding = binding,
   ) {
-    const saved = binding(userId, row.id);
+    const saved = resolve(userId, row.id);
     if (
       row.projectId !== saved.projectId ||
       row.originThreadId !== saved.originThreadId
@@ -156,15 +188,11 @@ export function createControlPlaneWorkflowService(
     return row;
   }
   async function get(userId: string, runId: string) {
-    binding(userId, runId);
+    readBinding(userId, runId);
     const value = z
       .object({ run: controlPlaneWorkflowRunSchema.nullable() })
       .strict()
-      .parse(
-        await withControlPlaneUser(userId, () =>
-          rpc("controlPlaneWorkflowGet", { runId }),
-        ),
-      );
+      .parse(await readRpc(userId, "controlPlaneWorkflowGet", { runId }));
     if (!value.run) return notFound();
     if (value.run.id !== runId)
       throw new ApiError(
@@ -172,11 +200,21 @@ export function createControlPlaneWorkflowService(
         "workflow_contract_error",
         "Invalid workflow identity",
       );
-    return checked(userId, value.run);
+    const saved = readBinding(userId, runId);
+    if (
+      value.run.projectId !== saved.projectId ||
+      value.run.originThreadId !== saved.originThreadId
+    )
+      throw new ApiError(
+        502,
+        "workflow_contract_error",
+        "Invalid workflow identity",
+      );
+    return value.run;
   }
   function readableRun(userId: string, runId: string) {
     try {
-      binding(userId, runId);
+      readBinding(userId, runId);
       return runId;
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) return null;
@@ -302,6 +340,7 @@ export function createControlPlaneWorkflowService(
       };
     },
     async stop(userId: string, runId: string) {
+      binding(userId, runId);
       await get(userId, runId);
       return z
         .object({ stopped: z.boolean() })
@@ -316,11 +355,7 @@ export function createControlPlaneWorkflowService(
       await get(userId, runId);
       const value = controlPlaneWorkflowResultSchema
         .nullable()
-        .parse(
-          await withControlPlaneUser(userId, () =>
-            rpc("controlPlaneWorkflowResult", { runId }),
-          ),
-        );
+        .parse(await readRpc(userId, "controlPlaneWorkflowResult", { runId }));
       if (!value) return notFound();
       if (value.runId !== runId)
         throw new ApiError(
@@ -328,7 +363,7 @@ export function createControlPlaneWorkflowService(
           "workflow_contract_error",
           "Invalid workflow result identity",
         );
-      binding(userId, runId);
+      readBinding(userId, runId);
       return value;
     },
     async trace(
@@ -340,14 +375,12 @@ export function createControlPlaneWorkflowService(
     ) {
       await get(userId, runId);
       const value = controlPlaneWorkflowTraceSchema.nullable().parse(
-        await withControlPlaneUser(userId, () =>
-          rpc("controlPlaneWorkflowTrace", {
-            runId,
-            attemptId,
-            after,
-            limit,
-          }),
-        ),
+        await readRpc(userId, "controlPlaneWorkflowTrace", {
+          runId,
+          attemptId,
+          after,
+          limit,
+        }),
       );
       if (!value) return notFound();
       if (
@@ -359,16 +392,18 @@ export function createControlPlaneWorkflowService(
           "workflow_contract_error",
           "Invalid workflow trace identity",
         );
-      binding(userId, runId);
+      readBinding(userId, runId);
       return value;
     },
     async inspect(userId: string, runId: string, after: number, limit: number) {
       await get(userId, runId);
-      const saved = binding(userId, runId);
+      const saved = readBinding(userId, runId);
       const source = getControlPlaneProfileWorkflow(db, saved.profileVersionId);
-      const raw = await withControlPlaneUser(userId, () =>
-        rpc("controlPlaneWorkflowInspection", { runId, after, limit }),
-      );
+      const raw = await readRpc(userId, "controlPlaneWorkflowInspection", {
+        runId,
+        after,
+        limit,
+      });
       if (raw === null) return notFound();
       const value = controlPlaneWorkflowInspectionSchema
         .omit({ profileVersionId: true, workflowRevision: true })
@@ -379,7 +414,7 @@ export function createControlPlaneWorkflowService(
           "workflow_contract_error",
           "Invalid workflow inspection identity",
         );
-      checked(userId, value.run);
+      checked(userId, value.run, readBinding);
       const readableSource =
         value.resumedFromRunId === null
           ? null
@@ -403,9 +438,10 @@ export function createControlPlaneWorkflowService(
         .omit({ fileArtifacts: true })
         .nullable()
         .parse(
-          await withControlPlaneUser(userId, () =>
-            rpc("controlPlaneWorkflowCallInspection", { runId, callId }),
-          ),
+          await readRpc(userId, "controlPlaneWorkflowCallInspection", {
+            runId,
+            callId,
+          }),
         );
       if (!value) return notFound();
       if (value.runId !== runId || value.call.id !== callId)
@@ -414,7 +450,7 @@ export function createControlPlaneWorkflowService(
           "workflow_contract_error",
           "Invalid workflow call identity",
         );
-      const saved = binding(userId, runId);
+      const saved = readBinding(userId, runId);
       const capturedWorkers = new Set(
         value.diagnostics.entries.flatMap((entry) =>
           entry.threadId === null ? [] : [entry.threadId],
@@ -430,6 +466,7 @@ export function createControlPlaneWorkflowService(
         userId,
         saved.projectId,
         artifactWorkers,
+        inspection ? (id) => inspection.thread(id, runId) : undefined,
       );
       fileArtifacts.unavailableWorkers +=
         value.workers.length - artifactWorkers.length;
@@ -449,13 +486,13 @@ export function createControlPlaneWorkflowService(
     },
     async history(userId: string, runId: string, after: number, limit: number) {
       await get(userId, runId);
-      const value = controlPlaneWorkflowHistorySchema
-        .nullable()
-        .parse(
-          await withControlPlaneUser(userId, () =>
-            rpc("controlPlaneWorkflowHistory", { runId, after, limit }),
-          ),
-        );
+      const value = controlPlaneWorkflowHistorySchema.nullable().parse(
+        await readRpc(userId, "controlPlaneWorkflowHistory", {
+          runId,
+          after,
+          limit,
+        }),
+      );
       if (!value) return notFound();
       if (value.runId !== runId)
         throw new ApiError(
@@ -463,7 +500,7 @@ export function createControlPlaneWorkflowService(
           "workflow_contract_error",
           "Invalid workflow history identity",
         );
-      binding(userId, runId);
+      readBinding(userId, runId);
       return value;
     },
   };

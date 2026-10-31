@@ -172,6 +172,7 @@ export interface ThreadTimelineRowsProps {
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
   includePluginMessageActions?: boolean;
+  includePluginRenderers?: boolean;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   onOpenPluginPanel?: ThreadTimelineOpenPluginPanelHandler;
@@ -193,6 +194,7 @@ export interface ThreadTimelineRowsProps {
 }
 
 interface TimelineRendererStaticContextValue {
+  includePluginRenderers: boolean;
   canSpawnChild: boolean;
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
@@ -1235,7 +1237,8 @@ function WorkRowBodyWithPluginRenderer({
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
   workspaceRootPath: string | undefined;
 }) {
-  const slot = usePluginTimelineRenderer(row);
+  const { includePluginRenderers } = useTimelineRendererStaticContext();
+  const slot = usePluginTimelineRenderer(includePluginRenderers ? row : null);
   const original = useCallback(
     () => (
       <WorkRowBody
@@ -1713,7 +1716,8 @@ function TimelineRowView({
   spacing,
 }: TimelineRowViewProps) {
   const horizontalPadding = timelineRowHorizontalPadding(spacing);
-  const { onTitleAction } = useTimelineRendererStaticContext();
+  const { onTitleAction, includePluginRenderers } =
+    useTimelineRendererStaticContext();
   const titleState = useTimelineRowTitleRenderState({
     activeLatestBundleId,
     compactActivityIntents,
@@ -1721,7 +1725,7 @@ function TimelineRowView({
     scopeActive,
   });
   const pluginRendererSlot = usePluginTimelineRenderer(
-    row.kind === "work" ? row : null,
+    includePluginRenderers && row.kind === "work" ? row : null,
   );
   const staticLeadingIconUrl = useLeadingIconUrlForRow(row);
 
@@ -2257,12 +2261,22 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () => EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions,
   );
   const messageDirectiveRegistry = useMemo(
-    () => buildMessageDirectiveRegistry(messageDirectiveSlots),
-    [messageDirectiveSlots],
+    () =>
+      buildMessageDirectiveRegistry(
+        props.includePluginRenderers === false
+          ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageDirectives
+          : messageDirectiveSlots,
+      ),
+    [messageDirectiveSlots, props.includePluginRenderers],
   );
   const codeFenceRendererRegistry = useMemo(
-    () => buildCodeFenceRendererRegistry(codeFenceRendererSlots),
-    [codeFenceRendererSlots],
+    () =>
+      buildCodeFenceRendererRegistry(
+        props.includePluginRenderers === false
+          ? EMPTY_PLUGIN_SLOT_SNAPSHOT.codeFenceRenderers
+          : codeFenceRendererSlots,
+      ),
+    [codeFenceRendererSlots, props.includePluginRenderers],
   );
   const onSelectionAddToChat = props.onSelectionAddToChat;
   const timelineThreadId = props.threadId;
@@ -2350,6 +2364,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   ]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
     () => ({
+      includePluginRenderers: props.includePluginRenderers !== false,
       canSpawnChild: props.canSpawnChild ?? false,
       getViewRows,
       onForkMessage: props.onForkMessage,
@@ -2386,6 +2401,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       selectionAddToChatHandler,
       messageActionSlots,
       props.includePluginMessageActions,
+      props.includePluginRenderers,
       props.consumerMessageActions,
       reportProseSelection,
       timelineThreadId,

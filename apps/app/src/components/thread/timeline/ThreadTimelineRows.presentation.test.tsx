@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PluginTimelineRendererProps } from "@get-bb/plugin-sdk";
 import {
   commandRow,
+  conversationRow,
   ECHO_RECEIPT_PRESENTATION,
   extensionRow,
   planStepsRow,
@@ -284,6 +285,50 @@ describe("plugin timeline renderers", () => {
       "echo-provider/receipt · hello world · 2 items · Wrote receipt · echo-agent",
     );
     expect(rendered.textContent).toContain("Echoed 2 items");
+  });
+
+  it("keeps embedded read-only history from executing registered timeline or markdown renderers", () => {
+    function Interactive(): never {
+      throw new Error("Interactive renderer must not run");
+    }
+    setPluginSlotRegistrations(
+      "echo-provider",
+      registrationSet({
+        timelineRenderers: [
+          { kind: "echo-provider/receipt", component: Interactive },
+        ],
+        messageDirectives: [{ id: "control-card", component: Interactive }],
+        codeFenceRenderers: [
+          {
+            id: "control-code",
+            languages: ["control-code"],
+            component: Interactive,
+          },
+        ],
+      }),
+    );
+    const row = extensionRow();
+    renderRows(
+      <ThreadTimelineRows
+        includePluginRenderers={false}
+        includePluginMessageActions={false}
+        threadId="thr_main"
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+        initialExpanded={new Set([row.id])}
+        timelineRows={[
+          row,
+          conversationRow({
+            id: "readonly-message",
+            role: "assistant",
+            text: "History\n\n::control-card{}\n\n```control-code\nmutate()\n```",
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Wrote receipt")).toBeTruthy();
+    expect(screen.getByText("History")).toBeTruthy();
+    expect(screen.queryByTestId("receipt-renderer")).toBeNull();
   });
 
   it("lets a provider plugin render its own providers' generic tool rows, and only those", () => {

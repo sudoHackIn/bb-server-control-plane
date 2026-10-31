@@ -1,3 +1,4 @@
+import { verifyDiagnosticAccess } from "./check-control-plane-inspections.mjs";
 import assert from "node:assert/strict";
 import { verifyPublishedWorkflowAgents } from "./check-control-plane-workflow-agents.mjs";
 import { verifyNativeAutomations } from "./check-control-plane-automations.mjs";
@@ -265,7 +266,7 @@ export function createUserThreadFixture({ db, users }) {
         assert.equal(code, 0, error + diagnostics());
         return JSON.parse(out);
       };
-      for (const user of users) {
+      async function authorize(user) {
         const home = `/tmp/bb-thread-client-${user.login}`;
         const env = {
           ...process.env,
@@ -325,6 +326,7 @@ export function createUserThreadFixture({ db, users }) {
         );
         sessions.set(user.login, { env, token: session.token });
       }
+      for (const user of users) await authorize(user);
       const created = [];
       for (const user of users) {
         const project = await command(user.login, [
@@ -799,7 +801,20 @@ export function createUserThreadFixture({ db, users }) {
         );
       }
       await releaseIdleSessions(false);
+      await authorize({ login: "reviewer" });
+      const diagnosticAccess = await verifyDiagnosticAccess({
+        subjects: created,
+        inspections: workflowAgents.inspections,
+        db,
+        wait,
+        sendAdmin,
+        adminToken,
+        userRequest: (login, path, options = {}) =>
+          send(path, { ...options, token: sessions.get(login).token }),
+        userCommand: command,
+      });
       const productionBrowser = await verifyExternalBrowser({
+        reviewer: diagnosticAccess.browser,
         origin,
         signal,
         users: created.map(({ user, project, thread, messageSeq }) => ({
@@ -1233,9 +1248,11 @@ export function createUserThreadFixture({ db, users }) {
         automations,
         manualRuns,
         workflowAgents,
+        diagnosticAccess,
       };
       return {
         ...productionBrowser,
+        ...diagnosticAccess.verification,
         ...inputLimits,
         ...jobBindings,
         ...workflows.verification,
@@ -1324,7 +1341,7 @@ export function createUserThreadFixture({ db, users }) {
       await saved.workflows.afterShutdown(serverPid);
       await saved.automations.afterShutdown();
     },
-    async afterRestart() {
+    async afterRestart({ adminToken }) {
       const { command, alice, wait, shutdownStream, bindingCheck, manualRuns } =
         saved;
       const jobBindingRestart = await bindingCheck("resume");
@@ -1387,6 +1404,7 @@ export function createUserThreadFixture({ db, users }) {
         ...jobBindingRestart,
         ...workflowRestart,
         ...automationRestart,
+        ...(await saved.diagnosticAccess.afterRestart(adminToken)),
         personalTokenAndThreadSurviveRestart: true,
         personalManualRunSurvivesRestart: true,
         personalStreamsClosedOnServerShutdown: true,

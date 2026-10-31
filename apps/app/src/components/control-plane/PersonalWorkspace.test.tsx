@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -434,5 +435,59 @@ it("opens the personal automation section from a deep link and returns to the sa
   expect(screen.queryByRole("form", { name: "Automation editor" })).toBeNull();
   expect(paths.every((path) => path.startsWith("/control-plane/user/"))).toBe(
     true,
+  );
+});
+
+it("retains an automation draft when a slow conversation read completes after the editor opens", async () => {
+  let release: (response: Response) => void = () => {};
+  const pending = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const saved = {
+    id: "auto_saved",
+    projectId: "a",
+    name: "Morning review",
+    enabled: true,
+    trigger: { triggerType: "once", runAt: Date.now() + 3600000 },
+    createdByThreadId: "one",
+    nextRunAt: null,
+    lastRunAt: null,
+    runCount: 0,
+    lastRunStatus: null,
+    lastRunThreadId: null,
+    lastError: null,
+    createdAt: 1,
+    updatedAt: 1,
+    revision: 2,
+    prompt: "Saved input",
+  };
+  mount(async (input) => {
+    const path = new URL(input.toString()).pathname;
+    if (path.endsWith("/bootstrap")) return Response.json(bootstrap);
+    if (path.endsWith("/projects/a")) return Response.json(project("a"));
+    if (path.endsWith("/threads/one")) return pending;
+    if (path.endsWith("/threads"))
+      return Response.json({ threads: [], nextCursor: null });
+    if (path.endsWith("/definition")) return Response.json(saved);
+    if (path.endsWith("/history"))
+      return Response.json({
+        automationId: saved.id,
+        runs: [],
+        nextCursor: null,
+      });
+    if (path.endsWith("/automations"))
+      return Response.json({ automations: [], nextCursor: null });
+    return Response.json({ error: "not_found" }, { status: 404 });
+  }, "/projects/a/threads/one?view=automations&automation=auto_saved");
+  const task = await screen.findByRole("textbox", { name: "Agent task" });
+  fireEvent.change(task, { target: { value: "Unsaved review input" } });
+  expect(screen.queryByRole("button", { name: "New automation" })).toBeNull();
+  await act(async () => {
+    release(Response.json(thread("one", "a")));
+  });
+  await screen.findByRole("button", { name: "New automation" });
+  expect(screen.getByRole("textbox", { name: "Agent task" })).toHaveProperty(
+    "value",
+    "Unsaved review input",
   );
 });

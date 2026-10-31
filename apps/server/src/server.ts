@@ -1,3 +1,4 @@
+import { createControlPlaneInspectionService } from "./control-plane/inspections.js";
 import { createControlPlaneMcpCredentials } from "./control-plane/mcp-credentials.js";
 import {
   createControlPlaneAutomationRpc,
@@ -531,6 +532,10 @@ export function createApp(
                   createControlPlaneAutomationRpc(deps.db, () => pluginService),
                 ),
                 createControlPlaneMcpCredentials(deps.db, deps.config.dataDir),
+                createControlPlaneInspectionService(
+                  deps,
+                  createControlPlaneWorkflowRpc(deps.db, () => pluginService),
+                ),
               )
             : undefined,
         )

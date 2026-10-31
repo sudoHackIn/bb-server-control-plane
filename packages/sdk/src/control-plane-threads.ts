@@ -31,8 +31,8 @@ export function createControlPlaneThreadClient(
     body?: object,
     signal?: AbortSignal,
   ) => Promise<Response>,
+  base = "/control-plane/user/threads",
 ) {
-  const base = "/control-plane/user/threads";
   const path = (id: string) => `${base}/${encodeURIComponent(id)}`;
   return {
     async list(

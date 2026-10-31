@@ -100,3 +100,5 @@ export * from "./control-plane-automation.js";
 export * from "./control-plane-mcp.js";
 
 export * from "./control-plane-workflow-inspection.js";
+
+export * from "./control-plane-diagnostics.js";

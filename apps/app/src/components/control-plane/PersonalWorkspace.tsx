@@ -1,3 +1,4 @@
+import { RunInspections } from "./RunInspections";
 import { PersonalRunInspection } from "./PersonalRunInspection";
 import { useState } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router-dom";
@@ -81,6 +82,7 @@ function WorkspaceNavigation({
   const workflowView = view === "workflows";
   const automationView = view === "automations";
   const integrationView = view === "integrations";
+  const diagnosticView = view === "inspections";
   const projectRoute = useMatch("/projects/:projectId");
   const threadRoute = useMatch("/projects/:projectId/threads/:threadId");
   const shortThreadRoute = useMatch("/threads/:threadId");
@@ -206,7 +208,12 @@ function WorkspaceNavigation({
     }
   }
   function openView(
-    next: "agents" | "workflows" | "automations" | "integrations",
+    next:
+      | "agents"
+      | "workflows"
+      | "automations"
+      | "integrations"
+      | "inspections",
   ) {
     navigate({
       pathname: location.pathname,
@@ -258,6 +265,16 @@ function WorkspaceNavigation({
                   >
                     <Icon name="Calendar" />
                     <span>Automations</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    aria-current={diagnosticView ? "page" : undefined}
+                    className="aria-[current=page]:bg-sidebar-accent"
+                    onClick={() => openView("inspections")}
+                  >
+                    <Icon name="Search" />
+                    <span>Inspections</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
@@ -411,6 +428,12 @@ function WorkspaceNavigation({
               if (threadId) void detail.refetch();
             }}
           />
+        ) : diagnosticView && selectedProject ? (
+          <RunInspections
+            key={selectedProject.projectId}
+            client={client.inspections}
+            projectId={selectedProject.projectId}
+          />
         ) : inspectionRunId && selectedProject ? (
           <PersonalRunInspection
             key={inspectionRunId}
@@ -441,7 +464,7 @@ function WorkspaceNavigation({
           />
         ) : automationView && selectedProject ? (
           <PersonalAutomations
-            key={`${selectedProject.projectId}:${selectedThread?.id ?? "project"}`}
+            key={`${selectedProject.projectId}:${threadId ?? "project"}`}
             client={client}
             projectId={selectedProject.projectId}
             originThreadId={
@@ -454,7 +477,7 @@ function WorkspaceNavigation({
           />
         ) : workflowView && selectedProject ? (
           <PersonalWorkflows
-            key={`${selectedProject.projectId}:${selectedThread?.id ?? "project"}`}
+            key={`${selectedProject.projectId}:${threadId ?? "project"}`}
             client={client}
             projectId={selectedProject.projectId}
             canExecute={project.data?.canRun === true}

@@ -35,7 +35,7 @@ export async function verifyUserDeployment({
     "-subj",
     "/CN=BB deployment test CA",
   );
-  for (const name of ["server", "alice", "bob"]) {
+  for (const name of ["server", "alice", "bob", "reviewer"]) {
     await openssl(
       "req",
       "-new",

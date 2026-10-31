@@ -1,3 +1,9 @@
+import {
+  installControlPlaneInspectionRoutes,
+  installControlPlaneDiagnosticGrantRoutes,
+  isControlPlaneInspectionPath,
+} from "./inspection-routes.js";
+import type { ControlPlaneInspectionService } from "./inspections.js";
 import { createControlPlaneAgentWorkflowService } from "./agent-workflows.js";
 import {
   installControlPlaneMcpRoutes,
@@ -99,7 +105,8 @@ export function isUserAuthPath(path: string, method: string): boolean {
     isControlPlaneAutomationPath(path, method) ||
     isControlPlaneThreadPath(path, method) ||
     isControlPlaneDefinitionPath(path, method) ||
-    isControlPlaneWorkflowPath(path, method)
+    isControlPlaneWorkflowPath(path, method) ||
+    isControlPlaneInspectionPath(path, method)
   )
     return true;
   if (
@@ -141,6 +148,7 @@ export function createControlPlaneUserAccess(
   workflows?: ControlPlaneWorkflowService,
   automations?: ControlPlaneAutomationService,
   mcp?: ControlPlaneMcpCredentials,
+  inspections?: ControlPlaneInspectionService,
 ) {
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
@@ -164,13 +172,25 @@ export function createControlPlaneUserAccess(
   return {
     usesBrowserCredential: browser.usesCookie,
     clearBrowserSession: browser.clear,
-    close: () => threads?.close(),
+    close: () => {
+      threads?.close();
+      inspections?.close();
+    },
     authenticate,
     install(
       app: Hono,
       signOutAdministrator: (context: Context) => void = () => {},
+      administrator: (context: Context) => string | null = () => null,
     ) {
       browser.install(app, signOutAdministrator);
+      installControlPlaneDiagnosticGrantRoutes(app, registry.db);
+      if (inspections)
+        installControlPlaneInspectionRoutes(
+          app,
+          inspections,
+          authenticate,
+          administrator,
+        );
       if (automations)
         installControlPlaneAutomationRoutes(app, automations, authenticate);
       installControlPlaneProfileRoutes(

@@ -1,3 +1,7 @@
+import {
+  isControlPlaneInspectionRead,
+  assertControlPlaneInspectionMutationAllowed,
+} from "./inspection-context.js";
 import { assertExecutionAdmission } from "../services/system/execution-admission.js";
 import type {
   InternalDoNotUseBackgroundJobs,
@@ -115,6 +119,9 @@ export function createControlPlaneBackgroundJobs(
         .all()
         .map((row) => row.userId);
     },
+    get internal_DO_NOT_USE_inspectionRead() {
+      return isControlPlaneInspectionRead();
+    },
     get userId() {
       const principal = currentControlPlanePrincipal();
       return principal?.kind === "user" ? principal.userId : null;
@@ -127,6 +134,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     readOrigin(threadId) {
+      assertControlPlaneInspectionMutationAllowed();
       const principal = currentControlPlanePrincipal();
       if (
         principal?.kind !== "user" &&
@@ -150,6 +158,7 @@ export function createControlPlaneBackgroundJobs(
       };
     },
     internal_DO_NOT_USE_workflowEnvironment(id) {
+      assertControlPlaneInspectionMutationAllowed();
       assertExecutionAdmission(db);
       if (
         pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID ||
@@ -197,6 +206,7 @@ export function createControlPlaneBackgroundJobs(
       });
     },
     async bind(input) {
+      assertControlPlaneInspectionMutationAllowed();
       assertExecutionAdmission(db);
       const parsed = controlPlaneJobBindingSchema
         .omit({ userId: true })
@@ -253,6 +263,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     async setEnabled(id, enabled) {
+      assertControlPlaneInspectionMutationAllowed();
       if (enabled) assertExecutionAdmission(db);
       const job = required(id);
       if (typeof enabled !== "boolean") return denied();
@@ -273,6 +284,7 @@ export function createControlPlaneBackgroundJobs(
       return updated;
     },
     async remove(id) {
+      assertControlPlaneInspectionMutationAllowed();
       const job = required(id);
       deleteControlPlaneJobBinding(
         db,
@@ -283,6 +295,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     runAutomationScript(id, input, signal) {
+      assertControlPlaneInspectionMutationAllowed();
       assertExecutionAdmission(db);
       if (
         pluginId !== BUILTIN_AUTOMATIONS_PLUGIN_ID ||
@@ -301,6 +314,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     stopAutomationScript(id) {
+      assertControlPlaneInspectionMutationAllowed();
       if (pluginId !== BUILTIN_AUTOMATIONS_PLUGIN_ID) return denied();
       return stopControlPlaneAutomationScript(db, id);
     },
@@ -309,6 +323,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.listWorkers(input);
     },
     resolveWorkerProfile(id, profileVersionId) {
+      assertControlPlaneInspectionMutationAllowed();
       const job = required(id);
       if (
         !(
@@ -351,6 +366,7 @@ export function createControlPlaneBackgroundJobs(
         : withControlPlaneJobAuthority(db, id, resolve);
     },
     startWorker(id, input, signal) {
+      assertControlPlaneInspectionMutationAllowed();
       assertExecutionAdmission(db);
       if (
         required(id).kind !==
@@ -363,6 +379,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.startWorker(id, input, signal);
     },
     getWorker(id, threadId) {
+      assertControlPlaneInspectionMutationAllowed();
       if (
         required(id).kind !==
           (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -374,6 +391,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.getWorker(id, threadId);
     },
     notifyOrigin(id, message) {
+      assertControlPlaneInspectionMutationAllowed();
       assertExecutionAdmission(db);
       if (
         pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID ||
@@ -387,6 +405,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.notifyOrigin(id, message);
     },
     sendWorker(id, threadId, message) {
+      assertControlPlaneInspectionMutationAllowed();
       assertExecutionAdmission(db);
       if (
         required(id).kind !==
@@ -399,6 +418,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.sendWorker(id, threadId, message);
     },
     stopWorker(id, threadId) {
+      assertControlPlaneInspectionMutationAllowed();
       if (
         required(id).kind !==
           (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -410,6 +430,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.stopWorker(id, threadId);
     },
     releaseWorker(id, threadId, completedSequence) {
+      assertControlPlaneInspectionMutationAllowed();
       if (
         required(id).kind !==
           (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -425,6 +446,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     archiveWorker(id, threadId) {
+      assertControlPlaneInspectionMutationAllowed();
       if (
         required(id).kind !==
           (pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -436,6 +458,7 @@ export function createControlPlaneBackgroundJobs(
       return workers.archiveWorker(id, threadId);
     },
     async evaluateWorkflow(id, input, signal, onEvent, onAgent) {
+      assertControlPlaneInspectionMutationAllowed();
       assertExecutionAdmission(db);
       const binding = required(id);
       if (binding.kind !== "workflow-run") return denied();
@@ -460,6 +483,7 @@ export function createControlPlaneBackgroundJobs(
       );
     },
     withAuthority(id, run) {
+      assertControlPlaneInspectionMutationAllowed();
       required(id);
       return withControlPlaneJobAuthority(db, id, (context) =>
         run(context.binding),

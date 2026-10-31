@@ -51,6 +51,7 @@ import {
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PROJECT_ROUTE_PATH,
+  SETTINGS_PROJECT_INSPECTIONS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SKILL_DETAIL_ROUTE_PATH,
@@ -100,6 +101,11 @@ const PluginsView = lazy(() =>
 const SkillsView = lazy(() =>
   import("./views/ToolsView").then((m) => ({
     default: m.SkillsView,
+  })),
+);
+const AdminRunInspectionsView = lazy(() =>
+  import("./views/AdminRunInspectionsView").then((m) => ({
+    default: m.AdminRunInspectionsView,
   })),
 );
 const ProjectDetailSettingsView = lazy(() =>
@@ -322,6 +328,10 @@ export function AppRoutes() {
           <Route
             path={SETTINGS_MACHINE_ROUTE_PATH}
             element={<MachineSettingsView />}
+          />
+          <Route
+            path={SETTINGS_PROJECT_INSPECTIONS_ROUTE_PATH}
+            element={<AdminRunInspectionsView />}
           />
           <Route
             path={SETTINGS_PROJECT_ROUTE_PATH}

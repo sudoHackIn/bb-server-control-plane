@@ -3,10 +3,10 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { PersonalStatus } from "./PersonalWorkspaceUi";
-import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
+import type { RunInspectionClient } from "./inspection-client";
 
 type Entry = Awaited<
-  ReturnType<PersonalWorkspaceClient["workflows"]["trace"]>
+  ReturnType<RunInspectionClient["workflows"]["trace"]>
 >["entries"][number];
 export function PersonalWorkflowTrace({
   client,
@@ -14,7 +14,7 @@ export function PersonalWorkflowTrace({
   onSelectCall,
   fallback,
 }: {
-  client: PersonalWorkspaceClient;
+  client: RunInspectionClient;
   runId: string;
   onSelectCall: (id: string) => void;
   fallback: ReactNode;

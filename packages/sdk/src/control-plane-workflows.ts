@@ -18,8 +18,8 @@ export function createControlPlaneWorkflowClient(
     body?: object,
     signal?: AbortSignal,
   ) => Promise<unknown>,
+  base = "/control-plane/user/workflows",
 ) {
-  const base = "/control-plane/user/workflows";
   const path = (id: string) => `${base}/${encodeURIComponent(id)}`;
   return {
     definitions: createControlPlaneWorkflowDefinitionsClient(request),

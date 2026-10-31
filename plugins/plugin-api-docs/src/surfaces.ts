@@ -1438,6 +1438,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginServerApi",
           "PluginServerApi.internal_DO_NOT_USE_backgroundJobs",
           "InternalDoNotUseBackgroundJobs",
+          "InternalDoNotUseBackgroundJobs.internal_DO_NOT_USE_inspectionRead",
           "InternalDoNotUseBackgroundJobs.evaluateWorkflow",
           "InternalDoNotUseBackgroundJobs.runAutomationScript",
           "InternalDoNotUseBackgroundJobs.stopAutomationScript",

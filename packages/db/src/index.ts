@@ -26,3 +26,5 @@ export { noopNotifier } from "./notifier.js";
 export type { DbNotifier } from "./notifier.js";
 
 export * from "./data/index.js";
+
+export * from "./data/control-plane-diagnostics.js";

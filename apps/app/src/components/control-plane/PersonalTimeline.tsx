@@ -8,7 +8,7 @@ import {
   TimelineDetailSourceContext,
   type TimelineDetailSource,
 } from "@/hooks/queries/timeline-detail-source";
-import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
+import type { InspectionTimelineClient } from "./inspection-client";
 import { usePersonalTimeline } from "./usePersonalTimeline";
 
 export function PersonalTimeline({
@@ -18,7 +18,7 @@ export function PersonalTimeline({
   status,
   cwd,
 }: {
-  client: PersonalWorkspaceClient;
+  client: InspectionTimelineClient;
   threadId: string;
   projectId: string;
   status: ThreadStatus;
@@ -28,7 +28,7 @@ export function PersonalTimeline({
   const onStatus = useCallback(
     (status: ThreadStatus) => {
       queries.setQueryData<
-        Awaited<ReturnType<PersonalWorkspaceClient["threads"]["get"]>>
+        Awaited<ReturnType<InspectionTimelineClient["threads"]["get"]>>
       >(["personal", "thread", threadId], (current) =>
         current ? { ...current, status } : undefined,
       );
@@ -99,6 +99,7 @@ export function PersonalTimeline({
           workspaceRootPath={cwd}
           canSpawnChild={false}
           includePluginMessageActions={false}
+          includePluginRenderers={false}
           onOpenLocalFileLink={() => true}
         />
       </BottomAnchoredScrollBody>

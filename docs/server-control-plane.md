@@ -87,8 +87,16 @@ call inspection contract serves API, SDK and CLI. See the
 
 #### P3.4 — Reviewer and developer access
 
-- [ ] Let administrators inspect all runs through their full administrative mode. Add explicit diagnostic grants for developers/reviewers on authorized projects, independent of agent invocation grants. Publishing or developing an agent does not by itself grant access to its users' conversations or production run inputs.
-- [ ] Keep inspection read-only. Scope run trees, child threads, tool details, original replay results, artifacts and subscriptions at the backend; independently authorize execution controls. Verify direct foreign-ID reads, grant revocation, role changes and restart with Alice, Bob, a scoped reviewer and an administrator.
+- [x] Let administrators inspect all runs through their full administrative mode. Add explicit diagnostic grants for developers/reviewers on authorized projects, independent of agent invocation grants. Publishing or developing an agent does not by itself grant access to its users' conversations or production run inputs.
+- [x] Keep inspection read-only. Scope run trees, child threads, tool details, original replay results, artifacts and subscriptions at the backend; independently authorize execution controls. Verify direct foreign-ID reads, grant revocation, role changes and restart with Alice, Bob, a scoped reviewer and an administrator.
+
+Explicit project-scoped diagnostic grants are implemented. Administrators manage
+them in native project settings and inspect retained managed conversations and
+workflow roots across owners. Developer/reviewer readers use a separate read-only
+namespace, while execution remains independently authorized. The same paths serve
+API, SDK, CLI and UI, with grant/project-policy subscription fencing and post-await
+checks. See [contracts and limits](control-plane-workflow-agents.md#reviewer-and-administrator-inspection)
+and [P3.4 verification](control-plane-phase-95-verification.json).
 
 #### P3.5 — Developer test runs
 

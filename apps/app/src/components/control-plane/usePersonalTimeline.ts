@@ -10,7 +10,7 @@ import {
   areTimelinePaginationCursorsEqual,
   type LoadedTimelineState,
 } from "@bb/client-core";
-import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
+import type { InspectionTimelineClient } from "./inspection-client";
 import type { ThreadStatus } from "@bb/domain";
 
 function empty(threadId: string) {
@@ -35,7 +35,7 @@ function pause(signal: AbortSignal) {
   });
 }
 export function usePersonalTimeline(
-  client: PersonalWorkspaceClient,
+  client: InspectionTimelineClient,
   threadId: string,
   onStatus?: (status: ThreadStatus) => void,
 ) {

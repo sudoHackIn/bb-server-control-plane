@@ -168,8 +168,13 @@ it("hides disconnected data and reconnects from a newly authorized snapshot", as
   await waitFor(() => expect(hook.result.current.error).toBe(true));
   expect(hook.result.current.timeline).toBeNull();
   expect(hook.result.current.rows).toEqual([]);
-  await waitFor(() => expect(cursors).toEqual(["10", "20"]), { timeout: 3000 });
-  expect(hook.result.current.error).toBe(false);
+  await waitFor(
+    () => {
+      expect(cursors).toEqual(["10", "20"]);
+      expect(hook.result.current.error).toBe(false);
+    },
+    { timeout: 3000 },
+  );
   hook.unmount();
 });
 it("clears private rows and aborts the subscription when history reload loses access", async () => {

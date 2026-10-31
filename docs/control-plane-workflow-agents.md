@@ -102,8 +102,8 @@ of the result in new execution.
 
 Publication, invocation and per-step profile/result/replay authority are verified.
 See [the step authority record](control-plane-phase-91-verification.json).
-The next slices show phase/call/child progress directly in the agent task detail,
-add scoped reviewer/developer access and separate developer test runs. Workflow
+Run inspection now exposes phase/call/child progress, and explicit scoped
+reviewer/developer grants are available. Separate developer test runs remain. Workflow
 agent scheduling, interactive strategies and agent delegation are separate work.
 
 ## Owner execution inspection
@@ -216,3 +216,35 @@ the strict call-inspection response now includes diagnostics and file artifacts.
 
 Reviewer/developer grants remain P3.4; administrators retain existing full native
 BB/Workflows interfaces.
+
+## Reviewer and administrator inspection
+
+Administrators use project settings to inspect managed runs across owners and
+manage revision-checked diagnostic grants. A developer/reviewer grant is scoped
+to one project and requires current project read access. Both roles currently
+permit the same read-only diagnostics. Profile publication, agent authorship
+and invocation permission do not imply permission to read users' production
+inputs or conversations. Normal owner and execution endpoints remain owner-scoped.
+
+The dedicated inspection namespace reuses native workflow reads and BB timelines.
+It covers managed workflow roots and conversation roots, their exact bound
+workers, native details/results, readable replay sources and retained artifacts.
+It does not proxy arbitrary BB/plugin RPCs or expose arbitrary files. Scripts
+and unmanaged legacy objects keep their existing administrative surfaces.
+No execution controls are available through the inspection SDK or HTTP routes.
+An embedded timeline disables interactive plugin renderers and message actions.
+
+The server checks current actor authority before and after awaited native reads.
+A private read scope rejects job mutations, execution admission and general
+internal SDK dispatch. Worker requests must match the selected root binding,
+project and owner. Revocation retains a monotonic grant revision; streams check
+that revision, current credentials and project policy before frames and on the
+existing one-second stream timer. A changed role or revoke/regrant closes the old stream;
+reconnect requires current authority. Inspection streams have a separate shared
+pool capped at four per actor and 64 total. A read already delivered to a client
+cannot be recalled.
+
+Use `createControlPlaneClient().inspections`, `.admin.inspections` and
+`.admin.diagnosticGrants`, or `bb server access inspections --help`. The same
+project settings grant form uses compare-and-set revisions and displays stale
+update failures. See [the CLI guide](../packages/templates/src/templates/bb-guide-machines.md#shared-server-diagnostic-access).

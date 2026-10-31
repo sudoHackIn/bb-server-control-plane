@@ -3996,7 +3996,6 @@ The Plugin Guide's existing `bb-sdk` card inventories the same internal member.
 Stabilization remains part of the internal background-job authority audit, with
 malformed scope, replay/restart, bounded capture and foreign-read tests.
 
-
 ### Shared-server call inspection diagnostics
 
 The existing builtin Workflows `controlPlaneWorkflowCallInspection` RPC now
@@ -4013,4 +4012,28 @@ filesystem read requests. Core uses the existing bounded native retained-output
 hydration helper and preserves preview truncation after expiry. Legacy coverage,
 response limits and unavailable worker artifacts remain explicit. Publish/invoke,
 read-only inspection, foreign-ID denial, replay and restart continue through the
-same limited contracts; reviewer grants remain a separate stage.
+same limited contracts; reviewer access uses the scoped diagnostic readers below.
+
+### Shared-server diagnostic readers
+
+`InternalDoNotUseBackgroundJobs.internal_DO_NOT_USE_inspectionRead` is a
+core-owned, request-local read capability. Only builtin Workflows reads it in
+its managed read RPC admission. Core's limited inspection service first checks
+the current administrator or explicit diagnostic/project grants, then calls a
+fixed read RPC under this scope. It is not a caller-selected principal, a grant
+to impersonate the owner, or a capability available to arbitrary plugins.
+Get/result/history and inspection RPCs accept this read scope; start/stop do not.
+The plugin lifecycle wrapper checks liveness before exposing the flag. Background
+job mutation/control methods, execution admission and general internal SDK
+HTTP dispatch refuse the scope. Core uses the same native reads as its owner
+inspector, with actor checks before and after each awaited RPC.
+
+Grant revisions and project-policy revisions fence subscriptions, including
+revoke/regrant. Workflow workers must match the selected root's core binding,
+owner and project. Native replay references are independently readable or hidden.
+Embedded read-only timelines disable plugin renderers, directives, fences and
+message actions, including in full administrative mode. Ordinary timeline
+rendering retains its defaults. No daemon wire or public Plugin SDK change.
+Only the Plugin Guide's existing internal background-jobs inventory includes
+this member. Stabilization requires the four-actor scope, revocation, lifecycle,
+in-flight read and restart contract tests; the internal facade remains private.

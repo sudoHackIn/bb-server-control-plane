@@ -1,3 +1,4 @@
+import { registerServerInspectionCommands } from "./server-inspections.js";
 import { registerServerMcpCommands } from "./server-mcp.js";
 import { registerServerAutomationCommands } from "./server-automations.js";
 import { registerServerWorkflowCommands } from "./server-workflows.js";
@@ -74,6 +75,12 @@ export function registerServerAccessCommands(
     }),
   );
   registerServerAutomationCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
+  registerServerInspectionCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,
       fetch: cliFetch,

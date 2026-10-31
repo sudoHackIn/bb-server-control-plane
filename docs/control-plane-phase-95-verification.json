@@ -1,0 +1,97 @@
+{
+  "scope": "P3.4 explicit project diagnostic grants and read-only reviewer/administrator inspection",
+  "changes": {
+    "projectDeveloperReviewerGrantsIndependentOfInvocation": true,
+    "revisionCheckedGrantUpdatesAndRevocationTombstones": true,
+    "limitedApiSdkCliAndNativeUi": true,
+    "administratorInspectionAcrossManagedOwners": true,
+    "exactCoreBoundWorkflowWorkerScope": true,
+    "replaySourcesAndArtifactsReauthorizeCurrentReads": true,
+    "readScopeRejectsExecutionAndGeneralInternalSdkDispatch": true,
+    "interactivePluginRenderersDisabledOnlyInEmbeddedHistory": true,
+    "postAwaitPermissionChecksAndSubscriptionEpochFences": true,
+    "hostDaemonWireChanged": false,
+    "preserveAutomationAndWorkflowDraftsDuringThreadHydration": true
+  },
+  "verification": {
+    "uniqueTestsPassed": 539,
+    "testFilesPassed": 77,
+    "testsByPackage": {
+      "serverControlPlane": 156,
+      "workflowsPlugin": 305,
+      "ui": 78
+    },
+    "typecheck": "passed (11 Turbo tasks)",
+    "changedFileLint": "passed with existing timeline React compiler warnings; 0 errors",
+    "changedFileFormat": "passed",
+    "dockerStatus": "passed",
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane-inspections.test.ts",
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane src/components/settings/AdminDiagnosticAccess.test.tsx src/components/settings/AdminProjectRoles.test.tsx src/components/thread/timeline/ThreadTimelineRows.presentation.test.tsx src/App.project-settings-routes.test.tsx",
+      "pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/cli --filter=bb-plugin-workflows --filter=bb-plugin-plugin-api-docs",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane/usePersonalTimeline.test.tsx src/components/control-plane/PersonalWorkspace.test.tsx"
+    ],
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-reviewer-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 768829,
+    "nativeAndBrowserProofs": {
+      "scopedReviewerInspectionBrowserReadOnly": true,
+      "administratorDiagnosticGrantsAndInspectionBrowser": true,
+      "productionBrowserRenderingVerified": true,
+      "diagnosticReviewerNativeCliAndArtifacts": true,
+      "diagnosticAdminForeignRunInspection": true,
+      "diagnosticGrantRevocationRoleChangeAndCas": true,
+      "diagnosticReadDoesNotGrantExecution": true,
+      "diagnosticGrantsReadOnlyAndForeignDenialSurviveRestart": true,
+      "abruptCrashWorkflowRecoveryVerified": true,
+      "resumedThreadAfterRestart": true,
+      "crashRecoveryRetainsIdentityAndThreads": true
+    },
+    "dockerCgroupOomKillCountAfterBrowser": 0,
+    "persistedReviewerGrantAfterRestart": {
+      "role": "reviewer",
+      "revision": 6
+    },
+    "browserUncaughtPageErrors": 0,
+    "manualVisualReview": [
+      "reviewer desktop summary",
+      "reviewer mobile summary",
+      "administrator desktop summary",
+      "administrator mobile summary"
+    ],
+    "automatedResponsiveChecks": [
+      "desktop",
+      "dark",
+      "375px mobile",
+      "125% mobile text",
+      "landscape"
+    ]
+  },
+  "limits": {
+    "inspectionPageSize": 50,
+    "diagnosticGrantPageSize": 100,
+    "inspectionStreamsPerActor": 4,
+    "inspectionStreamsTotal": 64
+  },
+  "limitations": [
+    "Developer and reviewer currently share read-only diagnostic permissions. Neither role grants authoring, invocation, replay, cancellation or test-run rights.",
+    "The limited run list covers managed conversations and workflow roots. Script-automation output and unmanaged legacy objects retain separate existing administrative surfaces.",
+    "A diagnostic grant requires current project read access. Granting it does not change filesystem/project roles.",
+    "Retained artifacts are historical event data; paths never authorize arbitrary filesystem reads.",
+    "Revocation hides/rejects further reads and closes streams; data already delivered to a client cannot be recalled.",
+    "Developer test runs remain P3.5. Docker uses stock Qwen with deterministic model fixtures, not corporate harness authorization."
+  ],
+  "verificationNotes": [
+    "The migrated-SQLite integration uses Alice, Bob, a scoped reviewer and an administrator, and a native Workflows plugin with its own real SQLite store. It checks viewer/invocation grants without diagnostic access, grants without project read, exact root/worker binding, foreign IDs and trace attempts, filtered replay provenance, retained artifacts, CAS conflicts, revoke/regrant, role changes, post-await revocation, disabled-owner administrative history, project-policy stream fencing and administrator logout during a stream.",
+    "UI regressions check revocation hides a selected conversation, stale administrator grant updates send the loaded revision, and embedded read-only history never executes registered interactive renderers/directives/fences while ordinary timelines retain their defaults.",
+    "The first Docker attempt exposed a missing COPY entry for the new diagnostic fixture module. Both the build context and Dockerfile now include it.",
+    "An early retry was intentionally stopped before the new scenarios after reviewing the restart fixture: administrator sessions are renewed by the existing restart login, so post-restart diagnostic assertions must use that new session rather than the captured old token.",
+    "The next composite passed the existing native groups and reached the new reviewer scenario, then rejected a project role change because the newly certificate-registered reviewer had not provisioned its HOME. The fixture now provisions that environment through the real limited API before project-role maintenance. Its CLI list assertion follows bounded cursor pages instead of assuming the workflow is on the first page.",
+    "A later retry reached real project-role maintenance but timed out in applying: the existing workflow fixture had created oversized.js and invalid-utf8.js as root inside Alice's project. The privileged ACL walker correctly rejects entries whose owner is neither the service UID nor a registered user UID. Both test files now receive Alice's UID/GID; production permission checks and deadlines are unchanged. Maintenance phase transitions are now included in test diagnostics.",
+    "After correcting the fixture owners, real project-role maintenance completed and the new native reviewer/admin CLI/API checks passed. The production browser also passed scoped reviewer inspection, then exposed missing exact accessible names on the administrator form's select controls. Both selects now have explicit accessible labels, and their UI regression checks query exact combobox names.",
+    "A subsequent browser run exposed an existing workspace race on history navigation: automation/workflow component keys changed when a pending thread read completed, remounting the editor and discarding a draft. Those keys now use the stable route thread ID while origin authority still uses the validated response. A delayed-response regression passes with the fix and fails with the previous keys. A timeline reconnect test also waited for the fetch callback before asserting React state; it now waits for both conditions in the same existing bounded wait, without changing production code, deadlines or assertions.",
+    "The final composite passed all 63 Turbo tasks (768829 ms), including real reviewer CLI pagination/artifacts, exact worker scope, grant revoke/regrant/CAS, administrative grant editing and reloadable inspection, existing automation draft edits, clean restart and abrupt crash recovery. The browser reported zero uncaught errors, the post-browser cgroup reported oom_kill=0, and the reviewer grant persisted as role reviewer/revision 6 after restart. Summary screenshots were manually reviewed for reviewer/admin desktop/mobile; automated overflow checks also cover dark, large text and landscape."
+  ]
+}

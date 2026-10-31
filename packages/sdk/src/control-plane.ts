@@ -1,3 +1,7 @@
+import {
+  createControlPlaneInspectionClient,
+  createControlPlaneDiagnosticGrantClient,
+} from "./control-plane-inspections.js";
 import { createControlPlaneMcpClient } from "./control-plane-mcp.js";
 import { createControlPlaneProjectRoleClient } from "./control-plane-project-roles.js";
 import { createControlPlaneAdminUsersClient } from "./control-plane-admin-users.js";
@@ -217,11 +221,22 @@ export function createControlPlaneClient(args: {
         ).href;
       },
     },
+    inspections: createControlPlaneInspectionClient(
+      request,
+      requestResponse,
+      "user",
+    ),
     workflows: createControlPlaneWorkflowClient(request),
     automations: createControlPlaneAutomationClient(request),
     profiles: profileReader("/control-plane/user/profiles"),
     mcp: mcp.user,
     admin: {
+      inspections: createControlPlaneInspectionClient(
+        request,
+        requestResponse,
+        "admin",
+      ),
+      diagnosticGrants: createControlPlaneDiagnosticGrantClient(request),
       users: createControlPlaneAdminUsersClient(request),
       mcp: mcp.admin,
       projectRoles: createControlPlaneProjectRoleClient(request),

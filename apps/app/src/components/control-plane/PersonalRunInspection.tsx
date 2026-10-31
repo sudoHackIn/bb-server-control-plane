@@ -12,7 +12,7 @@ import {
   PersonalStatus,
   personalCodeClass,
 } from "./PersonalWorkspaceUi";
-import type { PersonalWorkspaceClient } from "./PersonalWorkspace";
+import type { RunInspectionClient } from "./inspection-client";
 
 export function PersonalRunInspection({
   client,
@@ -20,7 +20,7 @@ export function PersonalRunInspection({
   projectId,
   cwd,
 }: {
-  client: PersonalWorkspaceClient;
+  client: RunInspectionClient;
   runId: string;
   projectId: string;
   cwd: string;

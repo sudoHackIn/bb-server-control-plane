@@ -56,6 +56,7 @@ function fixture() {
     bindings.delete(id);
   });
   const authority: InternalDoNotUseBackgroundJobs = {
+    internal_DO_NOT_USE_inspectionRead: false,
     internal_DO_NOT_USE_executionPausedUserIds: () => [...pausedOwners],
     get userId() {
       return caller;
