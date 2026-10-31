@@ -493,6 +493,10 @@ const HARDENING_SOURCE = `
 const DSL_SOURCE = `
 (() => {
   const readBudget = globalThis.__bbWorkflowBudget;
+  const traceParallelStart = globalThis.__bbParallelStart;
+  const traceParallelEnd = globalThis.__bbParallelEnd;
+  delete globalThis.__bbParallelStart;
+  delete globalThis.__bbParallelEnd;
   const callWorkflow = globalThis.__bbWorkflow;
   delete globalThis.__bbWorkflowBudget;
   delete globalThis.__bbWorkflow;
@@ -537,10 +541,14 @@ const DSL_SOURCE = `
       if (!(index in tasks)) throw new TypeError("parallel thunks cannot be sparse");
       if (typeof tasks[index] !== "function") throw new TypeError("parallel entries must be functions");
     }
-    return Promise.all(tasks.map(async (task) => {
-      try { return await task(); }
-      catch { return null; }
-    }));
+    const traceId = traceParallelStart(tasks.length);
+    let failedBranches = 0;
+    try {
+      return await Promise.all(tasks.map(async (task) => {
+        try { return await task(); }
+        catch { failedBranches += 1; return null; }
+      }));
+    } finally { traceParallelEnd(traceId, failedBranches); }
   };
   const pipeline = async (items, ...stages) => {
     if (!Array.isArray(items)) throw new TypeError("pipeline items must be an array");
@@ -654,6 +662,34 @@ export async function executeWorkflowScript({
       enterVm,
       signal,
     );
+    const parallelStart = vm.newFunction("__bbParallelStart", (...handles) => {
+      const branches: unknown = handles[0] ? vm.dump(handles[0]) : undefined;
+      if (
+        typeof branches !== "number" ||
+        !Number.isInteger(branches) ||
+        branches < 0 ||
+        branches > 4096
+      )
+        throw new Error("Invalid parallel branch count");
+      return vm.newNumber(capabilities.parallelTrace?.start(branches) ?? 0);
+    });
+    vm.setProp(vm.global, "__bbParallelStart", parallelStart);
+    parallelStart.dispose();
+    installHostVoidFunction(vm, "__bbParallelEnd", (handles) => {
+      const id: unknown = handles[0] ? vm.dump(handles[0]) : undefined;
+      const failed: unknown = handles[1] ? vm.dump(handles[1]) : undefined;
+      if (
+        typeof id !== "number" ||
+        typeof failed !== "number" ||
+        !Number.isInteger(id) ||
+        !Number.isInteger(failed) ||
+        id < 0 ||
+        failed < 0 ||
+        failed > 4096
+      )
+        throw new Error("Invalid parallel completion");
+      if (id !== 0) capabilities.parallelTrace?.finish(id, failed);
+    });
     installHostVoidFunction(vm, "log", (handles) => {
       capabilities.log(handles[0] ? vm.getString(handles[0]) : "");
     });

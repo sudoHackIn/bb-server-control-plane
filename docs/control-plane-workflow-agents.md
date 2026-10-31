@@ -141,9 +141,43 @@ links to original work only when readable. A restart replay within the same run
 can retain its existing worker records; a resumed-run cached call has no new
 worker record. An archived/deleted worker may no longer have an available timeline.
 
-This is the first P3.3 slice: root-to-agent calls, recorded phases, ordering and
-execution intervals. Native nested workflow evaluation currently shares a flat
-call list. Persisting nested workflow invocation spans, explicit parallel groups,
-individual retry error history and independent file-change artifacts remains a
-following P3.3 slice. Reviewer/developer grants and their administration remain
-P3.4; administrators retain the existing full native BB/Workflows interfaces.
+The P3.3 inspector now also reads native execution structure from
+`GET /control-plane/user/workflows/:id/trace?after=-1&limit=20`.
+The SDK is `workflows.trace`; CLI is `bb server access workflows trace`.
+Each evaluator execution creates a server-owned attempt UUID and increasing
+sequence. Responses contain an attempt summary and at most 100 entries; pin
+`attemptId` (`--attempt`) with each numeric continuation cursor. The default
+selects the latest attempt. A known older attempt must still belong to this run
+under current owner/project read authority. Legacy/unstarted runs return a null
+attempt, not an invented hierarchy.
+
+Workflow entries record the actually loaded nested source name/hash and actual
+agent-call parent scope, including when concurrent nested VMs interleave. The
+existing single-child-level runtime limit is unchanged. Parallel entries record
+explicit `parallel()` boundaries, branch count and failed-branch count in the
+containing workflow VM. They do not claim agent/child-workflow membership in an
+individual parallel branch; asynchronous time overlap is not evidence of that
+relationship. A parallel group can settle successfully with failed branches,
+because the existing DSL converts those failures into null result slots.
+
+Native SQLite retains structure attempts/entries alongside native runs. Recovery
+marks an unfinished attempt interrupted before a new one begins. Attempt-local
+live/cached admission is retained even if a successful native call is reused on
+restart. A historical entry links to its native call only while its captured
+cache key still matches the call record; overwritten records do not silently
+open different work. These entries are structure metadata, not a transcript
+snapshot or a second execution/result log. Worker chats remain native BB records.
+Native run retention cascades to recorded structure.
+
+The recorder admits at most 1024 scope/group nodes and 1 MiB of metadata per
+evaluator attempt; further structure is explicitly truncated without changing
+execution results or worker budgets. Unclosed omitted nodes become incomplete.
+The server assigns receipt timestamps, validates scope parents and bounds trace
+frames independently of the existing workflow traffic budget. Trace metadata
+cannot grant execution or read authority. The fixed local evaluator protocol is
+version 2; rebuild/redeploy that artifact with the server. No host-daemon protocol
+or launcher identity/permission behavior changes.
+
+Individual retry error history and independent file-change artifacts remain a
+following P3.3 slice. Reviewer/developer grants remain P3.4; administrators retain
+existing full native BB/Workflows interfaces.

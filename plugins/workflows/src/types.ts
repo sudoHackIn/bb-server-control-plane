@@ -78,6 +78,10 @@ export interface NestedWorkflowContext {
 }
 
 export interface WorkflowCapabilities {
+  parallelTrace?: {
+    start(branches: number): number;
+    finish(id: number, failedBranches: number): void;
+  };
   agent(
     prompt: string,
     options: WorkflowAgentOptions,

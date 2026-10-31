@@ -646,6 +646,7 @@ it.each([
             "options",
           ),
           signal,
+          null,
         );
       },
     );
@@ -769,6 +770,7 @@ it("rejects an idle child's result if its selected profile is revoked while awai
           "options",
         ),
         signal,
+        null,
       );
     },
   );
@@ -855,6 +857,7 @@ it.each(["step-result", "run-result"] as const)(
           "Inspect project",
           toJsonValue(parseAgentOptions(undefined), "options"),
           signal,
+          null,
         );
       });
     const controller = new AbortController();
@@ -1028,8 +1031,11 @@ it("upgrades the previously deployed native workflow schema without reapplying h
   const { bb, harness } = createFakePluginHost({ pluginId: "workflows" });
   try {
     const db = bb.storage.database();
-    const oldMigrations = migrations.filter(
-      (sql) => !sql.includes("CREATE INDEX workflow_workers_call_idx"),
+    const oldMigrations = migrations.slice(
+      0,
+      migrations.findIndex((sql) =>
+        sql.includes("CREATE INDEX workflow_workers_call_idx"),
+      ),
     );
     bb.storage.migrate(db, oldMigrations);
     bb.storage.migrate(db, migrations);
@@ -1043,5 +1049,101 @@ it("upgrades the previously deployed native workflow schema without reapplying h
     bb.storage.migrate(db, migrations);
   } finally {
     await harness.dispose();
+  }
+});
+
+it("persists managed evaluator scopes across same-run replay and fences foreign or revoked trace reads", async () => {
+  const test = fixture();
+  const { runIsolatedWorkflow } = await import("./isolated-evaluator.js");
+  const { toJsonValue } = await import("./json-value.js");
+  const spawn = vi
+    .spyOn(test.authority, "startWorker")
+    .mockResolvedValue({ threadId: "child", bindingId: randomUUID() });
+  vi.spyOn(test.authority, "stopWorker").mockResolvedValue(undefined);
+  vi.spyOn(test.authority, "getWorker").mockResolvedValue({
+    threadId: "child",
+    status: "idle",
+    output: "result",
+    error: null,
+    idleSequence: 1,
+  });
+  vi.spyOn(test.authority, "evaluateWorkflow").mockImplementation(
+    async (_id, input, signal, onEvent, onAgent) =>
+      runIsolatedWorkflow(
+        input,
+        onEvent,
+        signal,
+        (prompt, options, childSignal, scopeId) => {
+          if (!onAgent) throw new Error("Missing dispatch");
+          return onAgent(
+            prompt,
+            toJsonValue(options, "options"),
+            childSignal,
+            scopeId,
+          );
+        },
+      ),
+  );
+  try {
+    const child =
+      'export const meta={name:"saved-child",description:"Scoped VM"}; return (await parallel([()=>agent("task"),()=>42]))[0];';
+    const run = await test.service.start({
+      ...test.input,
+      originThreadId: null,
+      profileVersionId: test.profileVersionId,
+      source: `export const meta={name:"parent",description:"trace"};return await workflow({script:${JSON.stringify(child)}});`,
+    });
+    async function execute() {
+      test.setCaller(null);
+      const service = createWorkflowService(test.bb, test.db);
+      const controller = new AbortController();
+      const pending = service.runWorker(controller.signal);
+      try {
+        await vi.waitFor(() => {
+          const row = getRunRequired(test.db, run.id);
+          expect(row.error).toBeNull();
+          expect(row.status).toBe("succeeded");
+        });
+      } finally {
+        controller.abort();
+        await pending;
+        test.setCaller(test.owner);
+      }
+    }
+    await execute();
+    const old = test.service.trace(run.id, null, -1, 100);
+    expect(old?.entries.find((e) => e.kind === "workflow")).toMatchObject({
+      name: "saved-child",
+      status: "succeeded",
+    });
+    expect(old?.entries.find((e) => e.kind === "agent")).toMatchObject({
+      source: "live",
+      callId: expect.any(String),
+    });
+    test.db
+      .prepare("UPDATE workflow_runs SET status='queued' WHERE id=?")
+      .run(run.id);
+    await execute();
+    const next = test.service.trace(run.id, null, -1, 100);
+    expect(next?.attempt?.sequence).toBe(2);
+    expect(next?.entries.find((e) => e.kind === "agent")?.source).toBe(
+      "cached",
+    );
+    expect(
+      test.service
+        .trace(run.id, old?.attempt?.id ?? null, -1, 100)
+        ?.entries.find((e) => e.kind === "agent")?.source,
+    ).toBe("live");
+    expect(spawn).toHaveBeenCalledTimes(1);
+    test.setCaller(randomUUID());
+    expect(test.service.trace(run.id, null, -1, 100)).toBeNull();
+    test.setCaller(test.owner);
+    if (!run.authorityBindingId) throw new Error("Missing binding");
+    test.bindings.delete(run.authorityBindingId);
+    expect(
+      test.service.trace(run.id, old?.attempt?.id ?? null, -1, 100),
+    ).toBeNull();
+  } finally {
+    await test.harness.dispose();
   }
 });

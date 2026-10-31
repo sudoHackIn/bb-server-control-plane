@@ -1,3 +1,4 @@
+import { interruptWorkflowTraces } from "./trace-store.js";
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { ResolvedWorkflowExecutionSelection } from "./cache.js";
@@ -263,6 +264,18 @@ export const migrations = [
    ALTER TABLE workflow_workers DROP COLUMN origin_thread_id;
    ALTER TABLE workflow_workers RENAME COLUMN origin_thread_id_nullable TO origin_thread_id;`,
   `CREATE INDEX workflow_workers_call_idx ON workflow_workers(run_id, call_id, thread_id);`,
+  `CREATE TABLE workflow_trace_attempts (
+     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+     sequence INTEGER NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, finished_at INTEGER,
+     truncated INTEGER NOT NULL DEFAULT 0, UNIQUE(run_id,sequence)
+   );
+   CREATE TABLE workflow_trace_entries (
+     attempt_id TEXT NOT NULL REFERENCES workflow_trace_attempts(id) ON DELETE CASCADE,
+     ordinal INTEGER NOT NULL, node_id INTEGER, scope_id INTEGER, kind TEXT NOT NULL, name TEXT NOT NULL,
+     source_hash TEXT, branch_count INTEGER, failed_branches INTEGER, status TEXT NOT NULL, error TEXT,
+     created_at INTEGER NOT NULL, finished_at INTEGER, call_index INTEGER, call_id TEXT, cache_key TEXT, source TEXT,
+     PRIMARY KEY(attempt_id,ordinal), UNIQUE(attempt_id,node_id)
+   );`,
 ];
 
 export function createWorkflowRunId() {
@@ -503,6 +516,7 @@ export function beginNotificationAttempt(db: Db, id: string): boolean {
 
 export function recoverInterruptedRuns(db: Db): string[] {
   return db.transaction(() => {
+    interruptWorkflowTraces(db);
     const childRows = db
       .prepare(
         `SELECT calls.child_thread_id AS childThreadId

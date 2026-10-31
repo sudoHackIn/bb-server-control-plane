@@ -300,6 +300,26 @@ it("publishes and invokes a frozen workflow agent through authorized SDK routes 
         calls: [],
         nextCursor: null,
       });
+      expect(await aliceApi.workflows.trace(run.runId)).toEqual({
+        runId: run.runId,
+        attempt: null,
+        entries: [],
+        nextCursor: null,
+      });
+      await expect(bobApi.workflows.trace(run.runId)).rejects.toThrow("404");
+      await expect(
+        aliceApi.workflows.trace(run.runId, {
+          attemptId: "11111111-1111-4111-8111-111111111111",
+        }),
+      ).rejects.toThrow("404");
+      expect(
+        (
+          await request(
+            alice.user.id,
+            `/control-plane/user/workflows/${run.runId}/trace?limit=101`,
+          )
+        ).status,
+      ).toBe(400);
       expect(inspected.sourceHash).toHaveLength(64);
       expect(JSON.stringify(inspected)).not.toContain(script);
       await expect(bobApi.workflows.inspect(run.runId)).rejects.toThrow("404");

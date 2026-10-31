@@ -134,8 +134,8 @@ it("runs child VMs with shared agent accounting, schemas and no Node globals", a
     limited: true,
   });
   expect(calls.mock.calls).toEqual([
-    ["parent", expect.anything(), expect.anything()],
-    ["child", expect.anything(), expect.anything()],
+    ["parent", expect.anything(), expect.anything(), null],
+    ["child", expect.anything(), expect.anything(), null],
   ]);
 });
 

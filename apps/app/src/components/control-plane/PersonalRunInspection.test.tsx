@@ -82,6 +82,13 @@ function mount(
       paths.push(path);
       if (options.deny)
         return Response.json({ error: "not_found" }, { status: 404 });
+      if (path.endsWith("/trace"))
+        return Response.json({
+          runId: "run",
+          attempt: null,
+          entries: [],
+          nextCursor: null,
+        });
       if (path.endsWith("/inspection"))
         return Response.json({
           run,

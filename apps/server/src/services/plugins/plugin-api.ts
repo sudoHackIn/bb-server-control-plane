@@ -1171,9 +1171,9 @@ export function createPluginApi(options: {
             onEvent(event);
           },
           onAgent
-            ? (prompt, options, callSignal) => {
+            ? (prompt, options, callSignal, scopeId) => {
                 assertBackgroundAdmission();
-                return onAgent(prompt, options, callSignal);
+                return onAgent(prompt, options, callSignal, scopeId);
               }
             : undefined,
         );

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   controlPlaneWorkflowStartSchema,
   controlPlaneWorkflowInspectionSchema,
+  controlPlaneWorkflowTraceSchema,
   controlPlaneWorkflowCallInspectionSchema,
   controlPlaneWorkflowRunSchema,
   controlPlaneWorkflowPageSchema,
@@ -72,6 +73,31 @@ export function createControlPlaneWorkflowClient(
     async result(id: string, signal?: AbortSignal) {
       return controlPlaneWorkflowResultSchema.parse(
         await request(`${path(id)}/result`, "GET", undefined, signal),
+      );
+    },
+    async trace(
+      id: string,
+      options: {
+        attemptId?: string;
+        after?: number;
+        limit?: number;
+        signal?: AbortSignal;
+      } = {},
+    ) {
+      const query = new URLSearchParams();
+      if (options.attemptId !== undefined)
+        query.set("attemptId", options.attemptId);
+      if (options.after !== undefined)
+        query.set("after", String(options.after));
+      if (options.limit !== undefined)
+        query.set("limit", String(options.limit));
+      return controlPlaneWorkflowTraceSchema.parse(
+        await request(
+          `${path(id)}/trace${query.size ? `?${query}` : ""}`,
+          "GET",
+          undefined,
+          options.signal,
+        ),
       );
     },
     async inspect(

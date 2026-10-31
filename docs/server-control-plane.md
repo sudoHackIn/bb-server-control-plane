@@ -68,7 +68,15 @@ distinct; readable replay provenance points to original work. See
 [inspection contract and limits](control-plane-workflow-agents.md#owner-execution-inspection)
 and [test/Docker verification](control-plane-phase-92-verification.json).
 
-- [ ] Persist and display native nested workflow invocation spans and explicit parallel groups. Current nested evaluation shares a flat agent call list; the inspector identifies that limitation instead of inventing hierarchy.
+Nested workflow scopes and explicit parallel spans are now persisted per
+evaluator attempt and shown above flat call history. Actual VM parent scope is
+recorded for agent calls; parallel group boundaries/branch counts/failures are
+explicit, with no inferred per-branch call membership. Recovery/replay retains
+separate attempts and native chat links; older runs keep their flat history.
+Capture truncation is explicit and does not change execution results. The runtime's
+existing one-child-level limit is unchanged. See the
+[structure verification record](control-plane-phase-93-verification.json).
+
 - [ ] Preserve individual retry errors/timestamps and available file-change artifacts beyond existing call counters/error and native tool results, then expose them in the same inspector.
 
 #### P3.4 — Reviewer and developer access

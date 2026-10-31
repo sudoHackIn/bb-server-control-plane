@@ -1,3 +1,4 @@
+import { PersonalWorkflowTrace } from "./PersonalWorkflowTrace";
 import { personalInspectionSearch } from "./personal-inspection-navigation";
 import type { JsonValue } from "@bb/domain";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -341,54 +342,62 @@ export function PersonalRunInspection({
                     Inspect previous run
                   </Button>
                 )}
-                <div className="space-y-2 border-t border-border pt-4">
-                  <h2 className="font-medium">Agent calls</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Recorded call order. Overlapping start and finish times show
-                    concurrent work. Nested workflow calls share this list.
-                  </p>
-                  <ol
-                    aria-label="Recorded agent calls"
-                    className="space-y-2 border-l border-border pl-4"
-                  >
-                    {calls.map((call) => (
-                      <li key={call.id}>
-                        <button
-                          className="flex w-full cursor-pointer flex-col gap-2 rounded-md border border-border bg-surface-recessed/40 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          onClick={() => selectCall(call.id)}
+                <PersonalWorkflowTrace
+                  client={client}
+                  runId={runId}
+                  onSelectCall={selectCall}
+                  fallback={
+                    <div className="space-y-2 border-t border-border pt-4">
+                      <h2 className="font-medium">Agent calls</h2>
+                      <p className="text-xs text-muted-foreground">
+                        Recorded call order. Overlapping start and finish times
+                        show concurrent work. Nested workflow calls share this
+                        list.
+                      </p>
+                      <ol
+                        aria-label="Recorded agent calls"
+                        className="space-y-2 border-l border-border pl-4"
+                      >
+                        {calls.map((call) => (
+                          <li key={call.id}>
+                            <button
+                              className="flex w-full cursor-pointer flex-col gap-2 rounded-md border border-border bg-surface-recessed/40 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              onClick={() => selectCall(call.id)}
+                            >
+                              <span className="flex w-full flex-wrap justify-between gap-2">
+                                <span className="min-w-0 break-words font-medium">
+                                  {call.index + 1}. {call.label ?? call.model}
+                                </span>
+                                <PersonalStatus status={call.status} />
+                              </span>
+                              <span className="break-words text-xs text-muted-foreground">
+                                {call.phase ? `${call.phase} · ` : ""}
+                                {call.source === "cached"
+                                  ? "Cached replay"
+                                  : `${call.provider} / ${call.model}`}{" "}
+                                · {call.providerRetryAttempts} retries ·{" "}
+                                {call.repairAttempts} repairs
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {time(call.startedAt)} → {time(call.finishedAt)}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                      {calls.length === 0 && <p>No recorded agent calls.</p>}
+                      {pages.hasNextPage && (
+                        <Button
+                          variant="outline"
+                          disabled={pages.isFetchingNextPage}
+                          onClick={() => void pages.fetchNextPage()}
                         >
-                          <span className="flex w-full flex-wrap justify-between gap-2">
-                            <span className="min-w-0 break-words font-medium">
-                              {call.index + 1}. {call.label ?? call.model}
-                            </span>
-                            <PersonalStatus status={call.status} />
-                          </span>
-                          <span className="break-words text-xs text-muted-foreground">
-                            {call.phase ? `${call.phase} · ` : ""}
-                            {call.source === "cached"
-                              ? "Cached replay"
-                              : `${call.provider} / ${call.model}`}{" "}
-                            · {call.providerRetryAttempts} retries ·{" "}
-                            {call.repairAttempts} repairs
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {time(call.startedAt)} → {time(call.finishedAt)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
-                  {calls.length === 0 && <p>No recorded agent calls.</p>}
-                  {pages.hasNextPage && (
-                    <Button
-                      variant="outline"
-                      disabled={pages.isFetchingNextPage}
-                      onClick={() => void pages.fetchNextPage()}
-                    >
-                      More steps
-                    </Button>
-                  )}
-                </div>
+                          More steps
+                        </Button>
+                      )}
+                    </div>
+                  }
+                />
               </>
             )}
           </div>

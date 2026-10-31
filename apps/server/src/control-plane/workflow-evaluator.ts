@@ -13,6 +13,7 @@ const exec = promisify(execFile);
 const helper = "/opt/bb-control-plane/launcher/helper.py";
 const inputSchema = z
   .object({
+    captureTrace: z.boolean().default(false),
     body: z.string().max(131072),
     args: jsonValueSchema,
     maxAgentCalls: z.number().int().min(1).max(1000),
@@ -24,12 +25,14 @@ const messageSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("ready"),
+      protocolVersion: z.number().int().default(1),
       uid: z.number().int(),
       home: z.string(),
       cwd: z.string(),
       backendCredential: z.literal(false),
     })
     .strict(),
+  z.object({ type: z.literal("trace"), value: jsonValueSchema }).strict(),
   z.object({ type: z.literal("log"), value: z.string().max(8192) }).strict(),
   z.object({ type: z.literal("phase"), value: z.string().max(1024) }).strict(),
   z
@@ -38,6 +41,12 @@ const messageSchema = z.discriminatedUnion("type", [
       id: z.number().int().positive(),
       prompt: z.string().min(1).max(131072),
       options: jsonValueSchema,
+      scopeId: z
+        .number()
+        .int()
+        .positive()
+        .max(Number.MAX_SAFE_INTEGER)
+        .nullable(),
     })
     .strict(),
   z
@@ -95,6 +104,9 @@ export async function evaluateControlPlaneWorkflow(
   let total = 0;
   let events = 0;
   let requestId = 0;
+  let traceBytes = 0;
+  let protocolBytes = 0;
+  let traceEvents = 0;
   const requests = new Map<number, AbortController>();
   const tasks = new Set<Promise<void>>();
   const abortRequests = () => {
@@ -145,7 +157,7 @@ export async function evaluateControlPlaneWorkflow(
     try {
       total += Buffer.byteLength(chunk);
       buffer += chunk;
-      if (total > 16777216 || Buffer.byteLength(buffer) > 2097152)
+      if (total > 18874368 || Buffer.byteLength(buffer) > 2097152)
         throw new Error("Workflow protocol output limit exceeded");
       let index: number;
       while ((index = buffer.indexOf("\n")) !== -1) {
@@ -155,7 +167,24 @@ export async function evaluateControlPlaneWorkflow(
           throw new Error("Workflow protocol frame limit exceeded");
         const message = messageSchema.parse(JSON.parse(line));
         recheck();
+        if (message.type === "trace") {
+          traceBytes += Buffer.byteLength(line) + 1;
+          if (
+            !parsed.captureTrace ||
+            ++traceEvents > 4096 ||
+            traceBytes > 2097152
+          )
+            throw new Error("Workflow trace limit exceeded");
+        } else {
+          protocolBytes += Buffer.byteLength(line) + 1;
+          if (protocolBytes > 16777216)
+            throw new Error("Workflow protocol output limit exceeded");
+        }
         if (message.type === "ready") {
+          if (message.protocolVersion !== 2)
+            throw new Error(
+              "Workflow evaluator runtime must be upgraded (protocol 2 required)",
+            );
           if (
             ready ||
             message.uid !== context.user.uid ||
@@ -174,6 +203,8 @@ export async function evaluateControlPlaneWorkflow(
             abortRequests();
             child.stdin.end();
           } else if (message.type === "agent") {
+            if (!parsed.captureTrace && message.scopeId !== null)
+              throw new Error("Unexpected workflow trace scope");
             if (
               message.id !== requestId + 1 ||
               message.id > parsed.maxAgentCalls ||
@@ -197,6 +228,7 @@ export async function evaluateControlPlaneWorkflow(
                     message.prompt,
                     message.options,
                     controller.signal,
+                    message.scopeId,
                   );
                   recheck();
                   reply(message.id, value, null);
@@ -227,6 +259,7 @@ export async function evaluateControlPlaneWorkflow(
               throw new Error("Unknown workflow agent cancellation");
             requests.get(message.id)?.abort();
           } else if (message.type === "error") throw new Error(message.message);
+          else if (message.type === "trace") onEvent(message);
           else {
             if (++events > 4096)
               throw new Error("Workflow event limit exceeded");

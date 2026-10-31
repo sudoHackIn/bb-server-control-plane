@@ -1431,6 +1431,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Subscribe to native notifications with automatic cleanup on plugin disposal",
           "Start plugin updates in the background and follow their progress or rollback",
           "Review changed files and retry failed workspace cleanup after inspecting its processes",
+          "Builtin Workflows can record bounded evaluator scopes and parallel spans through the internal background-job facade",
         ],
         apiSymbols: [
           "BbPluginApi",

@@ -3976,3 +3976,22 @@ Managed agent definitions migrate to an explicit profile version in a new revisi
 Builtin Workflows alone calls `internal_DO_NOT_USE_backgroundJobs.internal_DO_NOT_USE_workflowEnvironment(bindingId)` for origin-free workflow runs. It resolves a ready environment matching the authorized project's registered host and cwd under the saved owner/profile and current grants, registering an unmanaged environment when the project has none. It accepts no caller paths or UID. The optional capability fails closed when absent on an older server. The plugin lifecycle facade gates environment registration during shutdown. Managed worker creation/listing supports null origin with the existing parent binding checks; interactive origin lifecycle behavior is retained. No daemon wire change.
 
 The limited workflow start API/SDK accepts either an owned origin thread or projectId plus immutable profileVersionId. Native plugin SQLite migrates origin columns to nullable without changing stored history. Project replay must retain environment/profile and origin-free mode. No-origin completion is settled without a chat notification. This is a foundation for published workflow agents, not a new delegation grant or workflow publication API.
+
+### Managed workflow structure recording (P3.3)
+
+Builtin Workflows alone opts into `InternalDoNotUseBackgroundJobs.evaluateWorkflow`
+with `captureTrace: true`. The existing internal callback accepts a bounded
+`{type: "trace", value: JsonValue}` event and passes the evaluator-local workflow
+scope ID (or root `null`) as the fourth `onAgent` argument. `background-jobs` and
+the plugin lifecycle facade preserve their current-authority/admission checks on
+these callbacks. Scope IDs are diagnostic references inside one server-created
+attempt; they never select another run, owner, UID, environment or worker profile.
+The builtin plugin validates scope references before persisting them in its native
+SQLite store. No other plugin gains access to this internal facade.
+
+The fixed local evaluator stdio handshake is protocol 2; deploy the server and
+its rebuilt evaluator artifact together. This is not a server/host-daemon wire
+change. Current daemon commands, fields and protocol semantics are unchanged.
+The Plugin Guide's existing `bb-sdk` card inventories the same internal member.
+Stabilization remains part of the internal background-job authority audit, with
+malformed scope, replay/restart, bounded capture and foreign-read tests.

@@ -2060,6 +2060,7 @@ export interface InternalDoNotUseBackgroundJobs {
   evaluateWorkflow(
     id: string,
     input: {
+      captureTrace?: boolean;
       body: string;
       args: JsonValue;
       maxAgentCalls: number;
@@ -2067,11 +2068,16 @@ export interface InternalDoNotUseBackgroundJobs {
       timeoutMs: number;
     },
     signal: AbortSignal,
-    onEvent: (event: { type: "log" | "phase"; value: string }) => void,
+    onEvent: (
+      event:
+        | { type: "log" | "phase"; value: string }
+        | { type: "trace"; value: JsonValue },
+    ) => void,
     onAgent?: (
       prompt: string,
       options: JsonValue,
       signal: AbortSignal,
+      scopeId: number | null,
     ) => Promise<JsonValue>,
   ): Promise<JsonValue>;
 }

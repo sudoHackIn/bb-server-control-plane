@@ -451,9 +451,9 @@ export function createControlPlaneBackgroundJobs(
             withControlPlaneJobAuthority(db, id, () => undefined);
           },
           onAgent
-            ? (prompt, options, callSignal) =>
+            ? (prompt, options, callSignal, scopeId) =>
                 withControlPlaneJobAuthority(db, id, () =>
-                  onAgent(prompt, options, callSignal),
+                  onAgent(prompt, options, callSignal, scopeId),
                 )
             : undefined,
         ),

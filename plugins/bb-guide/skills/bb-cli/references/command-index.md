@@ -134,6 +134,7 @@ This index lists every command path that the core CLI registers, including alias
 - `bb server access workflows result`
 - `bb server access workflows history`
 - `bb server access workflows inspect`
+- `bb server access workflows trace`
 - `bb server access workflows call`
 - `bb server access workflows stop`
 - `bb server access workflows definitions`

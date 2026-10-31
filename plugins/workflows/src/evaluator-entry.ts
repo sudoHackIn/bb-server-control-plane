@@ -36,6 +36,7 @@ try {
   if (first.done) throw new Error("Missing workflow initialization");
   write({
     type: "ready",
+    protocolVersion: 2,
     uid: process.getuid?.(),
     home: process.env.HOME,
     cwd: process.cwd(),
@@ -69,7 +70,7 @@ try {
     first.value,
     write,
     controller.signal,
-    async (prompt, options, signal) => {
+    async (prompt, options, signal, scopeId) => {
       if (ended || signal.aborted)
         throw new Error("Workflow agent transport unavailable");
       const id = ++sequence;
@@ -81,7 +82,7 @@ try {
         pending.get(id)?.reject(new Error("Workflow agent cancelled"));
       };
       signal.addEventListener("abort", cancel, { once: true });
-      write({ type: "agent", id, prompt, options });
+      write({ type: "agent", id, prompt, options, scopeId });
       try {
         return await result;
       } finally {

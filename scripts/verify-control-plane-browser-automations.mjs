@@ -316,6 +316,15 @@ export async function verifyBrowserAutomations({
     page.getByRole("button", { name: "Save automation", exact: true }).click(),
   );
   assert.equal(v3.revision, 3);
+  const storedDefinition = await page
+    .context()
+    .request.get(origin + path + "/definition");
+  assert.equal(storedDefinition.status(), 200);
+  assert.equal(
+    (await storedDefinition.json()).prompt,
+    `BB_PERSONAL_${hanging}`,
+  );
+  await visible(page.getByText("Edit automation · v3", { exact: true }));
   const cancelled = await operation(
     path + "/run",
     "POST",
@@ -323,6 +332,7 @@ export async function verifyBrowserAutomations({
       page.getByRole("button", { name: "Run automation", exact: true }).click(),
     201,
   );
+  assert.notEqual(cancelled.id, run.id);
   await proof(hanging);
   await operation(`${path}/runs/${cancelled.id}/stop`, "POST", () =>
     page

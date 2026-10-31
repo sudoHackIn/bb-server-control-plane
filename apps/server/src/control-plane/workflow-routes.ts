@@ -13,7 +13,7 @@ export function isControlPlaneWorkflowPath(path: string, method: string) {
   if (path === "/control-plane/user/workflows")
     return ["GET", "POST"].includes(method);
   return method === "GET"
-    ? /^\/control-plane\/user\/workflows\/[^/]+(?:\/(?:result|history|inspection|calls\/[^/]+))?$/u.test(
+    ? /^\/control-plane\/user\/workflows\/[^/]+(?:\/(?:result|history|inspection|trace|calls\/[^/]+))?$/u.test(
         path,
       )
     : method === "POST" &&
@@ -71,6 +71,30 @@ export function installControlPlaneWorkflowRoutes(
       if (!parsed.success)
         return context.json({ error: "invalid_request" }, 400);
       return context.json(await service.start(userId, parsed.data), 201);
+    }),
+  );
+  app.get(
+    `${base}/:id/trace`,
+    route(async (context, userId) => {
+      const parsed = z
+        .object({
+          attemptId: z.string().uuid().optional(),
+          after: z.coerce.number().int().min(-1).default(-1),
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+        })
+        .strict()
+        .safeParse(context.req.query());
+      if (!parsed.success)
+        return context.json({ error: "invalid_request" }, 400);
+      return context.json(
+        await service.trace(
+          userId,
+          context.req.param("id") ?? "",
+          parsed.data.attemptId ?? null,
+          parsed.data.after,
+          parsed.data.limit,
+        ),
+      );
     }),
   );
   app.get(

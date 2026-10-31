@@ -67,3 +67,52 @@ export const controlPlaneWorkflowCallInspectionSchema = z
     workersTruncated: z.boolean(),
   })
   .strict();
+
+const traceStatus = z.enum([
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "interrupted",
+  "incomplete",
+]);
+export const controlPlaneWorkflowTraceSchema = z
+  .object({
+    runId: z.string(),
+    attempt: z
+      .object({
+        id: z.string().uuid(),
+        sequence: z.number().int().positive(),
+        status: traceStatus,
+        createdAt: z.number(),
+        finishedAt: z.number().nullable(),
+        truncated: z.boolean(),
+      })
+      .strict()
+      .nullable(),
+    nextCursor: z.number().int().nonnegative().nullable(),
+    entries: z
+      .array(
+        z
+          .object({
+            index: z.number().int().nonnegative(),
+            nodeId: z.number().int().positive().nullable(),
+            scopeId: z.number().int().positive().nullable(),
+            kind: z.enum(["workflow", "parallel", "agent"]),
+            name: z.string().max(1024),
+            sourceHash: z.string().nullable(),
+            branchCount: z.number().int().nonnegative().nullable(),
+            failedBranches: z.number().int().nonnegative().nullable(),
+            status: traceStatus,
+            error: z.string().max(1024).nullable(),
+            createdAt: z.number(),
+            finishedAt: z.number().nullable(),
+            callId: z.string().nullable(),
+            callIndex: z.number().int().nonnegative().nullable(),
+            source: z.enum(["live", "cached"]).nullable(),
+          })
+          .strict(),
+      )
+      .max(100),
+  })
+  .strict();

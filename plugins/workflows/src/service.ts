@@ -1,3 +1,5 @@
+import { createTraceEmitter, traceEventSchema } from "./execution-trace.js";
+import { createStoredWorkflowTrace, readWorkflowTrace } from "./trace-store.js";
 import { createHash } from "node:crypto";
 import {
   assertBoundedJson,
@@ -273,6 +275,12 @@ export interface WorkflowService {
   start(input: StartWorkflowInput): Promise<WorkflowRunRow>;
   get(runId: string): WorkflowRunRow | null;
   inspect(runId: string): WorkflowRunInspection | null;
+  trace(
+    runId: string,
+    attemptId: string | null,
+    after: number,
+    limit: number,
+  ): ReturnType<typeof readWorkflowTrace>;
   inspectCallDetail(
     runId: string,
     callId: string,
@@ -1130,6 +1138,7 @@ export function createWorkflowService(
     }>,
     replayDecision: { previous: Promise<void>; release: () => void },
     signal: AbortSignal,
+    onAdmitted: (call: WorkflowCallRow) => void,
   ): Promise<JsonValue> {
     await replayDecision.previous;
     let call: WorkflowCallRow;
@@ -1170,6 +1179,7 @@ export function createWorkflowService(
             if (sameRunCall.cacheKey === cacheKey && reuse.reusable) {
               assertReplayCallAuthority(sameRunCall, run);
               markCallReplayedSameRun(db, sameRunCall.id);
+              onAdmitted({ ...sameRunCall, replaySource: "same-run" });
               publishRunsChanged(run.originThreadId);
               return reuse.result;
             }
@@ -1198,7 +1208,7 @@ export function createWorkflowService(
             );
             if (candidate?.cacheKey === cacheKey && reuse.reusable) {
               assertReplayCallAuthority(candidate, run);
-              startCall(db, {
+              const cachedCall = startCall(db, {
                 runId: run.id,
                 callIndex,
                 cacheKey,
@@ -1207,6 +1217,7 @@ export function createWorkflowService(
                 selection,
                 replay: { callId: candidate.id, result: reuse.result },
               });
+              onAdmitted(cachedCall);
               publishRunsChanged(run.originThreadId);
               return reuse.result;
             }
@@ -1224,6 +1235,7 @@ export function createWorkflowService(
         selection,
         replay: null,
       });
+      onAdmitted(call);
       publishRunsChanged(run.originThreadId);
     } finally {
       replayDecision.release();
@@ -1819,124 +1831,177 @@ export function createWorkflowService(
     let previousCacheKey = Promise.resolve<string | null>(null);
     let previousReplayDecision = Promise.resolve();
     let nestedLaunchQueue = Promise.resolve();
-    const capabilities: WorkflowCapabilities = {
-      agent(prompt, options, callSignal) {
-        const index = callIndex;
-        callIndex += 1;
-        const computeIdentity = async (previousKey: string | null) => {
-          const selection = await validateSelection(run, options, callSignal);
-          const cacheKey = computeWorkflowCallCacheKey({
-            version: WORKFLOW_CALL_CACHE_VERSION,
-            previousCacheKey: previousKey,
-            prompt,
-            selection,
-            outputSchema: options.outputSchema,
-            executionSemantics: {
-              workerPromptVersion: WORKER_PROMPT_VERSION,
-              resultProtocolVersion: RESULT_PROTOCOL_VERSION,
-              maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
-              ...(managedBinding
-                ? {
-                    profileVersionId:
-                      options.profileVersionId ??
-                      managedBinding.profileVersionId,
-                  }
-                : {}),
-            },
-          });
-          return { cacheKey, selection };
-        };
-        const identity = previousCacheKey.then(computeIdentity, async () => {
-          replay.prefix = false;
-          return computeIdentity(null);
-        });
-        previousCacheKey = identity.then(
-          (value) => value.cacheKey,
-          () => {
-            replay.prefix = false;
-            return null;
-          },
-        );
-        const priorDecision = previousReplayDecision;
-        let releaseDecision = (): void => undefined;
-        previousReplayDecision = new Promise<void>((resolve) => {
-          releaseDecision = resolve;
-        });
-        const call = runAgentCall(
-          run,
-          index,
+    const storedTrace = createStoredWorkflowTrace(db, run.id);
+    const trace = createTraceEmitter(storedTrace.observe);
+    function scopedCapabilities(scopeId: number | null): WorkflowCapabilities {
+      return {
+        ...capabilities,
+        agent: (prompt, options, callSignal) =>
+          dispatchAgent(prompt, options, callSignal, scopeId),
+        parallelTrace: trace.parallel(scopeId),
+      };
+    }
+    function dispatchAgent(
+      prompt: string,
+      options: WorkflowAgentOptions,
+      callSignal: AbortSignal,
+      scopeId: number | null,
+    ): Promise<JsonValue> {
+      const index = callIndex;
+      const traceCall = storedTrace.call(index, scopeId);
+      const pending = executeAgent(
+        prompt,
+        options,
+        callSignal,
+        traceCall.admitted,
+      );
+      void pending.then(
+        () => traceCall.finish("succeeded"),
+        (error) =>
+          traceCall.finish(
+            callSignal.aborted ? "cancelled" : "failed",
+            message(error),
+          ),
+      );
+      return pending;
+    }
+    function executeAgent(
+      prompt: string,
+      options: WorkflowAgentOptions,
+      callSignal: AbortSignal,
+      onAdmitted: (call: WorkflowCallRow) => void,
+    ) {
+      const index = callIndex;
+      callIndex += 1;
+      const computeIdentity = async (previousKey: string | null) => {
+        const selection = await validateSelection(run, options, callSignal);
+        const cacheKey = computeWorkflowCallCacheKey({
+          version: WORKFLOW_CALL_CACHE_VERSION,
+          previousCacheKey: previousKey,
           prompt,
-          options,
-          replay,
-          identity,
-          { previous: priorDecision, release: releaseDecision },
-          callSignal,
-        );
-        inFlightCalls.add(call);
-        void call.catch(() => undefined);
-        void call
-          .finally(() => {
-            inFlightCalls.delete(call);
-          })
-          .catch(() => undefined);
-        return call;
-      },
+          selection,
+          outputSchema: options.outputSchema,
+          executionSemantics: {
+            workerPromptVersion: WORKER_PROMPT_VERSION,
+            resultProtocolVersion: RESULT_PROTOCOL_VERSION,
+            maxRepairAttempts: MAX_REPAIR_ATTEMPTS,
+            ...(managedBinding
+              ? {
+                  profileVersionId:
+                    options.profileVersionId ?? managedBinding.profileVersionId,
+                }
+              : {}),
+          },
+        });
+        return { cacheKey, selection };
+      };
+      const identity = previousCacheKey.then(computeIdentity, async () => {
+        replay.prefix = false;
+        return computeIdentity(null);
+      });
+      previousCacheKey = identity.then(
+        (value) => value.cacheKey,
+        () => {
+          replay.prefix = false;
+          return null;
+        },
+      );
+      const priorDecision = previousReplayDecision;
+      let releaseDecision = (): void => undefined;
+      previousReplayDecision = new Promise<void>((resolve) => {
+        releaseDecision = resolve;
+      });
+      const call = runAgentCall(
+        run,
+        index,
+        prompt,
+        options,
+        replay,
+        identity,
+        { previous: priorDecision, release: releaseDecision },
+        callSignal,
+        onAdmitted,
+      );
+      inFlightCalls.add(call);
+      void call.catch(() => undefined);
+      void call
+        .finally(() => {
+          inFlightCalls.delete(call);
+        })
+        .catch(() => undefined);
+      return call;
+    }
+    const capabilities: WorkflowCapabilities = {
+      agent: (prompt, options, callSignal) =>
+        dispatchAgent(prompt, options, callSignal, null),
       async workflow(
         reference: WorkflowReference,
         childArgs: JsonValue,
         context: NestedWorkflowContext,
       ) {
-        const prepareAndLaunch = async () => {
-          const prepared = await prepareWorkflowSource(
-            bb,
-            { projectId: run.projectId, environmentId: run.environmentId },
-            workflowReferenceToSourceInput(reference),
+        const traceId = trace.start(null, "workflow", "Nested workflow");
+        try {
+          const prepareAndLaunch = async () => {
+            const prepared = await prepareWorkflowSource(
+              bb,
+              { projectId: run.projectId, environmentId: run.environmentId },
+              workflowReferenceToSourceInput(reference),
+            );
+            throwIfCancelled(context.signal);
+            const child = parseWorkflowSource(prepared.source);
+            trace.source(traceId, child.metadata.name, prepared.source);
+            if (child.metadata.inputSchema !== null) {
+              const validation = validateValue(
+                child.metadata.inputSchema,
+                childArgs,
+              );
+              if (!validation.valid) {
+                throw new Error(
+                  `Nested workflow ${child.metadata.name} args are invalid: ${validation.error}`,
+                );
+              }
+            }
+            const execution = executeWorkflowScript({
+              args: childArgs,
+              body: child.body,
+              capabilities: scopedCapabilities(traceId),
+              signal: context.signal,
+              depth: context.depth,
+              scheduler: context.scheduler,
+            });
+            return { child, execution };
+          };
+          const launch = nestedLaunchQueue.then(
+            prepareAndLaunch,
+            prepareAndLaunch,
           );
-          throwIfCancelled(context.signal);
-          const child = parseWorkflowSource(prepared.source);
-          if (child.metadata.inputSchema !== null) {
+          nestedLaunchQueue = launch.then(
+            () => undefined,
+            () => undefined,
+          );
+          const { child: launchedChild, execution } = await launch;
+          const result = await execution;
+          if (launchedChild.metadata.outputSchema !== null) {
             const validation = validateValue(
-              child.metadata.inputSchema,
-              childArgs,
+              launchedChild.metadata.outputSchema,
+              result,
             );
             if (!validation.valid) {
               throw new Error(
-                `Nested workflow ${child.metadata.name} args are invalid: ${validation.error}`,
+                `Nested workflow ${launchedChild.metadata.name} result is invalid: ${validation.error}`,
               );
             }
           }
-          const execution = executeWorkflowScript({
-            args: childArgs,
-            body: child.body,
-            capabilities,
-            signal: context.signal,
-            depth: context.depth,
-            scheduler: context.scheduler,
-          });
-          return { child, execution };
-        };
-        const launch = nestedLaunchQueue.then(
-          prepareAndLaunch,
-          prepareAndLaunch,
-        );
-        nestedLaunchQueue = launch.then(
-          () => undefined,
-          () => undefined,
-        );
-        const { child: launchedChild, execution } = await launch;
-        const result = await execution;
-        if (launchedChild.metadata.outputSchema !== null) {
-          const validation = validateValue(
-            launchedChild.metadata.outputSchema,
-            result,
+          trace.end(traceId, "succeeded");
+          return result;
+        } catch (error) {
+          trace.end(
+            traceId,
+            context.signal.aborted ? "cancelled" : "failed",
+            message(error),
           );
-          if (!validation.valid) {
-            throw new Error(
-              `Nested workflow ${launchedChild.metadata.name} result is invalid: ${validation.error}`,
-            );
-          }
+          throw error;
         }
-        return result;
       },
       log(text) {
         bb.log.info(`[${run.id}] ${text}`);
@@ -1961,6 +2026,7 @@ export function createWorkflowService(
           ? await backgroundJobs.evaluateWorkflow(
               managedBinding.id,
               {
+                captureTrace: true,
                 body: parsed.body,
                 args: parseJson(run.argsJson, "workflow args"),
                 maxAgentCalls: runSettings.maxAgentCalls,
@@ -1970,20 +2036,23 @@ export function createWorkflowService(
               signal,
               (event) => {
                 if (event.type === "phase") capabilities.phase(event.value);
+                else if (event.type === "trace")
+                  storedTrace.observe(traceEventSchema.parse(event.value));
                 else capabilities.log(event.value);
               },
-              (prompt, options, callSignal) =>
-                capabilities.agent(
+              (prompt, options, callSignal, scopeId) =>
+                dispatchAgent(
                   prompt,
                   parseStoredAgentOptions(options),
                   callSignal,
+                  scopeId ?? null,
                 ),
             )
           : await executeWorkflowScript({
               args: parseJson(run.argsJson, "workflow args"),
               body: parsed.body,
               signal,
-              capabilities,
+              capabilities: scopedCapabilities(null),
               limits: {
                 maxAgentCalls: runSettings.maxAgentCalls,
                 maxConcurrentAgents: runSettings.maxConcurrentAgents,
@@ -2030,6 +2099,12 @@ export function createWorkflowService(
       }
     } finally {
       await Promise.allSettled(inFlightCalls);
+      const traceStatus = getRunRequired(db, run.id).status;
+      storedTrace.finish(
+        traceStatus === "queued" || traceStatus === "running"
+          ? "interrupted"
+          : traceStatus,
+      );
       controllers.delete(run.id);
     }
   }
@@ -2254,6 +2329,10 @@ export function createWorkflowService(
     start,
     get: visibleRun,
     inspect,
+    trace: (runId, attemptId, after, limit) =>
+      visibleRun(runId)
+        ? readWorkflowTrace(db, runId, attemptId, after, limit)
+        : null,
     inspectPage,
     inspectCallDetail,
     inspectLatestForThread,

@@ -15,6 +15,7 @@ import {
 import {
   controlPlaneWorkflowRunSchema,
   controlPlaneWorkflowInspectionSchema,
+  controlPlaneWorkflowTraceSchema,
   controlPlaneWorkflowCallInspectionSchema,
   controlPlaneWorkflowResultSchema,
   controlPlaneWorkflowHistorySchema,
@@ -27,6 +28,7 @@ import { ApiError } from "../errors.js";
 import { withControlPlaneUser } from "./access.js";
 
 type Operation =
+  | "controlPlaneWorkflowTrace"
   | "controlPlaneWorkflowInspection"
   | "controlPlaneWorkflowCallInspection"
   | "controlPlaneDefinitionCreate"
@@ -324,6 +326,37 @@ export function createControlPlaneWorkflowService(
           502,
           "workflow_contract_error",
           "Invalid workflow result identity",
+        );
+      binding(userId, runId);
+      return value;
+    },
+    async trace(
+      userId: string,
+      runId: string,
+      attemptId: string | null,
+      after: number,
+      limit: number,
+    ) {
+      await get(userId, runId);
+      const value = controlPlaneWorkflowTraceSchema.nullable().parse(
+        await withControlPlaneUser(userId, () =>
+          rpc("controlPlaneWorkflowTrace", {
+            runId,
+            attemptId,
+            after,
+            limit,
+          }),
+        ),
+      );
+      if (!value) return notFound();
+      if (
+        value.runId !== runId ||
+        (attemptId !== null && value.attempt?.id !== attemptId)
+      )
+        throw new ApiError(
+          502,
+          "workflow_contract_error",
+          "Invalid workflow trace identity",
         );
       binding(userId, runId);
       return value;

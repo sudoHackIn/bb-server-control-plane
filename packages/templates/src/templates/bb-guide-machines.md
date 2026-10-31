@@ -786,6 +786,21 @@ Current project access is required for reads and cancellation. Losing an
 execution-profile grant prevents new starts, while authorized history and
 cancellation remain available. Cancelling disables the saved run authority.
 
+Inspect recorded execution structure with
+`bb server access workflows trace <run-id> --after -1 --limit 20 --json`, or
+SDK `workflows.trace(runId, {after, limit, signal})`. It returns a persisted
+evaluator attempt, workflow scopes, explicit parallel spans and references to
+actual native calls. Continue with the returned `nextCursor` as `after`, and pin
+`attemptId` (CLI `--attempt <uuid>`) from the first page to avoid mixing attempts
+after a restart. Known older attempts are readable under the same current run
+ownership/project checks. An old run may return `attempt: null` rather than an
+invented tree. Parallel spans record branch count/failures and group boundaries;
+agent membership in individual branches is not inferred from time overlap.
+The personal inspector opens recorded native calls through the existing step and
+worker conversation view. Truncated structure is marked incomplete while
+execution continues. Attempt recording preserves execution/replay distinctions;
+it does not snapshot or duplicate worker transcripts.
+
 With `createControlPlaneClient`, use `workflows.start({originThreadId, script,
 args?, resumeRunId?})`, `list({projectId?, cursor?, limit?, signal?})`, `get(id,
 signal?)`, `result(id, signal?)`, `history(id, {after?, limit?, signal?})` and

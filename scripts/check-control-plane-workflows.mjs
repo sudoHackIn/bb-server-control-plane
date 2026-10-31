@@ -1665,6 +1665,7 @@ async function verifyEvaluatorProcesses({
       }, "isolated workflow process readiness");
       assert.deepEqual(probe, {
         type: "ready",
+        protocolVersion: 2,
         uid: subject.user.uid,
         home: subject.user.home,
         cwd: subject.project.cwd,

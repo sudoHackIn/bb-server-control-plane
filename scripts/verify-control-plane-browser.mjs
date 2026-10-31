@@ -12,6 +12,29 @@ import {
   verifyForeignCliDenied,
 } from "./verify-control-plane-browser-cli.mjs";
 
+async function waitForPersonalWorkflow(page, origin, id) {
+  const deadline = Date.now() + 90000;
+  let last;
+  while (Date.now() < deadline) {
+    const response = await page
+      .context()
+      .request.get(
+        `${origin}/control-plane/user/workflows/${encodeURIComponent(id)}`,
+      );
+    assert.equal(response.status(), 200, await response.text());
+    last = await response.json();
+    if (last.status === "succeeded") return;
+    assert.ok(
+      !["failed", "cancelled"].includes(last.status),
+      JSON.stringify(last),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(
+    `Workflow did not finish within the execution deadline: ${JSON.stringify(last)}`,
+  );
+}
+
 export async function verifyControlPlaneBrowser({ name, ready }) {
   assert.equal(ready.origin, "https://127.0.0.1:8080");
   assert.equal(ready.users.length, 2);
@@ -387,12 +410,17 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
     const inspectionUrl = `${agentUrl}&inspectRun=${encodeURIComponent(inspection.runId)}`;
     await alice.page.goto(inspectionUrl);
     await visible(
-      alice.page.getByRole("list", { name: "Recorded agent calls" }),
+      alice.page.getByRole("region", { name: "Execution structure" }),
     );
+    await visible(
+      alice.page.getByText("Workflow · nested-agent-step", { exact: true }),
+    );
+    await visible(
+      alice.page.getByText("2 branches · 0 failed", { exact: true }),
+    );
+    await verifyPersonalSurface(alice.page, "Run inspection", "workflow-tree");
     await alice.page
-      .getByRole("list", { name: "Recorded agent calls" })
-      .getByRole("button")
-      .first()
+      .getByRole("button", { name: "Inspect step 1", exact: true })
       .click();
     await visible(alice.page.getByRole("heading", { name: "Step input" }));
     await visible(alice.page.getByRole("heading", { name: "Step output" }));
@@ -425,9 +453,13 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       .getByRole("button", { name: "Back to run", exact: true })
       .click();
     await visible(
-      alice.page.getByRole("list", { name: "Recorded agent calls" }),
+      alice.page.getByRole("region", { name: "Execution structure" }),
     );
-    for (const suffix of ["inspection", `calls/${inspection.callId}`]) {
+    for (const suffix of [
+      "inspection",
+      "trace",
+      `calls/${inspection.callId}`,
+    ]) {
       assert.equal(
         (
           await bob.context.request.get(
@@ -675,6 +707,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       if (user.login === "alice") assert.equal(workflow.originThreadId, null);
       browserWorkflowIds.push(workflow.id);
       await visible(page.getByText(`Run ${workflow.id}`, { exact: true }));
+      await waitForPersonalWorkflow(page, ready.origin, workflow.id);
       await visible(page.getByLabel("Workflow result", { exact: true }));
       await visible(
         page
@@ -701,6 +734,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       const replay = await resumedResponse.json();
       assert.notEqual(replay.id, workflow.id);
       await visible(page.getByText(`Run ${replay.id}`, { exact: true }));
+      await waitForPersonalWorkflow(page, ready.origin, replay.id);
       await visible(page.getByLabel("Workflow result", { exact: true }));
       if (process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS) {
         await mkdir(process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS, {
@@ -958,6 +992,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       productionBrowserRenderingVerified: true,
       publishedWorkflowAgentCatalogTaskResultBrowser: true,
       workflowInspectionBrowserNativeThreadAndNavigation: true,
+      workflowTraceTreeAndParallelBrowser: true,
       browserVersion: browser.version(),
       separateCertificateBrowserContexts: true,
       certificateLoginPreservesConversationAndMessageFragment: true,
@@ -1333,6 +1368,7 @@ async function verifyBrowserDefinitions(page, foreign, user, origin, visible) {
     assert.equal(reply.status(), 201);
     const run = await reply.json();
     await visible(page.getByText(`Run ${run.id}`, { exact: true }));
+    await waitForPersonalWorkflow(page, origin, run.id);
     await visible(page.getByLabel("Workflow result", { exact: true }));
     const text = await page
       .getByLabel("Workflow result", { exact: true })

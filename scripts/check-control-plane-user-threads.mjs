@@ -9,7 +9,6 @@ import { readFile } from "node:fs/promises";
 import { request } from "node:https";
 
 export function createUserThreadFixture({ db, users }) {
-  const calls = new Set();
   const failedWorkers = new Map();
   let resumed = false;
   let saved;
@@ -76,14 +75,28 @@ export function createUserThreadFixture({ db, users }) {
       resumed = JSON.stringify(body.messages).includes(
         "BB_PERSONAL_alice first",
       );
-    const first = !calls.has(marker);
-    calls.add(marker);
+    const first = !body.messages.some(
+      (message) =>
+        message.role === "tool" &&
+        message.tool_call_id === `personal_${marker}`,
+    );
     const foreignHome = users.find((user) => user.login === "bob")?.home;
     const sharedProbe =
       marker === "shared-alice" && foreignHome
         ? `,foreignHomeReadable:(()=>{try{fs.readdirSync(${JSON.stringify(foreignHome)});return true}catch{return false}})()`
         : "";
-    const code = `const fs=require("node:fs");fs.writeFileSync(process.env.HOME+"/bb-personal-${marker}.json",JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()${sharedProbe}}))${marker.startsWith("worker-hang-") ? ";setInterval(()=>{},1000)" : ""}`;
+    const recoveryCommand =
+      marker.startsWith("worker-hang-recovery-") ||
+      marker.startsWith("worker-hang-crash-");
+    const previousExecution = recoveryCommand
+      ? `const previouslyExecuted=fs.existsSync(process.env.HOME+"/bb-personal-${marker}.json");`
+      : "";
+    const hang = marker.startsWith("worker-hang-")
+      ? recoveryCommand
+        ? ";if(!previouslyExecuted)setInterval(()=>{},1000)"
+        : ";setInterval(()=>{},1000)"
+      : "";
+    const code = `const fs=require("node:fs");${previousExecution}fs.writeFileSync(process.env.HOME+"/bb-personal-${marker}.json",JSON.stringify({uid:process.getuid(),home:process.env.HOME,cwd:process.cwd()${sharedProbe}}))${hang}`;
     const delta = first
       ? {
           role: "assistant",

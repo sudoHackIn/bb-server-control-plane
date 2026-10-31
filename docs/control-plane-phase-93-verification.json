@@ -1,0 +1,81 @@
+{
+  "scope": "P3.3 persisted workflow scopes and explicit parallel spans",
+  "changes": {
+    "nativeTraceAttemptsAndEntries": true,
+    "managedUidEvaluatorAndStandaloneNativeRuntime": true,
+    "actualWorkflowScopeForInterleavedAgentCalls": true,
+    "nestedSourceNameAndHash": true,
+    "explicitParallelGroupBoundariesAndBranchFailures": true,
+    "separateRestartReplayAttempts": true,
+    "capturedLiveCachedAdmission": true,
+    "changedNativeCallRecordsNotLinkedFromOldTrace": true,
+    "legacyHistoryWithoutInventedStructure": true,
+    "boundedCaptureContinuesExecution": true,
+    "ownerProjectReadAuthorityRechecked": true,
+    "apiSdkCliUiParity": true,
+    "nativeRetentionCascadesTrace": true,
+    "localEvaluatorProtocolVersion": 2,
+    "hostDaemonWireChanged": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 513,
+    "testFilesPassed": 70,
+    "testsByPackage": {
+      "workflowsPlugin": 303,
+      "serverControlPlane": 152,
+      "personalUi": 58
+    },
+    "typecheck": "passed",
+    "changedFileLint": "passed",
+    "dockerStatus": "passed",
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-hierarchy-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "commands": [
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane-model-fixture.test.ts",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane",
+      "pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/cli --filter=bb-plugin-workflows"
+    ],
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 785193,
+    "nativeAndBrowserProofs": {
+      "productionBrowserRenderingVerified": true,
+      "workflowTraceTreeAndParallelBrowser": true,
+      "workflowTraceNestedScopesParallelAndReplay": true,
+      "workflowTraceStructureSurvivesRestart": true,
+      "workflowInspectionBrowserNativeThreadAndNavigation": true,
+      "publishedWorkflowStepRevocationAndRegrantReplayAfterRestart": true,
+      "interruptedNativeWorkflowAutomaticallyRecovered": true,
+      "successfulPrefixRecoveredWithoutDuplicateWorker": true,
+      "nativeMaintenanceSavedIntentRecoveredOnServerStartup": true,
+      "abruptCrashWorkflowRecoveryVerified": true,
+      "crashRecoveryRetainsIdentityAndThreads": true
+    },
+    "dockerCgroupOomKillCountAfterBrowser": 0,
+    "fixtureIdleSessionsReleasedBetweenGroups": true,
+    "idleSystemSleepPreventedDuringFinalRun": true
+  },
+  "limits": {
+    "scopeAndParallelNodesPerAttempt": 1024,
+    "emitterMetadataBytes": 1048576,
+    "serverTraceBytes": 2097152,
+    "tracePageEntries": 100,
+    "nestedWorkflowChildLevels": 1
+  },
+  "limitations": [
+    "Parallel groups record explicit boundaries/counts in their workflow VM. Individual branch membership of agent/workflow calls is not inferred from overlap.",
+    "The existing one-child-level workflow execution limit is unchanged. P4 delegation/deeper composition remains separate.",
+    "Structure attempts are not transcript snapshots; historical call links require the captured native cache key to still match.",
+    "Individual provider retry errors/timestamps and independent file-change artifacts remain the next P3.3 slice; reviewer/developer grants remain P3.4.",
+    "Rebuild and deploy the fixed local evaluator runtime with the server; stdio protocol 1 is rejected. The host-daemon protocol is unchanged.",
+    "Docker uses deterministic model fixtures and stock Qwen CLI, not corporate harness authorization."
+  ],
+  "verificationNotes": [
+    "The first Docker run reached direct evaluator isolation proofs, whose old exact ready-frame expectation lacked protocolVersion:2. The expectation now verifies the new handshake field alongside unchanged UID/HOME/cwd/credential checks.",
+    "The next run timed out in the unchanged ordinary manual-agent command fixture before workflow/trace scenarios. Logs showed event-loop stalls and oom_kill=0. Runtime code, timeouts and assertions were retained for retry.",
+    "A later run passed native trace/replay proofs and the browser hierarchy/worker navigation, then missed the Bob hanging-automation command proof with oom_kill=0. The deterministic model fixture used a global marker Set, allowing a repeated HTTP request to skip an unacknowledged tool call. It now derives completion from that conversation tool result; a real-database regression test verifies repeated requests before/after tool acknowledgement. Browser automation also asserts the saved task and distinct run identity before checking execution/cancellation.",
+    "With conversation-based model acknowledgement, Alice automation command/cancellation passed. A later workflow had a succeeded step but was still running when the unrelated 15-second DOM-result timeout expired (oom_kill=0). Browser checks now first await the terminal owned workflow through the limited API with an execution deadline and fail immediately on failed/cancelled, then retain the UI render check. Recovery/crash fixture commands explicitly hang on their first real execution only; subsequent attempts still execute/acknowledge the command rather than relying on the removed global model Set.",
+    "The next full run passed the complete production browser suite, including both users’ workflows and automations, then timed out in the existing saved native-maintenance startup recovery. Host-daemon logs recorded 99–115 second heartbeat gaps. No cause is claimed from those gaps alone. The fixture now includes its saved operation state in a recovery failure; the next run uses caffeinate -i to prevent idle system sleep while preserving timeouts/assertions.",
+    "The final composite passed all 63 Turbo tasks, production browser, warm restart and abrupt crash recovery in 785193 ms. The cgroup snapshot after browser completion reported oom_kill=0. This is an observed final-run result, not a claim that prior intermittent fixture/host delays are eliminated."
+  ]
+}

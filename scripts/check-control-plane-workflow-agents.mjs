@@ -18,7 +18,8 @@ export async function verifyPublishedWorkflowAgents({
     'export const meta={name:"published-workflow-agent",description:"Published agent native worker",inputSchema:{type:"string",maxLength:200},outputSchema:{type:"string"}};';
   for (const subject of subjects) {
     const { user, project, thread, profile } = subject;
-    const invocation = `return await agent(args,{profileVersionId:${JSON.stringify(profile.body.version.id)}});`;
+    const child = `export const meta={name:"nested-agent-step",description:"Nested published worker",inputSchema:{type:"string"},outputSchema:{type:"string"}}; return (await parallel([()=>agent(args,{profileVersionId:${JSON.stringify(profile.body.version.id)}}),()=>"no-model"]))[0];`;
+    const invocation = `return await workflow({script:${JSON.stringify(child)}},args);`;
     const script = metadata + invocation;
     const source = await userRequest(user.login, definitions, {
       method: "POST",
@@ -212,6 +213,44 @@ export async function verifyPublishedWorkflowAgents({
     ]);
     assert.equal(history.calls.length, 1);
     assert.ok(history.calls[0].childThreadId);
+    const trace = await userCommand(user.login, [
+      "workflows",
+      "trace",
+      run.runId,
+      "--limit",
+      "100",
+      "--json",
+    ]);
+    assert.equal(trace.attempt.status, "succeeded");
+    assert.equal(trace.attempt.truncated, false);
+    const nestedScope = trace.entries.find(
+      (entry) => entry.kind === "workflow",
+    );
+    const parallelSpan = trace.entries.find(
+      (entry) => entry.kind === "parallel",
+    );
+    const agentEntry = trace.entries.find((entry) => entry.kind === "agent");
+    assert.equal(nestedScope.name, "nested-agent-step");
+    assert.equal(nestedScope.sourceHash.length, 64);
+    assert.equal(parallelSpan.scopeId, nestedScope.nodeId);
+    assert.equal(parallelSpan.branchCount, 2);
+    assert.equal(agentEntry.scopeId, nestedScope.nodeId);
+    assert.equal(agentEntry.callId, history.calls[0].id);
+    assert.equal(agentEntry.source, "live");
+    const traceReplay = await userCommand(user.login, [
+      "workflows",
+      "trace",
+      replay.id,
+      "--json",
+    ]);
+    assert.equal(
+      traceReplay.entries.find((entry) => entry.kind === "agent").source,
+      "cached",
+    );
+    assert.equal(
+      traceReplay.entries.find((entry) => entry.kind === "workflow").sourceHash,
+      nestedScope.sourceHash,
+    );
     const inspection = await userCommand(user.login, [
       "workflows",
       "inspect",
@@ -316,7 +355,12 @@ export async function verifyPublishedWorkflowAgents({
         ).status,
         404,
       );
-    for (const suffix of ["inspection", `calls/${history.calls[0].id}`]) {
+    for (const suffix of [
+      "inspection",
+      "trace",
+      `trace?attemptId=${trace.attempt.id}`,
+      `calls/${history.calls[0].id}`,
+    ]) {
       assert.equal(
         (
           await userRequest(
@@ -371,6 +415,7 @@ export async function verifyPublishedWorkflowAgents({
     })),
     verification: {
       workflowInspectionNativeMetadataCliAndForeignDenial: true,
+      workflowTraceNestedScopesParallelAndReplay: true,
       workflowInspectionReplayProvenance: true,
       publishedWorkflowAgentsNativeUidHomeCwdTwoUsers: true,
       publishedWorkflowAgentsPinnedSourceAndContracts: true,
@@ -405,6 +450,17 @@ export async function verifyPublishedWorkflowAgents({
         ),
       );
       assert.equal(restored.outputAvailable, true);
+      const restoredTrace = await userCommand("alice", [
+        "workflows",
+        "trace",
+        item.run.runId,
+        "--json",
+      ]);
+      assert.equal(restoredTrace.attempt.status, "succeeded");
+      assert.equal(
+        restoredTrace.entries.find((entry) => entry.kind === "workflow").name,
+        "nested-agent-step",
+      );
       const login = await sendAdmin("/control-plane/login", {
         login: "operator",
         password,
@@ -488,6 +544,7 @@ export async function verifyPublishedWorkflowAgents({
       assert.equal(reused.calls.length, 1);
       assert.equal(reused.calls[0].childThreadId, null);
       return {
+        workflowTraceStructureSurvivesRestart: true,
         publishedWorkflowAgentsIdentityAndResultAfterRestart: true,
         publishedWorkflowStepRevocationAndRegrantReplayAfterRestart: true,
       };

@@ -8,6 +8,17 @@ import { utf8Prefix } from "./utf8.js";
 
 const id = z.string().min(1).max(200);
 const contract = defineRpcContract({
+  controlPlaneWorkflowTrace: {
+    input: z
+      .object({
+        runId: id,
+        attemptId: z.string().uuid().nullable(),
+        after: z.number().int().min(-1),
+        limit: z.number().int().min(1).max(100),
+      })
+      .strict(),
+    output: z.unknown(),
+  },
   controlPlaneWorkflowInspection: {
     input: z
       .object({
@@ -57,6 +68,10 @@ export function registerWorkflowInspectionApi(
       throw new Error("A managed workflow user is required");
   }
   bb.rpc.register(contract, {
+    controlPlaneWorkflowTrace({ runId, attemptId, after, limit }) {
+      managed();
+      return service.trace(runId, attemptId, after, limit);
+    },
     controlPlaneWorkflowInspection({ runId, after, limit }) {
       managed();
       const page = service.inspectPage(runId, after, limit + 1);

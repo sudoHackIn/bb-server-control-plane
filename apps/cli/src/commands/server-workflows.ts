@@ -104,6 +104,35 @@ export function registerServerWorkflowCommands(
         output(await client().workflows.inspectCall(id, callId)),
       ),
     );
+  workflows
+    .command("trace <run-id>")
+    .description(
+      "Inspect persisted workflow scopes, parallel spans and call links",
+    )
+    .option("--json", "Print JSON")
+    .option("--attempt <id>", "Pin an evaluator attempt UUID")
+    .option("--after <index>", "Continue after an entry index", "-1")
+    .option("--limit <count>", "Maximum entries, 1 to 100", "20")
+    .action(
+      action(
+        async (
+          id: string,
+          options: { attempt?: string; after: string; limit: string },
+        ) =>
+          output(
+            await client().workflows.trace(id, {
+              attemptId: options.attempt,
+              after: z.coerce.number().int().min(-1).parse(options.after),
+              limit: z.coerce
+                .number()
+                .int()
+                .min(1)
+                .max(100)
+                .parse(options.limit),
+            }),
+          ),
+      ),
+    );
   for (const operation of ["history", "inspect"] as const)
     workflows
       .command(`${operation} <run-id>`)

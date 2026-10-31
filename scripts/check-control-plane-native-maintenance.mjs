@@ -197,12 +197,19 @@ export function createNativeMaintenanceFixture({ db, users }) {
     },
     async afterRestart({ wait }) {
       assert.ok(restartOperation);
-      await wait(
-        () =>
-          status(restartOperation)?.phase === "complete" &&
-          status(restartOperation)?.worker_id === null,
-        "saved native maintenance startup recovery",
-      );
+      try {
+        await wait(
+          () =>
+            status(restartOperation)?.phase === "complete" &&
+            status(restartOperation)?.worker_id === null,
+          "saved native maintenance startup recovery",
+        );
+      } catch (cause) {
+        throw new Error(
+          `Saved native maintenance did not recover: ${JSON.stringify(status(restartOperation))}`,
+          { cause },
+        );
+      }
       const completed = status(restartOperation);
       assert.equal(completed.attempt, 1);
       assert.equal(completed.worker_id, null);
