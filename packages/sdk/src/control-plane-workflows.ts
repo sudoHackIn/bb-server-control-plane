@@ -2,6 +2,8 @@ import { createControlPlaneWorkflowDefinitionsClient } from "./control-plane-wor
 import { z } from "zod";
 import {
   controlPlaneWorkflowStartSchema,
+  controlPlaneWorkflowInspectionSchema,
+  controlPlaneWorkflowCallInspectionSchema,
   controlPlaneWorkflowRunSchema,
   controlPlaneWorkflowPageSchema,
   controlPlaneWorkflowResultSchema,
@@ -70,6 +72,34 @@ export function createControlPlaneWorkflowClient(
     async result(id: string, signal?: AbortSignal) {
       return controlPlaneWorkflowResultSchema.parse(
         await request(`${path(id)}/result`, "GET", undefined, signal),
+      );
+    },
+    async inspect(
+      id: string,
+      options: { after?: number; limit?: number; signal?: AbortSignal } = {},
+    ) {
+      const query = new URLSearchParams();
+      if (options.after !== undefined)
+        query.set("after", String(options.after));
+      if (options.limit !== undefined)
+        query.set("limit", String(options.limit));
+      return controlPlaneWorkflowInspectionSchema.parse(
+        await request(
+          `${path(id)}/inspection${query.size ? `?${query}` : ""}`,
+          "GET",
+          undefined,
+          options.signal,
+        ),
+      );
+    },
+    async inspectCall(id: string, callId: string, signal?: AbortSignal) {
+      return controlPlaneWorkflowCallInspectionSchema.parse(
+        await request(
+          `${path(id)}/calls/${encodeURIComponent(callId)}`,
+          "GET",
+          undefined,
+          signal,
+        ),
       );
     },
     async history(

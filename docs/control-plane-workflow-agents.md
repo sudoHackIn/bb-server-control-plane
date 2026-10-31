@@ -105,3 +105,45 @@ See [the step authority record](control-plane-phase-91-verification.json).
 The next slices show phase/call/child progress directly in the agent task detail,
 add scoped reviewer/developer access and separate developer test runs. Workflow
 agent scheduling, interactive strategies and agent delegation are separate work.
+
+## Owner execution inspection
+
+The personal Agents task detail and advanced Workflows run detail link to
+`?inspectRun=<run-id>`. Step and worker selection use `inspectCall` and
+`inspectThread`; these are navigation values, never authorization. A plain
+conversation agent opens its actual existing conversation directly.
+
+The workflow inspector reads native records, with no second execution log:
+
+- `GET /control-plane/user/workflows/:id/inspection?after=-1&limit=20`
+  returns native run identity, input, source hash and output contract, central
+  pinned root profile/workflow revision, call counts and at most 100 step
+  summaries. `nextCursor` is the last returned call index when another page exists.
+- `GET /control-plane/user/workflows/:id/calls/:callId` returns one recorded
+  prompt/result/contract, execution selection, current counters/error, timing,
+  up to 100 recorded worker IDs and readable replay provenance. Worker records
+  include previous provider attempts; this list does not claim chronological
+  order or invent individual attempt timestamps/errors that were never recorded.
+- SDK `workflows.inspect` / `workflows.inspectCall` and CLI
+  `bb server access workflows inspect` / `workflows call` use those same routes.
+
+Both operations require the current run owner and current project read access.
+A call ID must belong to the selected run. Replay source links require current
+read access to the source. Each worker transcript independently uses the existing
+scoped thread get/timeline/details/stream APIs. Deep-linking a worker not recorded
+for that selected call does not request its transcript. Revoked/unavailable data
+is hidden, including cached query data after a failed recheck. There are no send,
+stop, replay or interaction-resolution controls inside the inspector.
+
+The UI uses the native BB timeline and tool detail renderer with a return to the
+selected step/run. A cached step says that it did not invoke a new model and
+links to original work only when readable. A restart replay within the same run
+can retain its existing worker records; a resumed-run cached call has no new
+worker record. An archived/deleted worker may no longer have an available timeline.
+
+This is the first P3.3 slice: root-to-agent calls, recorded phases, ordering and
+execution intervals. Native nested workflow evaluation currently shares a flat
+call list. Persisting nested workflow invocation spans, explicit parallel groups,
+individual retry error history and independent file-change artifacts remains a
+following P3.3 slice. Reviewer/developer grants and their administration remain
+P3.4; administrators retain the existing full native BB/Workflows interfaces.

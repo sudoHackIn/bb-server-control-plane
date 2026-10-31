@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { afterEach, expect, it } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { PersonalWorkflows } from "./PersonalWorkflows";
 
 const queries: QueryClient[] = [];
@@ -50,15 +51,17 @@ function mount(
         : fetcher(input, init),
   });
   const view = (projectId: string) => (
-    <QueryClientProvider client={cache}>
-      <PersonalWorkflows
-        key={projectId}
-        client={client}
-        projectId={projectId}
-        originThreadId={originThreadId}
-        canExecute={canExecute}
-      />
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={cache}>
+        <PersonalWorkflows
+          key={projectId}
+          client={client}
+          projectId={projectId}
+          originThreadId={originThreadId}
+          canExecute={canExecute}
+        />
+      </QueryClientProvider>
+    </MemoryRouter>
   );
   const rendered = render(view("a"));
   return { cache, switchProject: (id: string) => rendered.rerender(view(id)) };

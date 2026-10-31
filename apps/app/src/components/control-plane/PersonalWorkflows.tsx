@@ -1,3 +1,5 @@
+import { Link, useLocation } from "react-router-dom";
+import { personalInspectionSearch } from "./personal-inspection-navigation";
 import { PersonalWorkflowDefinitions } from "./PersonalWorkflowDefinitions";
 import { useState } from "react";
 import {
@@ -31,6 +33,7 @@ export function PersonalWorkflows({
   originThreadId: string | null;
   canExecute: boolean;
 }) {
+  const location = useLocation();
   const cache = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const [profileVersionId, setProfileVersionId] = useState("");
@@ -316,6 +319,18 @@ export function PersonalWorkflows({
                       )
                     )}
                   </div>
+                  <Button asChild variant="outline">
+                    <Link
+                      to={{
+                        search: personalInspectionSearch(
+                          location.search,
+                          run.id,
+                        ),
+                      }}
+                    >
+                      Inspect execution
+                    </Link>
+                  </Button>
                   <p className="break-all font-mono text-xs text-muted-foreground">
                     Run {run.id}
                   </p>

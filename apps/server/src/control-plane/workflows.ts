@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   controlPlaneJobBindings,
   getControlPlaneJobBinding,
+  getControlPlaneProfileWorkflow,
   listControlPlaneJobBindings,
   getControlPlaneProject,
   requireControlPlaneThreadDispatch,
@@ -13,6 +14,8 @@ import {
 } from "@bb/db";
 import {
   controlPlaneWorkflowRunSchema,
+  controlPlaneWorkflowInspectionSchema,
+  controlPlaneWorkflowCallInspectionSchema,
   controlPlaneWorkflowResultSchema,
   controlPlaneWorkflowHistorySchema,
   type ControlPlaneWorkflowStart,
@@ -24,6 +27,8 @@ import { ApiError } from "../errors.js";
 import { withControlPlaneUser } from "./access.js";
 
 type Operation =
+  | "controlPlaneWorkflowInspection"
+  | "controlPlaneWorkflowCallInspection"
   | "controlPlaneDefinitionCreate"
   | "controlPlaneDefinitions"
   | "controlPlaneDefinitionApprove"
@@ -165,6 +170,15 @@ export function createControlPlaneWorkflowService(
         "Invalid workflow identity",
       );
     return checked(userId, value.run);
+  }
+  function readableRun(userId: string, runId: string) {
+    try {
+      binding(userId, runId);
+      return runId;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw error;
+    }
   }
   return {
     definitions: createControlPlaneWorkflowDefinitions(db, rpc),
@@ -313,6 +327,71 @@ export function createControlPlaneWorkflowService(
         );
       binding(userId, runId);
       return value;
+    },
+    async inspect(userId: string, runId: string, after: number, limit: number) {
+      await get(userId, runId);
+      const saved = binding(userId, runId);
+      const source = getControlPlaneProfileWorkflow(db, saved.profileVersionId);
+      const raw = await withControlPlaneUser(userId, () =>
+        rpc("controlPlaneWorkflowInspection", { runId, after, limit }),
+      );
+      if (raw === null) return notFound();
+      const value = controlPlaneWorkflowInspectionSchema
+        .omit({ profileVersionId: true, workflowRevision: true })
+        .parse(raw);
+      if (value.run.id !== runId)
+        throw new ApiError(
+          502,
+          "workflow_contract_error",
+          "Invalid workflow inspection identity",
+        );
+      checked(userId, value.run);
+      const readableSource =
+        value.resumedFromRunId === null
+          ? null
+          : readableRun(userId, value.resumedFromRunId);
+      return controlPlaneWorkflowInspectionSchema.parse({
+        ...value,
+        resumedFromRunId: readableSource,
+        profileVersionId: saved.profileVersionId,
+        workflowRevision: source
+          ? { definitionId: source.definitionId, revision: source.revision }
+          : null,
+        calls: value.calls.map((call) => ({
+          ...call,
+          profileVersionId: call.profileVersionId ?? saved.profileVersionId,
+        })),
+      });
+    },
+    async inspectCall(userId: string, runId: string, callId: string) {
+      await get(userId, runId);
+      const value = controlPlaneWorkflowCallInspectionSchema
+        .nullable()
+        .parse(
+          await withControlPlaneUser(userId, () =>
+            rpc("controlPlaneWorkflowCallInspection", { runId, callId }),
+          ),
+        );
+      if (!value) return notFound();
+      if (value.runId !== runId || value.call.id !== callId)
+        throw new ApiError(
+          502,
+          "workflow_contract_error",
+          "Invalid workflow call identity",
+        );
+      const saved = binding(userId, runId);
+      return {
+        ...value,
+        call: {
+          ...value.call,
+          profileVersionId:
+            value.call.profileVersionId ?? saved.profileVersionId,
+        },
+        replayedFrom:
+          value.replayedFrom && readableRun(userId, value.replayedFrom.runId)
+            ? value.replayedFrom
+            : null,
+      };
     },
     async history(userId: string, runId: string, after: number, limit: number) {
       await get(userId, runId);

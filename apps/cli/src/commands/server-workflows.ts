@@ -96,18 +96,33 @@ export function registerServerWorkflowCommands(
         ),
       );
   workflows
-    .command("history <run-id>")
+    .command("call <run-id> <call-id>")
     .option("--json", "Print JSON")
-    .option("--after <index>", "Continue after a call index", "-1")
-    .option("--limit <count>", "Maximum calls, 1 to 100", "20")
+    .description("Inspect one recorded call and its actual worker threads")
     .action(
-      action(async (id: string, options: { after: string; limit: string }) =>
-        output(
-          await client().workflows.history(id, {
-            after: z.coerce.number().int().min(-1).parse(options.after),
-            limit: z.coerce.number().int().min(1).max(100).parse(options.limit),
-          }),
-        ),
+      action(async (id: string, callId: string) =>
+        output(await client().workflows.inspectCall(id, callId)),
       ),
     );
+  for (const operation of ["history", "inspect"] as const)
+    workflows
+      .command(`${operation} <run-id>`)
+      .option("--json", "Print JSON")
+      .option("--after <index>", "Continue after a call index", "-1")
+      .option("--limit <count>", "Maximum calls, 1 to 100", "20")
+      .action(
+        action(async (id: string, options: { after: string; limit: string }) =>
+          output(
+            await client().workflows[operation](id, {
+              after: z.coerce.number().int().min(-1).parse(options.after),
+              limit: z.coerce
+                .number()
+                .int()
+                .min(1)
+                .max(100)
+                .parse(options.limit),
+            }),
+          ),
+        ),
+      );
 }

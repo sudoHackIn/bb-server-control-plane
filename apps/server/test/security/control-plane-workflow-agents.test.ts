@@ -292,6 +292,47 @@ it("publishes and invokes a frozen workflow agent through authorized SDK routes 
           await aliceApi.agentRuns.list({ projectId: alice.project.id })
         ).runs.map((item) => item.runId),
       ).toEqual([run.runId]);
+      const inspected = await aliceApi.workflows.inspect(run.runId);
+      expect(inspected).toMatchObject({
+        input: "task",
+        profileVersionId: published.version.id,
+        workflowRevision: { definitionId: definition.id, revision: 1 },
+        calls: [],
+        nextCursor: null,
+      });
+      expect(inspected.sourceHash).toHaveLength(64);
+      expect(JSON.stringify(inspected)).not.toContain(script);
+      await expect(bobApi.workflows.inspect(run.runId)).rejects.toThrow("404");
+      await expect(
+        bobApi.workflows.inspectCall(run.runId, "missing"),
+      ).rejects.toThrow("404");
+      await expect(
+        aliceApi.workflows.inspectCall(run.runId, "missing"),
+      ).rejects.toThrow("404");
+      expect(
+        (
+          await request(
+            null,
+            `/control-plane/user/workflows/${run.runId}/inspection`,
+          )
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await request(
+            alice.user.id,
+            `/control-plane/user/workflows/${run.runId}/inspection?limit=101`,
+          )
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await request(
+            alice.user.id,
+            `/control-plane/user/workflows/${run.runId}/calls/missing?unexpected=true`,
+          )
+        ).status,
+      ).toBe(400);
       native.settle(run.runId);
       expect(await aliceApi.agentRuns.result(run.runId)).toMatchObject({
         run: { status: "succeeded" },
@@ -308,6 +349,9 @@ it("publishes and invokes a frozen workflow agent through authorized SDK routes 
         idempotencyKey: "after-source-removal",
       });
       expect(frozen.profileVersionId).toBe(published.version.id);
+      expect(
+        (await aliceApi.workflows.inspect(frozen.runId)).workflowRevision,
+      ).toEqual({ definitionId: definition.id, revision: 1 });
       await expect(
         admin.publish(published.profile.id, profileDefinition),
       ).rejects.toThrow("400");

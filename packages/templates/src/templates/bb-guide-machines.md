@@ -411,7 +411,18 @@ methods for either strategy. Workflow tasks return `strategy: "workflow"`,
 `threadId: null` and `workflowRunId` equal to `runId`; their statuses are
 `queued`, `running`, `succeeded`, `failed` or `cancelled`. Read native call
 history with `workflows history <workflow-run-id>` or
-`workflows.history(workflowRunId)`. Workflow task `events`/`stream` return
+`workflows.history(workflowRunId)`. For read-only execution details, use
+`bb server access workflows inspect <run-id> --after -1 --limit 20 --json`
+and `bb server access workflows call <run-id> <call-id> --json`, or
+`workflows.inspect(runId, {after, limit})` and `workflows.inspectCall(runId, callId)`.
+Inspection returns recorded input, output contract, source hash, pinned root
+profile/workflow revision, bounded step summaries, timing and effective execution
+selection. Call inspection returns its prompt/result, contract, recorded worker
+thread IDs and readable replay provenance. Use existing scoped thread timeline
+operations to read the actual worker chat. Cached replay creates no new worker.
+Only the owner with current project read access can use this limited surface;
+being able to invoke the same agent grants no access to another user's runs.
+Workflow task `events`/`stream` return
 `409 workflow_history_required` because thread events use a different cursor.
 Native project workflow replay remains available through `workflows start
 --project ... --profile-version ... --resume <workflow-run-id>` with the same

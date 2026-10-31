@@ -57,9 +57,19 @@ and test-run controls follow. Reuse native workflow calls/history and BB timelin
 
 #### P3.3 — Run inspection and child conversations
 
-- [ ] Keep the ordinary user view focused on the task, meaningful progress, requests for user input, result and bounded failure. For a viewer with diagnostic access, open a detailed view of that same run rather than a copied execution log.
-- [ ] Show the workflow's call hierarchy, ordering and parallel work, phases, status and attempts. Every live agent invocation links to its actual BB worker thread. Open its native timeline with recorded prompts/messages, tool calls/results and available file changes, with navigation back to the run. A plain conversation agent opens its single thread directly.
-- [ ] Show run and step inputs/outputs, pinned agent/profile/workflow revisions, effective provider/model/reasoning and permissions, timing, contract failures and retry errors. Distinguish live execution from successful-prefix replay; cached calls point to the original work under current read authority and do not imply a new chat or model invocation.
+The first inspection slice is implemented. Owners open execution details from
+Agents or advanced Workflows without duplicating native history. Plain agents
+open their existing conversation. Workflow calls show recorded phase, order,
+status, retry/repair counters, timing, effective provider/model/reasoning and
+permissions, pinned root/step profile versions, published workflow revision and
+source hash, run/step input/output and output contracts. Worker links open the
+native read-only BB timeline with return navigation. Live and cached calls are
+distinct; readable replay provenance points to original work. See
+[inspection contract and limits](control-plane-workflow-agents.md#owner-execution-inspection)
+and [test/Docker verification](control-plane-phase-92-verification.json).
+
+- [ ] Persist and display native nested workflow invocation spans and explicit parallel groups. Current nested evaluation shares a flat agent call list; the inspector identifies that limitation instead of inventing hierarchy.
+- [ ] Preserve individual retry errors/timestamps and available file-change artifacts beyond existing call counters/error and native tool results, then expose them in the same inspector.
 
 #### P3.4 — Reviewer and developer access
 

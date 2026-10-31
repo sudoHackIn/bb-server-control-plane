@@ -1,3 +1,4 @@
+import { registerWorkflowInspectionApi } from "./inspection-api.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -132,6 +133,7 @@ export function registerManagedWorkflowApi(
   bb: BbPluginApi,
   service: WorkflowService,
 ) {
+  registerWorkflowInspectionApi(bb, service);
   function managed() {
     if (
       !bb.server.internal_DO_NOT_USE_backgroundJobs ||

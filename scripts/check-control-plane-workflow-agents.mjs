@@ -212,6 +212,59 @@ export async function verifyPublishedWorkflowAgents({
     ]);
     assert.equal(history.calls.length, 1);
     assert.ok(history.calls[0].childThreadId);
+    const inspection = await userCommand(user.login, [
+      "workflows",
+      "inspect",
+      run.runId,
+      "--limit",
+      "1",
+      "--json",
+    ]);
+    assert.equal(inspection.run.id, run.runId);
+    assert.equal(inspection.input, body.input);
+    assert.equal(inspection.profileVersionId, body.profileVersionId);
+    assert.deepEqual(inspection.workflowRevision, workflow);
+    assert.equal(inspection.calls[0].source, "live");
+    assert.equal(inspection.calls[0].profileVersionId, profile.body.version.id);
+    assert.equal(
+      inspection.calls[0].permissionMode,
+      profile.body.version.definition.permissionMode,
+    );
+    const inspectedCall = await userCommand(user.login, [
+      "workflows",
+      "call",
+      run.runId,
+      history.calls[0].id,
+      "--json",
+    ]);
+    assert.equal(inspectedCall.input, body.input);
+    assert.equal(inspectedCall.outputAvailable, true);
+    assert.equal(inspectedCall.output, result.body.text);
+    assert.ok(
+      inspectedCall.workers.some(
+        (worker) => worker.threadId === history.calls[0].childThreadId,
+      ),
+    );
+    const replayHistory = await userCommand(user.login, [
+      "workflows",
+      "history",
+      replay.id,
+      "--json",
+    ]);
+    const replayCall = await userCommand(user.login, [
+      "workflows",
+      "call",
+      replay.id,
+      replayHistory.calls[0].id,
+      "--json",
+    ]);
+    assert.equal(replayCall.call.source, "cached");
+    assert.equal(replayCall.call.childThreadId, null);
+    assert.deepEqual(replayCall.workers, []);
+    assert.deepEqual(replayCall.replayedFrom, {
+      runId: run.runId,
+      callId: history.calls[0].id,
+    });
     const workerBinding = db
       .prepare(
         "SELECT b.owner_user_id,b.profile_version_id FROM control_plane_threads c JOIN control_plane_job_bindings b ON b.id=c.job_binding_id WHERE c.thread_id=?",
@@ -263,6 +316,17 @@ export async function verifyPublishedWorkflowAgents({
         ).status,
         404,
       );
+    for (const suffix of ["inspection", `calls/${history.calls[0].id}`]) {
+      assert.equal(
+        (
+          await userRequest(
+            foreign.user.login,
+            `/control-plane/user/workflows/${run.runId}/${suffix}`,
+          )
+        ).status,
+        404,
+      );
+    }
     const denied = await userRequest(foreign.user.login, base, {
       method: "POST",
       body: {
@@ -289,10 +353,25 @@ export async function verifyPublishedWorkflowAgents({
       ).calls.length,
       0,
     );
-    published.push({ subject, body, run, script });
+    published.push({
+      subject,
+      body,
+      run,
+      script,
+      callId: history.calls[0].id,
+      childThreadId: history.calls[0].childThreadId,
+    });
   }
   return {
+    inspections: published.map((item) => ({
+      login: item.subject.user.login,
+      runId: item.run.runId,
+      callId: item.callId,
+      childThreadId: item.childThreadId,
+    })),
     verification: {
+      workflowInspectionNativeMetadataCliAndForeignDenial: true,
+      workflowInspectionReplayProvenance: true,
       publishedWorkflowAgentsNativeUidHomeCwdTwoUsers: true,
       publishedWorkflowAgentsPinnedSourceAndContracts: true,
       publishedWorkflowAgentsIdempotencyAndForeignAccessDenied: true,
@@ -313,6 +392,19 @@ export async function verifyPublishedWorkflowAgents({
       });
       assert.equal(retried.status, 201, JSON.stringify(retried.body));
       assert.equal(retried.body.runId, item.run.runId);
+      const restored = await userCommand("alice", [
+        "workflows",
+        "call",
+        item.run.runId,
+        item.callId,
+        "--json",
+      ]);
+      assert.ok(
+        restored.workers.some(
+          (worker) => worker.threadId === item.childThreadId,
+        ),
+      );
+      assert.equal(restored.outputAvailable, true);
       const login = await sendAdmin("/control-plane/login", {
         login: "operator",
         password,

@@ -1,0 +1,67 @@
+{
+  "scope": "P3.3 first slice: owner execution inspection and native worker conversations",
+  "changes": {
+    "nativeWorkflowRecordsWithoutCopiedTranscript": true,
+    "paginatedRootAndOnDemandCallInspection": true,
+    "rootInputSourceHashPinnedProfileAndWorkflowRevision": true,
+    "stepInputOutputContractExecutionSelectionTimingAndCounters": true,
+    "boundedActualWorkerAttemptReferences": 100,
+    "liveAndCachedReplayDistinguished": true,
+    "replaySourceCurrentReadAuthorityChecked": true,
+    "ownerAndProjectReadAuthorityRechecked": true,
+    "readOnlyNativeTimelineWithReturnNavigation": true,
+    "apiSdkCliUiParity": true,
+    "oldWorkflowSchemaUpgradeTested": true
+  },
+  "verification": {
+    "uniqueTestsPassed": 502,
+    "testFilesPassed": 67,
+    "testsByPackage": {
+      "workflowsPlugin": 297,
+      "serverControlPlane": 151,
+      "personalUi": 54
+    },
+    "typecheck": "passed",
+    "changedFileLint": "passed",
+    "dockerStatus": "passed",
+    "commands": [
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane",
+      "pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/cli --filter=bb-plugin-workflows"
+    ],
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p3-inspection-browser\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 770007,
+    "nativeAndBrowserProofs": {
+      "productionBrowserRenderingVerified": true,
+      "publishedWorkflowAgentCatalogTaskResultBrowser": true,
+      "workflowInspectionBrowserNativeThreadAndNavigation": true,
+      "workflowInspectionNativeMetadataCliAndForeignDenial": true,
+      "workflowInspectionReplayProvenance": true,
+      "publishedWorkflowAgentsNativeUidHomeCwdTwoUsers": true,
+      "publishedWorkflowAgentsPinnedSourceAndContracts": true,
+      "publishedWorkflowAgentsIdempotencyAndForeignAccessDenied": true,
+      "publishedWorkflowAgentsNativeHistoryAndReplay": true,
+      "publishedWorkflowStepsPinnedProfileAndForeignChildScope": true,
+      "publishedWorkflowAgentsIdentityAndResultAfterRestart": true,
+      "publishedWorkflowStepRevocationAndRegrantReplayAfterRestart": true,
+      "resumedThreadAfterRestart": true,
+      "crashRecoveryRetainsIdentityAndThreads": true
+    },
+    "dockerCgroupOomKillCountAfterBrowser": 1,
+    "fixtureIdleSessionsReleasedBetweenGroups": true
+  },
+  "verificationNotes": [
+    "The initial Docker run was intentionally stopped before browser verification to move the new index to an append-only migration and add an upgrade regression test.",
+    "An intermediate production browser run reached the inspector but its exact-name selector did not account for the existing archived-worker suffix. The selector and focused UI fixture now cover archived workers; product code was unchanged.",
+    "A later run passed inspector navigation and archived transcript reading, then failed in the unchanged browser automation hanging-command fixture. Docker reported oom_kill=1. Test cleanup now releases owned idle fixture sessions between native groups and before/after browser checks, preserving the two primary conversations, active work and all history.",
+    "The final composite passed all 63 Turbo tasks, including production browser, restart and crash recovery. A cgroup snapshot after browser completion still reported oom_kill=1; the test VM memory-pressure limitation is not claimed resolved."
+  ],
+  "limitations": [
+    "Nested workflow evaluation still shares a flat native agent call list. Explicit nested spans and parallel groups remain in P3.3.",
+    "Individual provider retry errors/timestamps and independent file-change artifacts are not reconstructed from counters; native tool results remain readable in the worker timeline.",
+    "Diagnostic reviewer/developer grants remain P3.4. This limited inspector admits owners under current project read authority; administrators retain full native BB/Workflows views.",
+    "Docker verifies deterministic model fixtures and stock Qwen CLI, not corporate harness authorization."
+  ]
+}

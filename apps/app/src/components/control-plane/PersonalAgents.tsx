@@ -1,3 +1,6 @@
+import { personalInspectionSearch } from "./personal-inspection-navigation";
+import { getControlPlaneThreadPath } from "@bb/server-contract";
+import { useLocation } from "react-router-dom";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PersonalAutomationEditor } from "./PersonalAutomationEditor";
@@ -382,6 +385,7 @@ function PersonalAgentRunList({
     ReturnType<PersonalWorkspaceClient["agentRuns"]["list"]>
   >["runs"];
 }) {
+  const location = useLocation();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const result = useQuery({
@@ -456,6 +460,29 @@ function PersonalAgentRunList({
         >
           <p className="break-all">Task {selectedRunId}</p>
           <p>Status: {result.data?.run.status ?? "Loading…"}</p>
+          {result.data && (
+            <Button asChild variant="outline">
+              <Link
+                to={
+                  result.data.run.workflowRunId
+                    ? {
+                        search: personalInspectionSearch(
+                          location.search,
+                          result.data.run.workflowRunId,
+                        ),
+                      }
+                    : getControlPlaneThreadPath(
+                        projectId,
+                        result.data.run.threadId ?? result.data.run.runId,
+                      )
+                }
+              >
+                {result.data.run.workflowRunId
+                  ? "Inspect execution"
+                  : "Open conversation"}
+              </Link>
+            </Button>
+          )}
           {result.data?.text && (
             <pre className={`${personalCodeClass} font-sans text-sm`}>
               {result.data.text}

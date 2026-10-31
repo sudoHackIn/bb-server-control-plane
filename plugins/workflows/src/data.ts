@@ -262,6 +262,7 @@ export const migrations = [
    UPDATE workflow_workers SET origin_thread_id_nullable = origin_thread_id;
    ALTER TABLE workflow_workers DROP COLUMN origin_thread_id;
    ALTER TABLE workflow_workers RENAME COLUMN origin_thread_id_nullable TO origin_thread_id;`,
+  `CREATE INDEX workflow_workers_call_idx ON workflow_workers(run_id, call_id, thread_id);`,
 ];
 
 export function createWorkflowRunId() {
@@ -960,6 +961,22 @@ export function ownWorker(
     originThreadId,
     parentBindingId,
   );
+}
+
+export function callWorkers(db: Db, runId: string, callId: string) {
+  return parseCallWorkers(
+    db
+      .prepare(`SELECT thread_id AS threadId, archived_at IS NOT NULL AS archived
+    FROM workflow_workers WHERE run_id = ? AND call_id = ? ORDER BY thread_id LIMIT 101`)
+      .all(runId, callId),
+  );
+}
+
+function parseCallWorkers(rows: unknown[]) {
+  return rows.map((value) => {
+    const row = value as { threadId: string; archived: number };
+    return { threadId: row.threadId, archived: row.archived === 1 };
+  });
 }
 
 export function workerOrigins(db: Db, now: number): string[] {

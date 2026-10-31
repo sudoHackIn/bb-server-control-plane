@@ -681,6 +681,7 @@ export function createUserThreadFixture({ db, users }) {
         })),
       );
 
+      await releaseIdleSessions(false);
       const workflows = await verifyNativeWorkflows({
         launch,
         signal,
@@ -692,6 +693,7 @@ export function createUserThreadFixture({ db, users }) {
         userCommand: command,
       });
 
+      await releaseIdleSessions(false);
       const workflowAgents = await verifyPublishedWorkflowAgents({
         password,
         subjects: created,
@@ -703,6 +705,7 @@ export function createUserThreadFixture({ db, users }) {
         wait,
         db,
       });
+      await releaseIdleSessions(false);
       const automations = await verifyNativeAutomations({
         launch,
         signal,
@@ -720,9 +723,9 @@ export function createUserThreadFixture({ db, users }) {
         for (const { user, thread: primaryThread } of created) {
           const idle = db
             .prepare(
-              "SELECT t.id FROM threads t JOIN control_plane_threads c ON c.thread_id=t.id WHERE c.owner_user_id=? AND t.provider_id='qwen-server' AND t.status='idle' AND t.deleted_at IS NULL AND (c.run_source='manual' OR c.job_binding_id IS NOT NULL OR (?=1 AND t.id<>?))",
+              "SELECT t.id FROM threads t JOIN control_plane_threads c ON c.thread_id=t.id WHERE c.owner_user_id=? AND t.provider_id='qwen-server' AND t.status='idle' AND t.deleted_at IS NULL AND t.id<>?",
             )
-            .all(user.id, afterBrowser ? 1 : 0, primaryThread.id);
+            .all(user.id, primaryThread.id);
           for (const thread of idle) {
             const released = await send(
               `/control-plane/user/threads/${thread.id}/stop`,
@@ -749,6 +752,9 @@ export function createUserThreadFixture({ db, users }) {
         origin,
         signal,
         users: created.map(({ user, project, thread, messageSeq }) => ({
+          inspection: workflowAgents.inspections.find(
+            (item) => item.login === user.login,
+          ),
           login: user.login,
           projectId: project.projectId,
           threadId: thread.id,

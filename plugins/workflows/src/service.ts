@@ -28,6 +28,7 @@ import {
   cancelRun,
   claimQueuedRun,
   countCallsForRun,
+  callWorkers,
   createRun,
   createWorkflowRunId,
   deleteTerminalRuns,
@@ -272,6 +273,15 @@ export interface WorkflowService {
   start(input: StartWorkflowInput): Promise<WorkflowRunRow>;
   get(runId: string): WorkflowRunRow | null;
   inspect(runId: string): WorkflowRunInspection | null;
+  inspectCallDetail(
+    runId: string,
+    callId: string,
+  ): {
+    call: WorkflowCallInspection;
+    workers: Array<{ threadId: string; archived: boolean }>;
+    workersTruncated: boolean;
+    replayedFrom: { runId: string; callId: string } | null;
+  } | null;
   inspectPage(
     runId: string,
     afterCallIndex: number,
@@ -819,6 +829,26 @@ export function createWorkflowService(
     return {
       ...run,
       calls: listCallsForRun(db, runId).map(inspectCall),
+    };
+  }
+
+  function inspectCallDetail(runId: string, callId: string) {
+    if (!visibleRun(runId)) return null;
+    const call = getCallById(db, callId);
+    if (!call || call.runId !== runId) return null;
+    const original =
+      call.replayedFromCallId === null
+        ? null
+        : getCallById(db, call.replayedFromCallId);
+    const workers = callWorkers(db, runId, callId);
+    return {
+      call: inspectCall(call),
+      workers: workers.slice(0, 100),
+      workersTruncated: workers.length > 100,
+      replayedFrom:
+        original && visibleRun(original.runId)
+          ? { runId: original.runId, callId: original.id }
+          : null,
     };
   }
 
@@ -2225,6 +2255,7 @@ export function createWorkflowService(
     get: visibleRun,
     inspect,
     inspectPage,
+    inspectCallDetail,
     inspectLatestForThread,
     inspectActiveForThread,
     list: (projectId, limit) => {

@@ -372,6 +372,71 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       "workflow-agent",
       "All agents",
     );
+    await alice.page.getByRole("link", { name: "Inspect execution" }).click();
+    await visible(alice.page.getByRole("region", { name: "Run inspection" }));
+    await visible(alice.page.getByRole("heading", { name: "Run output" }));
+    await verifyPersonalSurface(
+      alice.page,
+      "Run inspection",
+      "workflow-inspection-summary",
+    );
+    const inspection = aliceUser.inspection;
+    assert.ok(
+      inspection?.runId && inspection?.callId && inspection?.childThreadId,
+    );
+    const inspectionUrl = `${agentUrl}&inspectRun=${encodeURIComponent(inspection.runId)}`;
+    await alice.page.goto(inspectionUrl);
+    await visible(
+      alice.page.getByRole("list", { name: "Recorded agent calls" }),
+    );
+    await alice.page
+      .getByRole("list", { name: "Recorded agent calls" })
+      .getByRole("button")
+      .first()
+      .click();
+    await visible(alice.page.getByRole("heading", { name: "Step input" }));
+    await visible(alice.page.getByRole("heading", { name: "Step output" }));
+    await verifyPersonalSurface(
+      alice.page,
+      "Run inspection",
+      "workflow-inspection-step",
+    );
+    await alice.page
+      .getByRole("button", {
+        name: new RegExp(`^${inspection.childThreadId}(?: · archived)?$`, "u"),
+      })
+      .click();
+    await visible(
+      alice.page.getByText(`${inspection.childThreadId} · Read only`, {
+        exact: true,
+      }),
+    );
+    await visible(
+      alice.page.getByText("Personal workflow-published-alice completed", {
+        exact: true,
+      }),
+    );
+    assert.equal(await alice.page.getByRole("textbox").count(), 0);
+    await alice.page
+      .getByRole("button", { name: "Back to step", exact: true })
+      .click();
+    await visible(alice.page.getByRole("heading", { name: "Step input" }));
+    await alice.page
+      .getByRole("button", { name: "Back to run", exact: true })
+      .click();
+    await visible(
+      alice.page.getByRole("list", { name: "Recorded agent calls" }),
+    );
+    for (const suffix of ["inspection", `calls/${inspection.callId}`]) {
+      assert.equal(
+        (
+          await bob.context.request.get(
+            `${ready.origin}/control-plane/user/workflows/${inspection.runId}/${suffix}`,
+          )
+        ).status(),
+        404,
+      );
+    }
     await alice.page.goto(agentUrl);
     await alice.page
       .getByRole("list", { name: "Agent catalog" })
@@ -892,6 +957,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       personalAutomationBrowserForeignReadsAndMutationsDenied: true,
       productionBrowserRenderingVerified: true,
       publishedWorkflowAgentCatalogTaskResultBrowser: true,
+      workflowInspectionBrowserNativeThreadAndNavigation: true,
       browserVersion: browser.version(),
       separateCertificateBrowserContexts: true,
       certificateLoginPreservesConversationAndMessageFragment: true,

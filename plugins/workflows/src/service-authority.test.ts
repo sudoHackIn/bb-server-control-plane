@@ -8,8 +8,19 @@ import {
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { expect, it, vi } from "vitest";
-import { createRun, getRunRequired, migrations, settleRun } from "./data.js";
+import {
+  createRun,
+  getRunRequired,
+  migrations,
+  settleRun,
+  claimQueuedRun,
+  startCall,
+  ownWorker,
+  attachCallThread,
+  settleCall,
+} from "./data.js";
 import { createWorkflowService } from "./service.js";
+import { registerManagedWorkflowApi } from "./managed-api.js";
 import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 
 function fixture() {
@@ -876,3 +887,161 @@ it.each(["step-result", "run-result"] as const)(
     }
   },
 );
+
+it("inspects native call payloads, actual worker attempts and readable replay provenance without crossing owner scope", async () => {
+  const test = fixture();
+  try {
+    registerManagedWorkflowApi(test.bb, test.service);
+    const source = await test.service.start({
+      ...test.input,
+      args: { task: "inspect" },
+    });
+    expect(claimQueuedRun(test.db, 4)?.id).toBe(source.id);
+    const live = startCall(test.db, {
+      runId: source.id,
+      callIndex: 0,
+      cacheKey: "inspect",
+      prompt: "Recorded prompt",
+      options: {
+        selection: null,
+        outputSchema: { type: "object" },
+        title: "Convert",
+        phase: "Read",
+      },
+      selection: {
+        providerId: "qwen-server",
+        model: "model",
+        reasoningLevel: "high",
+        permissionMode: "full",
+      },
+      replay: null,
+    });
+    ownWorker(
+      test.db,
+      "first-worker",
+      source.id,
+      live.id,
+      source.originThreadId,
+    );
+    ownWorker(
+      test.db,
+      "second-worker",
+      source.id,
+      live.id,
+      source.originThreadId,
+    );
+    attachCallThread(test.db, live.id, "second-worker");
+    settleCall(test.db, {
+      id: live.id,
+      status: "succeeded",
+      result: { converted: true },
+      error: null,
+    });
+    const page = await test.harness.callRpc("controlPlaneWorkflowInspection", {
+      runId: source.id,
+      after: -1,
+      limit: 1,
+    });
+    expect(page).toMatchObject({
+      input: { task: "inspect" },
+      nextCursor: null,
+      callCounts: { total: 1 },
+      calls: [{ id: live.id, source: "live", permissionMode: "full" }],
+    });
+    const detail = await test.harness.callRpc(
+      "controlPlaneWorkflowCallInspection",
+      { runId: source.id, callId: live.id },
+    );
+    expect(detail).toMatchObject({
+      input: "Recorded prompt",
+      outputAvailable: true,
+      output: { converted: true },
+      workersTruncated: false,
+      workers: [
+        { threadId: "first-worker", archived: false },
+        { threadId: "second-worker", archived: false },
+      ],
+      replayedFrom: null,
+    });
+    const resumed = await test.service.start(test.input);
+    expect(claimQueuedRun(test.db, 4)?.id).toBe(resumed.id);
+    const cached = startCall(test.db, {
+      runId: resumed.id,
+      callIndex: 0,
+      cacheKey: "inspect",
+      prompt: "Recorded prompt",
+      options: {
+        selection: null,
+        outputSchema: null,
+        title: null,
+        phase: null,
+      },
+      selection: {
+        providerId: "qwen-server",
+        model: "model",
+        reasoningLevel: "high",
+        permissionMode: "full",
+      },
+      replay: { callId: live.id, result: { converted: true } },
+    });
+    expect(test.service.inspectCallDetail(resumed.id, cached.id)).toMatchObject(
+      {
+        call: { childThreadId: null, source: "cached" },
+        workers: [],
+        replayedFrom: { runId: source.id, callId: live.id },
+      },
+    );
+    expect(test.service.inspectCallDetail(source.id, cached.id)).toBeNull();
+    test.setCaller(randomUUID());
+    expect(
+      await test.harness.callRpc("controlPlaneWorkflowInspection", {
+        runId: source.id,
+        after: -1,
+        limit: 1,
+      }),
+    ).toBeNull();
+    expect(
+      await test.harness.callRpc("controlPlaneWorkflowCallInspection", {
+        runId: source.id,
+        callId: live.id,
+      }),
+    ).toBeNull();
+    test.setCaller(test.owner);
+    test.bindings.delete(source.authorityBindingId!);
+    expect(test.service.inspectCallDetail(resumed.id, cached.id)).toMatchObject(
+      { replayedFrom: null, workers: [] },
+    );
+    test.setCaller(null);
+    await expect(
+      test.harness.callRpc("controlPlaneWorkflowInspection", {
+        runId: resumed.id,
+        after: -1,
+        limit: 1,
+      }),
+    ).rejects.toThrow("managed workflow user");
+  } finally {
+    await test.harness.dispose();
+  }
+});
+
+it("upgrades the previously deployed native workflow schema without reapplying historical migrations", async () => {
+  const { bb, harness } = createFakePluginHost({ pluginId: "workflows" });
+  try {
+    const db = bb.storage.database();
+    const oldMigrations = migrations.filter(
+      (sql) => !sql.includes("CREATE INDEX workflow_workers_call_idx"),
+    );
+    bb.storage.migrate(db, oldMigrations);
+    bb.storage.migrate(db, migrations);
+    expect(
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND name='workflow_workers_call_idx'",
+        )
+        .get(),
+    ).toEqual({ name: "workflow_workers_call_idx" });
+    bb.storage.migrate(db, migrations);
+  } finally {
+    await harness.dispose();
+  }
+});

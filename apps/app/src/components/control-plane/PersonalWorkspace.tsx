@@ -1,3 +1,4 @@
+import { PersonalRunInspection } from "./PersonalRunInspection";
 import { useState } from "react";
 import { useLocation, useMatch, useNavigate } from "react-router-dom";
 import {
@@ -72,6 +73,9 @@ function WorkspaceNavigation({
   const navigate = useNavigate();
   const location = useLocation();
   const view = new URLSearchParams(location.search).get("view");
+  const inspectionRunId = new URLSearchParams(location.search).get(
+    "inspectRun",
+  );
   const preferredAgentId = new URLSearchParams(location.search).get("agent");
   const agentView = view === "agents";
   const workflowView = view === "workflows";
@@ -407,6 +411,14 @@ function WorkspaceNavigation({
               if (threadId) void detail.refetch();
             }}
           />
+        ) : inspectionRunId && selectedProject ? (
+          <PersonalRunInspection
+            key={inspectionRunId}
+            client={client}
+            runId={inspectionRunId}
+            projectId={selectedProject.projectId}
+            cwd={selectedProject.cwd}
+          />
         ) : agentView ? (
           <PersonalAgents
             client={client}
@@ -486,6 +498,7 @@ function WorkspaceNavigation({
           </section>
         )}
         {selectedProject &&
+          !inspectionRunId &&
           !agentView &&
           !workflowView &&
           !automationView &&
