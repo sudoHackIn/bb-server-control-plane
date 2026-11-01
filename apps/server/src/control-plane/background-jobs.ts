@@ -27,6 +27,7 @@ import {
   getControlPlaneProject,
   requireControlPlaneThreadDispatch,
   requireControlPlaneThreadOwner,
+  requireControlPlaneJobWorkerProfile,
   listControlPlaneJobBindings,
   setControlPlaneJobEnabled,
   deleteControlPlaneJobBinding,
@@ -341,16 +342,19 @@ export function createControlPlaneBackgroundJobs(
       )
         return denied();
       const resolve = () => {
-        const context = requireControlPlaneThreadOwner(db, {
-          projectId: job.projectId,
-          ownerUserId: job.ownerUserId,
-          profileVersionId: versionId ?? job.profileVersionId,
-          providerId: "qwen-server",
-          relatedThreadIds:
-            pluginId === BUILTIN_AUTOMATIONS_PLUGIN_ID
-              ? []
-              : [job.originThreadId],
-        });
+        const context =
+          job.kind !== "automation"
+            ? requireControlPlaneJobWorkerProfile(db, id, versionId)
+            : requireControlPlaneThreadOwner(db, {
+                projectId: job.projectId,
+                ownerUserId: job.ownerUserId,
+                profileVersionId: versionId ?? job.profileVersionId,
+                providerId: "qwen-server",
+                relatedThreadIds:
+                  pluginId === BUILTIN_AUTOMATIONS_PLUGIN_ID
+                    ? []
+                    : [job.originThreadId],
+              });
         if (!context || job.deletedAt !== null) return denied();
         const definition = context.profileVersion.definition;
         return {

@@ -22,6 +22,8 @@ type AgentDraft = {
   model: string;
   reasoningLevel: string;
   permissionMode: ControlPlaneProfileDefinition["permissionMode"];
+  restrictDelegation: boolean;
+  allowedVersionIds: string;
   tools: string;
   mcpServers: string;
   strategy: "conversation" | "workflow";
@@ -37,6 +39,8 @@ const emptyDraft: AgentDraft = {
   model: "",
   reasoningLevel: "medium",
   permissionMode: "accept-edits",
+  restrictDelegation: true,
+  allowedVersionIds: "",
   tools: "",
   mcpServers: "",
   strategy: "conversation",
@@ -58,6 +62,13 @@ function definition(draft: AgentDraft): ControlPlaneProfileDefinition {
           workflow: {
             definitionId: draft.workflowDefinitionId.trim(),
             revision: Number(draft.workflowRevision),
+          },
+        }
+      : {}),
+    ...(draft.restrictDelegation
+      ? {
+          delegation: {
+            allowedVersionIds: identifiers(draft.allowedVersionIds),
           },
         }
       : {}),
@@ -253,6 +264,9 @@ export function AdminAgentProfiles({ client }: { client: Client }) {
                       model: source.model,
                       reasoningLevel: source.reasoningLevel,
                       permissionMode: source.permissionMode,
+                      restrictDelegation: source.delegation !== undefined,
+                      allowedVersionIds:
+                        source.delegation?.allowedVersionIds.join(", ") ?? "",
                       tools: source.tools.join(", "),
                       mcpServers: source.mcpServers.join(", "),
                       strategy: source.workflow ? "workflow" : "conversation",
@@ -574,6 +588,53 @@ export function AdminAgentProfiles({ client }: { client: Client }) {
                   Supported sources: bb, project.
                 </span>
               </label>
+              <fieldset className="space-y-2 rounded border p-3 sm:col-span-2">
+                <legend className="px-1 text-sm font-medium">
+                  Workflow worker profiles
+                </legend>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draft.restrictDelegation}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        restrictDelegation: event.target.checked,
+                      })
+                    }
+                  />
+                  Restrict worker profile selection
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  The agent's own pinned version is always eligible. Other
+                  versions also require the executing user's current access
+                  grant. Disabling this restriction preserves legacy worker
+                  selection.
+                </p>
+                {draft.restrictDelegation && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    Allowed worker version IDs
+                    <textarea
+                      aria-label="Allowed worker version IDs"
+                      rows={3}
+                      value={draft.allowedVersionIds}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          allowedVersionIds: event.target.value,
+                        })
+                      }
+                      className="rounded border bg-background p-2"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Exact published version UUIDs, comma separated. Empty
+                      allows only the agent's own version. This configures
+                      workflow workers; it does not invoke another agent's
+                      workflow.
+                    </span>
+                  </label>
+                )}
+              </fieldset>
               <label className="flex flex-col gap-1 text-sm sm:col-span-2">
                 Agent instructions
                 <textarea

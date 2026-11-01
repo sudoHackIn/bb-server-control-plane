@@ -42,3 +42,28 @@ it("publishes only settings enforceable by the managed Qwen provider while readi
     }).purpose,
   ).toBeUndefined();
 });
+
+it("bounds delegation to unique pinned version IDs and distinguishes legacy absence from an empty allowlist", () => {
+  const id = "33333333-3333-4333-8333-333333333333";
+  for (const delegation of [
+    { allowedVersionIds: [id, id] },
+    { allowedVersionIds: ["latest"] },
+    { allowedVersionIds: [], depth: 4 },
+    { allowedVersionIds: Array.from({ length: 129 }, () => id) },
+  ])
+    expect(
+      controlPlaneProfilePublicationSchema.safeParse({
+        ...definition,
+        delegation,
+      }).success,
+    ).toBe(false);
+  expect(
+    controlPlaneProfilePublicationSchema.parse(definition).delegation,
+  ).toBeUndefined();
+  expect(
+    controlPlaneProfilePublicationSchema.parse({
+      ...definition,
+      delegation: { allowedVersionIds: [] },
+    }).delegation,
+  ).toEqual({ allowedVersionIds: [] });
+});

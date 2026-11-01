@@ -3816,3 +3816,26 @@ creation/provenance/source navigation, clean restart and abrupt crash recovery.
 Readonly profile/revision labels and regenerated CLI guide/schema packaging are
 included in a final image rebuild after the composite; focused migrated-SQLite
 and UI tests cover those additions. See [the verification record](control-plane-phase-96-verification.json).
+
+## P4.1 — Pinned workflow worker policy
+
+Administrators can publish `delegation.allowedVersionIds` through the agent
+editor, existing profile API/SDK and CLI JSON publication. The root's own pinned
+version is eligible; every other workflow worker version must be listed exactly.
+An empty list rejects other versions even when the user can invoke them directly.
+New UI agents default to the empty restriction; absent policy preserves legacy
+worker selection. Editing a version preserves its configured policy.
+
+Core validates the persisted parent binding at worker creation and execution.
+The shared profile resolver also gates retry, cached result admission and replay.
+Current owner/project/profile grants remain independently required. Publishing a
+new root or specialist version never changes an existing pinned run or allowlist.
+This does not invoke a published agent's whole workflow. That operation, its
+constrained tool/MCP entry point and delegation limits remain in P4.
+
+Verification: 546 tests in 81 files, typecheck, lint and formatting passed.
+Docker passed 63/63 tasks (747871 ms), including allowed and denied worker
+selection for Alice and Bob, actual UID/HOME/cwd, replay with revocation after
+restart, real browser creation/republication and crash recovery. Desktop and
+mobile policy fieldsets were visually reviewed. See
+[the verification record](control-plane-phase-97-verification.json).

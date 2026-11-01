@@ -286,3 +286,28 @@ relative workflow files or credentials into the test project.
 
 API/SDK/CLI details are in the
 [CLI guide](../packages/templates/src/templates/bb-guide-machines.md#separate-workflow-test-runs).
+
+## Worker delegation policy
+
+`delegation: {allowedVersionIds: [...]}` is immutable profile policy for the
+existing `agent(prompt, {profileVersionId})` workflow worker path. The root's own
+pinned version is eligible; each other version must appear exactly in the list.
+An empty list rejects other versions even when the execution owner has a direct
+profile grant. New versions of a specialist require explicit republication of
+the root's policy. Absent policy retains historical grant-based worker behavior.
+This absence will not authorize the future published-agent invocation operation.
+
+The core checks the persisted parent binding, owner and project; worker creation
+and dispatch validate the same parent policy. Profile resolution also gates
+cached results, retries and replay through the existing workflow service.
+Current grants remain required independently of the list. Publishing a later
+root version cannot change an existing pinned run. Revocation of a required
+profile still fences its descendants. Historical diagnostic inspection remains
+separate from execution authorization.
+
+Targets are version UUID references, not installed executable code or grants;
+unknown, disabled or inaccessible versions fail when selected. This first slice
+selects a worker's prompt/model/tools/MCP configuration. Selecting a workflow
+profile does not execute its saved workflow. Full published-agent invocation,
+a constrained tool/MCP entry point and delegation depth/concurrency/call budgets
+are subsequent P4 work.

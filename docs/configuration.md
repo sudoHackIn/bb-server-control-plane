@@ -1857,7 +1857,6 @@ enables this primitive. Managed Automations and personal APIs still reject scrip
 definitions pending their bounded server runner and durable lifecycle integration.
 See `docs/control-plane-script-runtime.md` for installation, limits and checks.
 
-
 Published workflow agent profiles may include `workflow: {definitionId, revision}`.
 Only administrators can publish the enabled saved revision. Publication stores
 its source in `control_plane_profile_workflows`, keyed by immutable profile
@@ -1869,3 +1868,15 @@ UTF-8 and native JSON output at 1 MiB. The existing limited agent-runs API/SDK/C
 selects the strategy. Workflow agents currently support manual background tasks;
 chat and scheduler dispatch are rejected. Native history/replay remains under
 the limited workflows surface. No additional runtime configuration is required.
+
+### Managed workflow worker selection
+
+Published agent definition JSON accepts optional `delegation.allowedVersionIds`
+(unique immutable profile version UUIDs, maximum 128). Its presence restricts
+workflow workers to those versions plus the root's own pinned version; empty
+means only the root. Absence preserves legacy grant-based worker selection.
+The admin agent editor defaults new agents to the empty restriction. SDK profile
+create/publish and `bb server access profiles create/publish --definition-stdin`
+use the same schema. Policy is versioned with the profile and checked alongside
+current user/project/profile access, including worker dispatch and replay/result
+admission. It does not enable full published-agent invocation or nested budgets.

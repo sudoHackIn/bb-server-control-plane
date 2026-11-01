@@ -123,6 +123,11 @@ function lineage(db: DbQueryConnection, job: Job, allowDisabled = false) {
           parent.profileVersionId !== current.profileVersionId)
       )
         throw new ControlPlaneJobError();
+      const parentContext = authority(db, parent);
+      assertWorkerProfile(
+        parentContext.profileVersion,
+        current.profileVersionId,
+      );
     }
     for (const id of new Set([current.sourceBindingId, originBindingId])) {
       if (!id) continue;
@@ -321,6 +326,38 @@ export function requireControlPlaneJobDispatch(
   const job = row(db, id);
   if (!job) throw new ControlPlaneJobError();
   return { binding: job, ...lineage(db, job) };
+}
+
+function assertWorkerProfile(
+  parent: ReturnType<typeof authority>["profileVersion"],
+  versionId: string,
+) {
+  const policy = parent.definition.delegation;
+  if (
+    policy &&
+    versionId !== parent.id &&
+    !policy.allowedVersionIds.includes(versionId)
+  )
+    throw new ControlPlaneJobError();
+}
+
+export function requireControlPlaneJobWorkerProfile(
+  db: DbQueryConnection,
+  bindingId: string,
+  versionId: string | null,
+) {
+  const parent = requireControlPlaneJobDispatch(db, bindingId);
+  const selectedId = versionId ?? parent.profileVersion.id;
+  assertWorkerProfile(parent.profileVersion, selectedId);
+  const context = requireControlPlaneThreadOwner(db, {
+    projectId: parent.binding.projectId,
+    ownerUserId: parent.binding.ownerUserId,
+    profileVersionId: selectedId,
+    providerId: "qwen-server",
+    relatedThreadIds: [],
+  });
+  if (!context) throw new ControlPlaneJobError();
+  return context;
 }
 
 export function setControlPlaneJobEnabled(

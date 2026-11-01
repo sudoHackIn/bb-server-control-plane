@@ -1,0 +1,64 @@
+{
+  "scope": "P4.1 pinned workflow worker delegation policy",
+  "changes": {
+    "immutableOptionalAllowedVersionIds": true,
+    "adminEditorCreateAndEditPolicy": true,
+    "sameProfilePublicationApiSdkCli": true,
+    "workerResolutionAndPersistedLineageEnforcement": true,
+    "currentUserProjectAndProfileGrantsStillRequired": true,
+    "legacyAbsentPolicyPreservesWorkerSelection": true,
+    "hostDaemonWireChanged": false,
+    "databaseMigrationRequired": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 546,
+    "testFilesPassed": 81,
+    "testsByPackage": {
+      "serverControlPlane": 157,
+      "nativeWorkflows": 305,
+      "ui": 82,
+      "domain": 2
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "changedFileFormat": "passed",
+    "dockerStatus": "passed",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 747871,
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane src/components/settings/AdminAgentProfiles.test.tsx src/components/settings/AdminDiagnosticAccess.test.tsx src/components/settings/AdminProjectRoles.test.tsx src/components/thread/timeline/ThreadTimelineRows.presentation.test.tsx src/App.project-settings-routes.test.tsx",
+      "pnpm exec turbo run test --filter=@bb/domain -- test/control-plane-profile.test.ts",
+      "pnpm exec turbo run typecheck --filter=@bb/app --filter=@bb/server --filter=@bb/cli"
+    ],
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p4-policy\" BB_TEST_BROWSER_CHANNEL=chromium PLAYWRIGHT_BROWSERS_PATH=/private/tmp/bb-agent-p0-playwright caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "proofs": {
+      "allowedWorkerPolicyExecutesForAliceAndBob": true,
+      "emptyPolicyDeniesGrantedForeignVersionBeforeWorkerBinding": true,
+      "existingPublishedWorkflowReplayAndRevocationAfterRestart": true,
+      "realUidHomeCwdPreserved": true,
+      "workerDelegationPolicyCreatedAndRepublishedInBrowser": true,
+      "workerDelegationPolicyDesktopAndMobileLayout": true,
+      "cleanRestartAndAbruptCrashRecovery": true
+    },
+    "manualVisualReview": [
+      "worker-policy-desktop.png",
+      "worker-policy-mobile.png"
+    ]
+  },
+  "limitations": [
+    "This is the existing agent(prompt, {profileVersionId}) worker selector, not invocation of a complete published agent or its saved workflow.",
+    "Absent policy preserves legacy grant-based worker selection; it does not authorize future published-agent invocation. New agents created through the administrative UI default to an explicit empty allowlist.",
+    "The root own pinned version remains eligible as an implementation worker. Each other exact version needs both policy inclusion and current execution-owner grants.",
+    "Publication validates unique UUID references, at most 128. Unknown, disabled and inaccessible targets fail when selected; publication does not grant access.",
+    "Constrained Qwen tool/MCP invocation and delegation ancestry/depth/concurrency/call budgets remain P4 work.",
+    "Docker uses stock Qwen and a deterministic model fixture, not corporate harness authorization."
+  ],
+  "verificationNotes": [
+    "Real migrated SQLite covers selection, direct binding admission, current dispatch authority, foreign-user denial, target revocation/regrant, same-profile different-version denial and immutable root policy after republication.",
+    "The existing workflow service rechecks profile resolution for cached results, retry and replay; worker dispatch also checks its saved parent policy through core lineage validation.",
+    "Native Docker published workflow fixtures now opt into explicit policies for both users, and separately assert a granted target outside an empty policy fails without creating a worker binding.",
+    "The production browser creates an agent with the allowlist and republishes it through the real admin API. Browser-only fixture additions run from the host during the composite; product changes and native fixtures were included in the tested image."
+  ]
+}

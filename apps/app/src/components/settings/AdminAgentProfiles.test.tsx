@@ -34,6 +34,7 @@ it("publishes an agent version and grants a registered user through the limited 
     permissionMode: "accept-edits",
     tools: [],
     mcpServers: [],
+    delegation: { allowedVersionIds: [versionIds[0]] },
   };
   const profile = () => ({
     id: agentId,
@@ -69,7 +70,10 @@ it("publishes an agent version and grants a registered user through the limited 
           expect(body).toMatchObject({
             slug: "research",
             name: "Research agent",
-            definition: { purpose: "Investigate a project question." },
+            definition: {
+              purpose: "Investigate a project question.",
+              delegation: { allowedVersionIds: [] },
+            },
           });
           version = 1;
           return Response.json(detail());
@@ -90,6 +94,7 @@ it("publishes an agent version and grants a registered user through the limited 
           definition: {
             purpose: "Investigate and summarize a project question.",
             prompt: "Revised instructions",
+            delegation: { allowedVersionIds: [versionIds[0]] },
           },
         });
         version = 2;
@@ -154,6 +159,9 @@ it("publishes an agent version and grants a registered user through the limited 
   await screen.findByText("Agent created");
   await screen.findByRole("button", { name: "Edit next version" });
   fireEvent.click(screen.getByRole("button", { name: "Edit next version" }));
+  expect(screen.getByDisplayValue(versionIds[0])).toBe(
+    screen.getByRole("textbox", { name: "Allowed worker version IDs" }),
+  );
   fireEvent.change(screen.getByRole("textbox", { name: "Purpose" }), {
     target: { value: "Investigate and summarize a project question." },
   });

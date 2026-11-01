@@ -1339,6 +1339,85 @@ async function verifyAdministrativeDefinitions({
     await page.screenshot({
       path: join(artifacts, "administrative-definitions.png"),
     });
+  await page.goto(`${ready.origin}/settings/projects`);
+  await page
+    .getByRole("button", { name: "Manage server agents", exact: true })
+    .click();
+  await visible(page.getByRole("form", { name: "Agent editor" }));
+  const workerPolicyToggle = page.getByRole("checkbox", {
+    name: "Restrict worker profile selection",
+  });
+  assert.equal(await workerPolicyToggle.isChecked(), true);
+  const workerPolicyInput = page.getByRole("textbox", {
+    name: "Allowed worker version IDs",
+  });
+  assert.equal(await workerPolicyInput.inputValue(), "");
+  const workerPolicyTarget = ready.reviewer.tests.workerProfileVersionId;
+  await page
+    .getByRole("textbox", { name: "Slug", exact: true })
+    .fill("browser-worker-policy");
+  await page
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Browser worker policy");
+  await page
+    .getByRole("textbox", { name: "Purpose", exact: true })
+    .fill("Review a restricted worker configuration.");
+  await page
+    .getByRole("textbox", { name: "Model", exact: true })
+    .fill("qwen-test");
+  await workerPolicyInput.fill(workerPolicyTarget);
+  const policyCreation = page.waitForResponse(
+    (reply) =>
+      new URL(reply.url()).pathname === "/control-plane/admin/profiles" &&
+      reply.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Create agent", exact: true }).click();
+  const policyCreated = await policyCreation;
+  assert.equal(policyCreated.status(), 201, await policyCreated.text());
+  assert.deepEqual((await policyCreated.json()).version.definition.delegation, {
+    allowedVersionIds: [workerPolicyTarget],
+  });
+  await page
+    .getByRole("button", { name: "Edit next version", exact: true })
+    .click();
+  assert.equal(await workerPolicyInput.inputValue(), workerPolicyTarget);
+  assert.equal(await workerPolicyToggle.isChecked(), true);
+  const policyFieldset = page.locator("fieldset").filter({
+    has: page.getByText("Workflow worker profiles", { exact: true }),
+  });
+  await policyFieldset.scrollIntoViewIfNeeded();
+  if (artifacts)
+    await policyFieldset.screenshot({
+      path: join(artifacts, "worker-policy-desktop.png"),
+    });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await policyFieldset.scrollIntoViewIfNeeded();
+  assert.equal(
+    await policyFieldset.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+    true,
+  );
+  if (artifacts)
+    await policyFieldset.screenshot({
+      path: join(artifacts, "worker-policy-mobile.png"),
+    });
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  const policyPublication = page.waitForResponse(
+    (reply) =>
+      /\/control-plane\/admin\/profiles\/[^/]+\/versions$/u.test(
+        new URL(reply.url()).pathname,
+      ) && reply.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Publish version", exact: true })
+    .click();
+  const policyPublished = await policyPublication;
+  assert.equal(policyPublished.status(), 201, await policyPublished.text());
+  assert.deepEqual(
+    (await policyPublished.json()).version.definition.delegation,
+    { allowedVersionIds: [workerPolicyTarget] },
+  );
   const projectId = ready.reviewer.projectId;
   await page.goto(`${ready.origin}/settings/projects/${projectId}`);
   await visible(page.getByRole("button", { name: "Manage diagnostic grants" }));
@@ -1472,6 +1551,8 @@ async function verifyAdministrativeDefinitions({
   );
   return {
     nativeAdministrativeDefinitionUiRendered: true,
+    workerDelegationPolicyCreatedAndRepublishedInBrowser: true,
+    workerDelegationPolicyDesktopAndMobileLayout: true,
     administrativeDefinitionsShowBothOwners: true,
     administrativeDefinitionsCrudAndImmutableRevisionRun: true,
     administrativeDefinitionRunAdoptsEachSavedOwner: true,

@@ -343,6 +343,20 @@ values, environment overrides or executable MCP commands. Publishing does not
 modify earlier versions. Execution binding and enforcement remain a separate
 server integration stage.
 
+Published definitions may include `delegation: {allowedVersionIds: ["<version-uuid>"]}`.
+This limits the existing workflow `agent(prompt, {profileVersionId})` worker path
+to those exact immutable versions and the root's own pinned version. An empty
+list permits only that root version. Omission preserves legacy worker selection;
+it does not authorize future published-agent invocation. The administrator's
+agent editor enables this restriction by default for new agents and preserves
+it when editing a version. Supply the same JSON through SDK profile
+create/publish or CLI `profiles create/publish --definition-stdin`.
+This list never grants user access: the current executing user's profile/project
+grants are also checked at admission, resume, result and replay. Version IDs may
+be prepared before grants; missing or disabled targets cannot execute. A workflow
+profile selected as a worker contributes its model/tools, not its saved workflow;
+invoking an entire published agent is a separate forthcoming operation.
+
 Managed native thread creation requires `bb thread spawn --profile-version
 <version-id>` (SDK/native HTTP field `controlPlaneProfileVersionId`) with a
 currently granted, enabled profile and version. The server stores that exact

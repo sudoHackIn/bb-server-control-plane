@@ -35,7 +35,11 @@ export async function verifyPublishedWorkflowAgents({
       {
         slug: `workflow-agent-${user.login}`,
         name: `Workflow agent ${user.login}`,
-        definition: { ...profile.body.version.definition, workflow },
+        definition: {
+          ...profile.body.version.definition,
+          workflow,
+          delegation: { allowedVersionIds: [profile.body.version.id] },
+        },
       },
       adminToken,
     );
@@ -51,6 +55,62 @@ export async function verifyPublishedWorkflowAgents({
       );
       assert.equal(grant.status, 200);
     }
+    assert.deepEqual(agent.body.version.definition.delegation, {
+      allowedVersionIds: [profile.body.version.id],
+    });
+    const deniedAgent = await sendAdmin(
+      "/control-plane/admin/profiles",
+      {
+        slug: `workflow-denied-delegation-${user.login}`,
+        name: `Denied delegation ${user.login}`,
+        definition: {
+          ...profile.body.version.definition,
+          workflow,
+          delegation: { allowedVersionIds: [] },
+        },
+      },
+      adminToken,
+    );
+    assert.equal(deniedAgent.status, 201, JSON.stringify(deniedAgent.body));
+    const deniedGrant = await sendAdmin(
+      `/control-plane/admin/profiles/${deniedAgent.body.profile.id}/access/${user.id}`,
+      { allowed: true },
+      adminToken,
+      "PUT",
+    );
+    assert.equal(deniedGrant.status, 200);
+    const deniedRun = await userRequest(user.login, base, {
+      method: "POST",
+      body: {
+        projectId: project.projectId,
+        profileVersionId: deniedAgent.body.version.id,
+        input: "must-not-delegate",
+        source: "manual",
+        idempotencyKey: `denied-delegation-${user.login}`,
+      },
+    });
+    assert.equal(deniedRun.status, 201, JSON.stringify(deniedRun.body));
+    await wait(async () => {
+      const deniedResult = await userRequest(
+        user.login,
+        `${base}/${deniedRun.body.runId}/result`,
+      );
+      assert.equal(deniedResult.status, 200, JSON.stringify(deniedResult.body));
+      assert.notEqual(
+        deniedResult.body.run.status,
+        "succeeded",
+        JSON.stringify(deniedResult.body),
+      );
+      return deniedResult.body.run.status === "failed";
+    }, `denied published worker delegation ${user.login}`);
+    assert.equal(
+      db
+        .prepare(
+          "SELECT count(*) AS count FROM control_plane_job_bindings WHERE source_binding_id=(SELECT id FROM control_plane_job_bindings WHERE object_id=? AND kind='workflow-run') AND kind='workflow-worker'",
+        )
+        .get(deniedRun.body.runId).count,
+      0,
+    );
     const body = {
       projectId: project.projectId,
       profileVersionId: agent.body.version.id,

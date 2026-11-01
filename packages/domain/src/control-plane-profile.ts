@@ -13,6 +13,18 @@ const identifiers = z
 export const controlPlaneProfileDefinitionSchema = z
   .object({
     purpose: z.string().trim().min(1).max(280).optional(),
+    delegation: z
+      .object({
+        allowedVersionIds: z
+          .array(z.string().uuid())
+          .max(128)
+          .refine(
+            (ids) => new Set(ids).size === ids.length,
+            "Duplicate versions",
+          ),
+      })
+      .strict()
+      .optional(),
     workflow: z
       .object({
         definitionId: z.string().regex(/^wfd_[A-Za-z0-9-]{1,100}$/u),
