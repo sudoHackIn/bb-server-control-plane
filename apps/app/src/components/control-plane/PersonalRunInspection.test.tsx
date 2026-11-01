@@ -8,7 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import { createControlPlaneClient } from "@bb/sdk/browser";
 import { PersonalRunInspection } from "./PersonalRunInspection";
@@ -52,6 +52,7 @@ function mount(
     source?: "live" | "cached";
     foreignThread?: boolean;
     deny?: boolean;
+    delegated?: boolean;
   } = {},
 ) {
   const paths: string[] = [];
@@ -113,6 +114,17 @@ function mount(
         return Response.json({
           runId: "run",
           call,
+          ...(options.delegated
+            ? {
+                agentInvocation: {
+                  id: profileVersionId,
+                  runId: "child-workflow",
+                  profileVersionId,
+                  strategy: "workflow",
+                  state: "succeeded",
+                },
+              }
+            : {}),
           input: "Recorded prompt",
           outputAvailable: true,
           output: "PlantUML",
@@ -186,6 +198,7 @@ function mount(
       ]}
     >
       <QueryClientProvider client={cache}>
+        <LocationSummary />
         <PersonalRunInspection
           client={client}
           runId="run"
@@ -254,4 +267,26 @@ it("hides execution details when current access is denied", async () => {
   await screen.findByRole("alert");
   expect(screen.queryByText("Converted")).toBeNull();
   expect(paths).toEqual(["/control-plane/user/workflows/run/inspection"]);
+});
+
+function LocationSummary() {
+  const location = useLocation();
+  return (
+    <p data-testid="inspection-location">
+      {location.pathname}
+      {location.search}
+    </p>
+  );
+}
+it("navigates to the core-provided published child workflow instead of inventing a worker chat", async () => {
+  mount({ delegated: true, source: "cached" });
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Convert diagram/ }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Inspect invoked agent" }),
+  );
+  expect(screen.getByTestId("inspection-location").textContent).toBe(
+    "/projects/project?inspectKind=workflow&inspectRun=child-workflow&view=inspections",
+  );
 });

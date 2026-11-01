@@ -137,6 +137,44 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
+  if (bb.server.internal_DO_NOT_USE_backgroundJobs)
+    bb.agents.registerTool({
+      name: "invoke_agent",
+      presentation: {
+        label: { pending: "Calling agent", completed: "Agent finished" },
+        icon: { glyph: "Workflow" },
+      },
+      description:
+        "Invoke an explicitly allowed published agent version in this thread's server project. Runs its approved conversation or complete saved workflow and waits for its result. No model, tool, user or directory overrides. Reuse the same key for a retry of the same work.",
+      parameters: z
+        .object({
+          versionId: z.string().uuid(),
+          input: z.string().min(1).max(131072),
+          key: z.string().min(1).max(200),
+        })
+        .strict(),
+      async execute(input, ctx) {
+        try {
+          const invoke =
+            bb.server.internal_DO_NOT_USE_backgroundJobs
+              ?.internal_DO_NOT_USE_invokeAgent;
+          if (!invoke)
+            throw new Error("Published agent invocation is unavailable");
+          return jsonResult(
+            await invoke(
+              { kind: "thread", id: ctx.threadId },
+              input,
+              ctx.signal,
+            ),
+          );
+        } catch (error) {
+          return errorResult(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      },
+    });
+
   bb.agents.registerTool({
     name: "bb_workflow_run",
     presentation: {
@@ -203,15 +241,21 @@ export default async function plugin(bb: BbPluginApi) {
     const worker = service.agentConfiguration(context.thread.id);
     if (worker !== null) {
       return {
-        tools:
-          worker.terminal || worker.resultParameters === null
-            ? []
-            : [
-                {
-                  name: "bb_workflow_result",
-                  parameters: worker.resultParameters,
-                },
-              ],
+        tools: worker.terminal
+          ? []
+          : [
+              ...(bb.server.internal_DO_NOT_USE_backgroundJobs
+                ? ["invoke_agent"]
+                : []),
+              ...(worker.resultParameters === null
+                ? []
+                : [
+                    {
+                      name: "bb_workflow_result",
+                      parameters: worker.resultParameters,
+                    },
+                  ]),
+            ],
         skills: [],
         ...(worker.instructions === null
           ? {}
@@ -227,7 +271,9 @@ export default async function plugin(bb: BbPluginApi) {
       };
     }
     return {
-      tools: ["bb_workflow_run"],
+      tools: bb.server.internal_DO_NOT_USE_backgroundJobs
+        ? ["bb_workflow_run", "invoke_agent"]
+        : ["bb_workflow_run"],
       skills: ["workflows"],
       instructions:
         "When bb_workflow_run succeeds, copy its previewDirective into your response exactly once as a standalone line. Do not wrap it in backticks or a code fence, and do not invent or edit the run ID. The directive renders live workflow progress in BB chat. `bb workflows status <run-id>` returns a compact summary. For detailed history, redirect `bb workflows history <run-id> --cursor <call-index> --limit <1-100>` into a file under `$BB_THREAD_STORAGE`, then inspect that JSONL file with normal filesystem tools. Use each page record's `nextCursor` to continue.",
@@ -251,7 +297,11 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.background.service("workflow-worker", {
     start(signal) {
-      return service.runWorker(signal);
+      const dispose =
+        bb.server.internal_DO_NOT_USE_backgroundJobs?.internal_DO_NOT_USE_registerAgentStop?.(
+          (id) => service.stop(id),
+        );
+      return service.runWorker(signal).finally(() => dispose?.());
     },
   });
 }

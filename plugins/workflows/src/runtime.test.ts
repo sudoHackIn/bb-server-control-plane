@@ -920,3 +920,23 @@ describe("workflow QuickJS runtime", () => {
     expect(fireAndForgetAborted).toBe(true);
   });
 });
+
+it("invokes a pinned published agent through the shared scheduler and rejects worker overrides", async () => {
+  const version = "33333333-3333-4333-8333-333333333333";
+  const invoked = vi.fn(
+    async (
+      _input: string,
+      options: Parameters<WorkflowCapabilities["agent"]>[1],
+    ) => ({
+      version: options.invokeVersionId ?? null,
+    }),
+  );
+  const result = await executeWorkflowScript({
+    args: null,
+    body: `const value = await invokeAgent("${version}", "convert"); let denied = false; try { await agent("override", {invokeVersionId:"${version}", model:"other"}); } catch { denied = true; } return {value, denied, calls: budget().agentCalls};`,
+    capabilities: { agent: invoked, log: vi.fn(), phase: vi.fn() },
+    limits: { maxAgentCalls: 1 },
+  });
+  expect(result).toEqual({ value: { version }, denied: true, calls: 1 });
+  expect(invoked).toHaveBeenCalledOnce();
+});

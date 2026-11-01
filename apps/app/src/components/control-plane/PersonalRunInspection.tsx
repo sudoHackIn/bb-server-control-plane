@@ -213,6 +213,53 @@ export function PersonalRunInspection({
                         value={time(selected.call.finishedAt)}
                       />
                     </dl>
+                    {selected.agentInvocation && (
+                      <div className="space-y-2 rounded-md border border-border p-3">
+                        <p className="font-medium">
+                          Published agent · {selected.agentInvocation.strategy}
+                        </p>
+                        <p className="break-all text-xs text-muted-foreground">
+                          {selected.agentInvocation.profileVersionId}
+                        </p>
+                        <PersonalStatus
+                          status={
+                            selected.agentInvocation.state === "pending"
+                              ? "queued"
+                              : selected.agentInvocation.state
+                          }
+                        />
+                        {selected.agentInvocation.runId && (
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              const child = selected.agentInvocation;
+                              if (!child?.runId) return;
+                              const search = new URLSearchParams({
+                                inspectKind:
+                                  child.strategy === "workflow"
+                                    ? "workflow"
+                                    : "thread",
+                                inspectRun: child.runId,
+                              });
+                              if (location.pathname.startsWith("/settings/"))
+                                navigate({
+                                  pathname: `/settings/projects/${projectId}/inspections`,
+                                  search: `?${search}`,
+                                });
+                              else {
+                                search.set("view", "inspections");
+                                navigate({
+                                  pathname: `/projects/${projectId}`,
+                                  search: `?${search}`,
+                                });
+                              }
+                            }}
+                          >
+                            Inspect invoked agent
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     {selected.call.error && (
                       <pre role="alert" className={personalCodeClass}>
                         {selected.call.error}

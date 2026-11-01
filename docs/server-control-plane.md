@@ -20,7 +20,7 @@ capabilities, and a granted user selects it and chats in the restricted BB
 workspace. The pinned profile and tool policy survive later turns and restart.
 See [the P0 verification record](control-plane-phase-86-verification.json).
 
-The profile schema currently supports `qwen-server`. Verified prompt policy appends Qwen instructions; it does not replace the full system prompt. Workflow `agent()` can select `profileVersionId` on this server, but that is not yet published-agent composition. Restricted native Qwen nested agents remain denied.
+The profile schema currently supports `qwen-server`. Verified prompt policy appends Qwen instructions; it does not replace the full system prompt. Workflow `agent()` selects a worker profile; `invokeAgent()` and the constrained `invoke_agent` tool invoke a whole published conversation or workflow. Restricted native Qwen nested agents remain denied.
 
 ## Delivery rules
 
@@ -116,14 +116,16 @@ and [P3.5 verification](control-plane-phase-96-verification.json).
 
 Goal: an agent chooses an allowed specialist at runtime; a workflow can invoke that specialist by version.
 
-- [x] P4.1: Publish an optional pinned worker-version allowlist through admin UI, API/SDK and CLI; enforce it on the existing workflow worker path at selection, binding and current execution/result/replay authority. New UI agents restrict other versions by default; legacy profiles keep their existing worker semantics.
-- [ ] P4.2: Add a published-agent invocation operation that runs the selected conversation or saved workflow as a unit, sharing server-checked admission between workflow steps and a constrained Qwen BB tool/MCP adapter. The P4.1 worker profile selector is not this operation. Prompt text and parentThreadId are not authority.
-- [ ] Carry verified ancestry to each child; enforce grants, depth, concurrency and call budgets at admission and resume. Preserve parent/child navigation, cancellation and scoped results.
-- [ ] Test direct and workflow-mediated allowed/denied calls, two users, revocation and nested recovery in Docker.
+- [ ] P4.3: Exercise abrupt crashes during nested conversation/workflow invocation and the reservation-to-native-admission window. Verify explicit reattachment/replay, current grants and remaining tree/deadline budgets without duplicate native identities or orphaned active children.
+- [ ] Preserve delegation provenance when a child is reopened directly: show its authorized parent and distinguish readonly completed children from resumable work. Test cancellation/revocation during nested recovery, including maintenance pauses and plugin generation replacement. Verify bounded failure when awaited children exhaust native Qwen/thread capacity.
 
 P4.1 worker policy is delivered; see [its contract](control-plane-workflow-agents.md#worker-delegation-policy)
-and [verification](control-plane-phase-97-verification.json). Published-agent
-composition and its execution budgets remain open above.
+and [verification](control-plane-phase-97-verification.json). P4.2 adds complete
+published-agent invocation through workflows and Qwen BB/MCP, verified ancestry,
+fixed tree/deadline budgets, native cancellation, scoped results and child
+inspection navigation. See [the invocation contract](control-plane-workflow-agents.md#complete-published-agent-invocation)
+and [verification](control-plane-phase-98-verification.json). The remaining slice
+above concerns nested crash recovery and directly reopened-child provenance.
 
 ### P5 — More triggers and richer contracts
 

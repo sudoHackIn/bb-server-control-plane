@@ -1,3 +1,4 @@
+import { checkControlPlaneInvocationWorkflow } from "./control-plane-agent-invocations.js";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, isNull } from "drizzle-orm";
 import {
@@ -75,6 +76,14 @@ function authority(db: DbQueryConnection, job: Job, allowDisabled = false) {
         .get();
       if (origin?.projectId !== job.projectId) throw new ControlPlaneJobError();
     }
+    if (job.kind === "workflow-run")
+      checkControlPlaneInvocationWorkflow(
+        db,
+        job.objectId,
+        job.ownerUserId,
+        job.projectId,
+        job.profileVersionId,
+      );
     return context;
   } catch (error) {
     if (error instanceof ControlPlaneThreadError)

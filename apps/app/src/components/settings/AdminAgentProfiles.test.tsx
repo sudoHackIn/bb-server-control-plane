@@ -160,7 +160,7 @@ it("publishes an agent version and grants a registered user through the limited 
   await screen.findByRole("button", { name: "Edit next version" });
   fireEvent.click(screen.getByRole("button", { name: "Edit next version" }));
   expect(screen.getByDisplayValue(versionIds[0])).toBe(
-    screen.getByRole("textbox", { name: "Allowed worker version IDs" }),
+    screen.getByRole("textbox", { name: "Allowed agent version IDs" }),
   );
   fireEvent.change(screen.getByRole("textbox", { name: "Purpose" }), {
     target: { value: "Investigate and summarize a project question." },

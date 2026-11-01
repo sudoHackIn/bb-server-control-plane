@@ -1879,4 +1879,8 @@ The admin agent editor defaults new agents to the empty restriction. SDK profile
 create/publish and `bb server access profiles create/publish --definition-stdin`
 use the same schema. Policy is versioned with the profile and checked alongside
 current user/project/profile access, including worker dispatch and replay/result
-admission. It does not enable full published-agent invocation or nested budgets.
+admission. Complete published-agent invocation uses the separate `invokeAgent`
+workflow operation or the `invoke_agent` BB tool. That operation requires an
+explicit target entry even for self calls and enforces fixed tree limits: depth
+4, 64 total and 8 outstanding calls, 10 minutes per reservation. Enable
+`bb:invoke_agent` and MCP source `bb` to offer the tool to Qwen.

@@ -51,6 +51,22 @@ export const controlPlaneWorkflowInspectionSchema = z
   .strict();
 export const controlPlaneWorkflowCallInspectionSchema = z
   .object({
+    agentInvocation: z
+      .object({
+        id: z.string().uuid(),
+        runId: z.string().nullable(),
+        profileVersionId: z.string().uuid(),
+        strategy: z.enum(["conversation", "workflow"]),
+        state: z.enum([
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled",
+        ]),
+      })
+      .strict()
+      .optional(),
     runId: z.string(),
     call: controlPlaneWorkflowCallSummarySchema,
     input: z.string(),

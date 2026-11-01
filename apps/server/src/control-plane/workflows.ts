@@ -5,6 +5,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   controlPlaneJobBindings,
+  controlPlaneAgentInvocations,
   getControlPlaneJobBinding,
   getControlPlaneProfileWorkflow,
   listControlPlaneJobBindings,
@@ -435,7 +436,7 @@ export function createControlPlaneWorkflowService(
     async inspectCall(userId: string, runId: string, callId: string) {
       await get(userId, runId);
       const value = controlPlaneWorkflowCallInspectionSchema
-        .omit({ fileArtifacts: true })
+        .omit({ fileArtifacts: true, agentInvocation: true })
         .nullable()
         .parse(
           await readRpc(userId, "controlPlaneWorkflowCallInspection", {
@@ -470,8 +471,40 @@ export function createControlPlaneWorkflowService(
       );
       fileArtifacts.unavailableWorkers +=
         value.workers.length - artifactWorkers.length;
+      const invocation = db
+        .select()
+        .from(controlPlaneAgentInvocations)
+        .where(
+          and(
+            eq(controlPlaneAgentInvocations.parentKind, "workflow"),
+            eq(controlPlaneAgentInvocations.parentId, saved.id),
+            eq(
+              controlPlaneAgentInvocations.idempotencyKey,
+              `step:${value.call.index}`,
+            ),
+            eq(controlPlaneAgentInvocations.ownerUserId, saved.ownerUserId),
+            eq(controlPlaneAgentInvocations.projectId, saved.projectId),
+          ),
+        )
+        .get();
       return {
         ...value,
+        ...(invocation
+          ? {
+              agentInvocation: {
+                id: invocation.id,
+                runId: invocation.runId,
+                profileVersionId: invocation.profileVersionId,
+                strategy: getControlPlaneProfileWorkflow(
+                  db,
+                  invocation.profileVersionId,
+                )
+                  ? ("workflow" as const)
+                  : ("conversation" as const),
+                state: invocation.state,
+              },
+            }
+          : {}),
         fileArtifacts,
         call: {
           ...value.call,

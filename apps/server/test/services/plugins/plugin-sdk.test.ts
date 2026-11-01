@@ -383,6 +383,82 @@ describe("plugin bb.sdk bind gate", () => {
     expect(api.server.experimental_appUrl).toBeNull();
   });
 
+  it("forwards published-agent capabilities through the lifecycle facade and fences execution on shutdown", async () => {
+    const { alice } = seedControlPlaneJobSubjects(db);
+    const resolve = vi.fn(() => ({
+      profileVersionId: alice.profile.versionId,
+      providerId: "qwen-server",
+      model: "qwen-test",
+      reasoningLevel: "none",
+      permissionMode: "full",
+    }));
+    const invoke = vi.fn(async () => ({ output: "done" }));
+    const dispose = vi.fn();
+    let savedStop: ((id: string) => Promise<boolean>) | null = null;
+    const register = vi.fn((stop: (id: string) => Promise<boolean>) => {
+      savedStop = stop;
+      return dispose;
+    });
+    backgroundJobs = {
+      ...createControlPlaneBackgroundJobs(db, "workflows", true),
+      internal_DO_NOT_USE_invokedWorkflowIds: () => ["delegated"],
+      internal_DO_NOT_USE_resolveAgent: resolve,
+      internal_DO_NOT_USE_invokeAgent: invoke,
+      internal_DO_NOT_USE_registerAgentStop: register,
+    };
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-invocation-lifecycle",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.installPath(rootDir);
+    const jobs = requireApi(service, "invocation-lifecycle").server
+      .internal_DO_NOT_USE_backgroundJobs;
+    if (
+      !jobs?.internal_DO_NOT_USE_resolveAgent ||
+      !jobs.internal_DO_NOT_USE_invokeAgent ||
+      !jobs.internal_DO_NOT_USE_registerAgentStop ||
+      !jobs.internal_DO_NOT_USE_invokedWorkflowIds
+    )
+      throw new Error("Missing invocation facade");
+    expect(jobs.internal_DO_NOT_USE_invokedWorkflowIds()).toEqual([
+      "delegated",
+    ]);
+    expect(
+      jobs.internal_DO_NOT_USE_resolveAgent("binding", alice.profile.versionId)
+        .profileVersionId,
+    ).toBe(alice.profile.versionId);
+    const parent = { kind: "workflow" as const, id: "binding" };
+    const input = {
+      versionId: alice.profile.versionId,
+      input: "task",
+      key: "step:0",
+    };
+    const signal = new AbortController().signal;
+    await expect(
+      jobs.internal_DO_NOT_USE_invokeAgent(parent, input, signal),
+    ).resolves.toEqual({ output: "done" });
+    expect(invoke).toHaveBeenCalledWith(parent, input, signal);
+    const unregister = jobs.internal_DO_NOT_USE_registerAgentStop(
+      async () => true,
+    );
+    expect(register).toHaveBeenCalledOnce();
+    await service.quiesceBackgroundServices();
+    expect(() =>
+      jobs.internal_DO_NOT_USE_resolveAgent?.(
+        "binding",
+        alice.profile.versionId,
+      ),
+    ).toThrow("stopping");
+    expect(() =>
+      jobs.internal_DO_NOT_USE_invokeAgent?.(parent, input, signal),
+    ).toThrow("stopping");
+    await service.setEnabled("invocation-lifecycle", false);
+    expect(() => jobs.internal_DO_NOT_USE_invokedWorkflowIds?.()).toThrow();
+    expect(() => savedStop?.("delegated")).toThrow();
+    unregister();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it("lifecycle-scopes supplied background authority handles and keeps their current user dynamic", async () => {
     const { alice, bob } = seedControlPlaneJobSubjects(db);
     backgroundJobs = createControlPlaneBackgroundJobs(db, "workflows", true);

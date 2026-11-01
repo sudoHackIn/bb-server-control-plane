@@ -116,55 +116,95 @@ export function createUserThreadFixture({ db, users }) {
         body.tools.some((tool) => tool.function?.name === "write_file"),
       );
     }
-    const delta = first
-      ? {
-          role: "assistant",
-          tool_calls: [
-            {
-              index: 0,
-              id: `personal_${marker}`,
-              type: "function",
-              function: {
-                name: "run_shell_command",
-                arguments: JSON.stringify({
-                  command: `/usr/local/bin/node -e '${code}'`,
-                  description: "Verify personal API identity",
-                  timeout: 30000,
-                }),
-              },
-            },
-          ],
-        }
-      : artifactPending
+    const invocationPending =
+      marker.startsWith("delegator-") &&
+      !body.messages.some(
+        (message) =>
+          message.role === "tool" &&
+          message.tool_call_id === `invoke_${marker}`,
+      );
+    const invocationTarget = invocationPending
+      ? JSON.stringify(body.messages).match(
+          /BB_INVOKE_VERSION=([a-f0-9-]{36})/u,
+        )?.[1]
+      : null;
+    if (invocationPending) {
+      assert.ok(invocationTarget);
+      assert.ok(
+        body.tools.some(
+          (tool) => tool.function?.name === "mcp__bb__invoke_agent",
+        ),
+      );
+    }
+    const delta =
+      invocationPending && !first
         ? {
             role: "assistant",
             tool_calls: [
               {
                 index: 0,
-                id: `artifact_${marker}`,
+                id: `invoke_${marker}`,
                 type: "function",
                 function: {
-                  name: "write_file",
+                  name: "mcp__bb__invoke_agent",
                   arguments: JSON.stringify({
-                    file_path: `${artifactUser.projects_root}/personal-api/${marker}.puml`,
-                    content: "@startuml\nAlice -> Bob: hello\n@enduml\n",
+                    versionId: invocationTarget,
+                    input: `BB_PERSONAL_delegated-mcp-${marker.slice("delegator-".length)}`,
+                    key: "model-call",
                   }),
                 },
               },
             ],
           }
-        : {
-            role: "assistant",
-            content:
-              marker.startsWith("workflow-json") ||
-              (marker === "workflow-repair-alice" &&
-                JSON.stringify(body.messages).includes("Corrective turn"))
-                ? JSON.stringify({ value: 42 })
-                : `Personal ${marker} completed`,
-          };
+        : first
+          ? {
+              role: "assistant",
+              tool_calls: [
+                {
+                  index: 0,
+                  id: `personal_${marker}`,
+                  type: "function",
+                  function: {
+                    name: "run_shell_command",
+                    arguments: JSON.stringify({
+                      command: `/usr/local/bin/node -e '${code}'`,
+                      description: "Verify personal API identity",
+                      timeout: 30000,
+                    }),
+                  },
+                },
+              ],
+            }
+          : artifactPending
+            ? {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: `artifact_${marker}`,
+                    type: "function",
+                    function: {
+                      name: "write_file",
+                      arguments: JSON.stringify({
+                        file_path: `${artifactUser.projects_root}/personal-api/${marker}.puml`,
+                        content: "@startuml\nAlice -> Bob: hello\n@enduml\n",
+                      }),
+                    },
+                  },
+                ],
+              }
+            : {
+                role: "assistant",
+                content:
+                  marker.startsWith("workflow-json") ||
+                  (marker === "workflow-repair-alice" &&
+                    JSON.stringify(body.messages).includes("Corrective turn"))
+                    ? JSON.stringify({ value: 42 })
+                    : `Personal ${marker} completed`,
+              };
     res.writeHead(200, { "content-type": "text/event-stream" });
     res.end(
-      `data: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: first || artifactPending ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
+      `data: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: `personal_${marker}`, object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: first || invocationPending || artifactPending ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
     );
     return true;
   }
@@ -735,16 +775,17 @@ export function createUserThreadFixture({ db, users }) {
       );
 
       await releaseIdleSessions(false);
-      const workflows = await verifyNativeWorkflows({
-        launch,
-        signal,
-        wait,
-        password,
-        origin,
-        subjects: created,
-        db,
-        userCommand: command,
-      });
+      assert.equal(
+        (
+          await sendAdmin(
+            "/api/v1/plugins/workflows/enable",
+            undefined,
+            adminToken,
+            "POST",
+          )
+        ).status,
+        200,
+      );
 
       await releaseIdleSessions(false);
       const workflowAgents = await verifyPublishedWorkflowAgents({
@@ -758,6 +799,18 @@ export function createUserThreadFixture({ db, users }) {
         wait,
         db,
       });
+      await releaseIdleSessions(false);
+      const workflows = await verifyNativeWorkflows({
+        launch,
+        signal,
+        wait,
+        password,
+        origin,
+        subjects: created,
+        db,
+        userCommand: command,
+      });
+
       await releaseIdleSessions(false);
       const automations = await verifyNativeAutomations({
         launch,
@@ -1241,6 +1294,7 @@ export function createUserThreadFixture({ db, users }) {
       saved = {
         send,
         command,
+        authorize,
         alice,
         wait,
         shutdownStream,
@@ -1346,11 +1400,15 @@ export function createUserThreadFixture({ db, users }) {
       const { command, alice, wait, shutdownStream, bindingCheck, manualRuns } =
         saved;
       const jobBindingRestart = await bindingCheck("resume");
-      const workflowRestart = {
-        ...(await saved.workflows.afterRestart()),
-        ...(await saved.workflowAgents.afterRestart()),
-      };
+      const workflowRestart = await saved.workflows.afterRestart();
       const automationRestart = await saved.automations.afterRestart();
+      await saved.authorize({ login: "bob" });
+      let invocationRestart;
+      try {
+        invocationRestart = await saved.workflowAgents.afterRestart();
+      } finally {
+        await command("bob", ["logout", "--json"]);
+      }
       assert.notEqual((await shutdownStream.done)[0], 0);
       assert.equal(
         (await command("alice", ["threads", "get", alice.thread.id, "--json"]))
@@ -1405,6 +1463,7 @@ export function createUserThreadFixture({ db, users }) {
         ...jobBindingRestart,
         ...workflowRestart,
         ...automationRestart,
+        ...invocationRestart,
         ...(await saved.diagnosticAccess.afterRestart(adminToken)),
         personalTokenAndThreadSurviveRestart: true,
         personalManualRunSurvivesRestart: true,

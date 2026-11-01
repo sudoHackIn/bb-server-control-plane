@@ -1,3 +1,4 @@
+import { checkControlPlaneInvocationThread } from "./control-plane-agent-invocations.js";
 import { getControlPlaneUidMaintenance } from "./control-plane-uid-maintenance.js";
 import {
   controlPlaneProfileDefinitionSchema,
@@ -192,6 +193,13 @@ export function requireControlPlaneThreadDispatch(
     relatedThreadIds: [],
   });
   if (!context) return null;
+  checkControlPlaneInvocationThread(
+    db,
+    context.user.id,
+    context.project.projectId,
+    context.profileVersion.id,
+    owner?.runIdempotencyKey ?? null,
+  );
   if (thread.deletedAt !== null || thread.archivedAt !== null)
     throw new ControlPlaneThreadError();
   if (thread.environmentId !== null) {

@@ -1923,6 +1923,29 @@ export interface InternalDoNotUseBackgroundJobBinding {
 }
 
 export interface InternalDoNotUseBackgroundJobs {
+  /** Bundled Workflows scheduler only: currently authorized delegated roots share their parents' admission budget. */
+  internal_DO_NOT_USE_invokedWorkflowIds?(): readonly string[];
+  /** Bundled Workflows only: invokes an explicitly allowed published agent under verified saved parent authority. */
+  internal_DO_NOT_USE_invokeAgent?(
+    parent: { kind: "thread" | "workflow"; id: string },
+    input: { versionId: string; input: string; key: string },
+    signal: AbortSignal,
+  ): Promise<JsonValue>;
+  /** Bundled Workflows only: checks the target before admission, cache reuse or replay. */
+  internal_DO_NOT_USE_resolveAgent?(
+    bindingId: string,
+    versionId: string,
+  ): {
+    profileVersionId: string;
+    providerId: string;
+    model: string;
+    reasoningLevel: string;
+    permissionMode: string;
+  };
+  /** Installs the native workflow stop path for saved delegated run cleanup; disposal removes this generation's handler. */
+  internal_DO_NOT_USE_registerAgentStop?(
+    stop: (runId: string) => Promise<boolean>,
+  ): () => void;
   /** Only true inside the core-controlled read-only diagnostic RPC adapter. Never grants execution authority. */
   readonly internal_DO_NOT_USE_inspectionRead: boolean;
   /** Current UID maintenance owners within this builtin plugin's object kinds; user scope returns only the caller. This snapshot grants no execution authority. */

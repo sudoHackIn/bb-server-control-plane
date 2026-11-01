@@ -572,6 +572,10 @@ const DSL_SOURCE = `
   };
   const budget = () => Object.freeze(readBudget());
   Object.defineProperties(globalThis, {
+    invokeAgent: { value: Object.freeze((versionId, input) => {
+      if (typeof versionId !== "string" || typeof input !== "string" || !input.trim()) throw new TypeError("invokeAgent requires a version UUID and non-empty text input");
+      return agent(input, {invokeVersionId: versionId});
+    }), configurable: false, writable: false },
     parallel: { value: Object.freeze(parallel), configurable: false, writable: false },
     pipeline: { value: Object.freeze(pipeline), configurable: false, writable: false },
     budget: { value: Object.freeze(budget), configurable: false, writable: false },

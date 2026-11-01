@@ -14,6 +14,7 @@ interface ExplicitModelSelection {
 }
 
 export interface WorkflowAgentOptions {
+  invokeVersionId?: string;
   profileVersionId?: string;
   selection: ExplicitModelSelection | null;
   outputSchema: JsonSchema | null;

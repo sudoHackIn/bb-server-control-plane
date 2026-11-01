@@ -206,3 +206,31 @@ than overwrite a concurrent version. Enable/disable preserves that editing
 revision and draft. Refresh failures hide cached metadata and the editor;
 unmount disposes outstanding reads. The personal UI does not load this plugin
 frontend or gain native RPC access. Legacy assignment remains later work.
+
+### Published-agent calls on the shared server
+
+Use `await invokeAgent("<published-version-uuid>", "text input")` to run an
+approved conversation or the target's complete frozen workflow. This differs
+from `agent(prompt, {profileVersionId})`, which selects a worker configuration.
+The parent version must explicitly list the target in
+`delegation.allowedVersionIds`, and its execution owner must still have access.
+No model/tool/source/environment overrides are accepted. The result is an
+`agent-invocation-result` object with `invocationId`, `runId`, `projectId`,
+`profileVersionId`, `strategy` and text `output` (workflow JSON is serialized).
+The step is durable and uses the parent's call index for admission retries;
+replay rechecks grants and may reuse an already successful result.
+
+Qwen may use the `invoke_agent` BB tool through the bb MCP adapter if its profile
+allows `bb:invoke_agent`, enables MCP source `bb`, and explicitly lists the target.
+The tool accepts `versionId`, text `input` and a repeatable `key`, waits for the
+child and returns the same result contract. Its actual native tool thread supplies
+owner/project authority. It is unavailable on standalone BB. Do not use a parent
+ID from prompt text as authority. Inspect the native workflow call through the
+limited workflow inspection API/SDK/CLI; its `agentInvocation` field links to the
+actual child run and the UI opens that child's read-only inspection.
+
+Fixed tree bounds: depth 4, 64 calls, 8 outstanding invocations; each reservation
+has a 10 minute deadline that survives retries/restarts. Cancelled or failed work
+needs a new key for a new attempt. Reusing a key with different input/version
+conflicts. This does not promise exactly-once external side effects. Arbitrary
+JSON agent inputs and custom output contracts remain future work.

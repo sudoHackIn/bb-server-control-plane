@@ -244,7 +244,15 @@ export async function verifyNativeWorkflows({
       ]);
       for (const run of page.runs) {
         assert.equal(run.projectId, subject.project.projectId);
-        assert.equal(run.originThreadId, subject.thread.id);
+        const saved = db
+          .prepare(
+            "SELECT owner_user_id,origin_thread_id,project_id FROM control_plane_job_bindings WHERE kind='workflow-run' AND object_id=? AND revision=1",
+          )
+          .get(run.id);
+        assert.ok(saved);
+        assert.equal(saved.owner_user_id, subject.user.id);
+        assert.equal(saved.project_id, subject.project.projectId);
+        assert.equal(run.originThreadId, saved.origin_thread_id);
         found.add(run.id);
       }
       cursor = page.nextCursor;

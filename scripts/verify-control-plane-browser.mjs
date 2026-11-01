@@ -1339,17 +1339,57 @@ async function verifyAdministrativeDefinitions({
     await page.screenshot({
       path: join(artifacts, "administrative-definitions.png"),
     });
+  const composition = ready.users[0].inspection.composition;
+  assert.ok(composition?.runId && composition.childRunId);
+  await page.goto(
+    `${ready.origin}/settings/projects/${ready.users[0].projectId}/inspections?inspectKind=workflow&inspectRun=${composition.runId}&inspectCall=${composition.callId}`,
+  );
+  const inspectInvokedAgent = page.getByRole("button", {
+    name: "Inspect invoked agent",
+    exact: true,
+  });
+  const invocationCard = inspectInvokedAgent.locator("..");
+  await invocationCard.scrollIntoViewIfNeeded();
+  if (artifacts)
+    await invocationCard.screenshot({
+      path: join(artifacts, "invoked-agent-card-desktop.png"),
+    });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await invocationCard.scrollIntoViewIfNeeded();
+  assert.equal(
+    await invocationCard.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+    true,
+  );
+  if (artifacts)
+    await invocationCard.screenshot({
+      path: join(artifacts, "invoked-agent-card-mobile.png"),
+    });
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await inspectInvokedAgent.click();
+  await page.waitForURL(
+    (url) => url.searchParams.get("inspectRun") === composition.childRunId,
+  );
+  await visible(
+    page.getByRole("region", { name: "Run inspection", exact: true }),
+  );
+  await verifyPersonalSurface(
+    page,
+    "Run inspection",
+    "invoked-agent-inspection",
+  );
   await page.goto(`${ready.origin}/settings/projects`);
   await page
     .getByRole("button", { name: "Manage server agents", exact: true })
     .click();
   await visible(page.getByRole("form", { name: "Agent editor" }));
   const workerPolicyToggle = page.getByRole("checkbox", {
-    name: "Restrict worker profile selection",
+    name: "Restrict workflow worker selection",
   });
   assert.equal(await workerPolicyToggle.isChecked(), true);
   const workerPolicyInput = page.getByRole("textbox", {
-    name: "Allowed worker version IDs",
+    name: "Allowed agent version IDs",
   });
   assert.equal(await workerPolicyInput.inputValue(), "");
   const workerPolicyTarget = ready.reviewer.tests.workerProfileVersionId;
@@ -1383,7 +1423,7 @@ async function verifyAdministrativeDefinitions({
   assert.equal(await workerPolicyInput.inputValue(), workerPolicyTarget);
   assert.equal(await workerPolicyToggle.isChecked(), true);
   const policyFieldset = page.locator("fieldset").filter({
-    has: page.getByText("Workflow worker profiles", { exact: true }),
+    has: page.getByText("Agent delegation", { exact: true }),
   });
   await policyFieldset.scrollIntoViewIfNeeded();
   if (artifacts)
@@ -1551,6 +1591,7 @@ async function verifyAdministrativeDefinitions({
   );
   return {
     nativeAdministrativeDefinitionUiRendered: true,
+    publishedAgentChildInspectionNavigationBrowser: true,
     workerDelegationPolicyCreatedAndRepublishedInBrowser: true,
     workerDelegationPolicyDesktopAndMobileLayout: true,
     administrativeDefinitionsShowBothOwners: true,

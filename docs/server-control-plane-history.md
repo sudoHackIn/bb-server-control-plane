@@ -3839,3 +3839,41 @@ selection for Alice and Bob, actual UID/HOME/cwd, replay with revocation after
 restart, real browser creation/republication and crash recovery. Desktop and
 mobile policy fieldsets were visually reviewed. See
 [the verification record](control-plane-phase-97-verification.json).
+
+## P4.2 — Complete published-agent invocation
+
+Managed workflows can call `invokeAgent(versionId, textInput)`; approved Qwen
+profiles can use the `invoke_agent` BB/MCP tool. Both invoke the selected
+conversation or saved workflow through the same core admission service. Exact
+published target policy and current owner/project/profile grants are required.
+The real native parent supplies authority; callers cannot choose another user,
+project, HOME, model, tool set or arbitrary parent ID.
+
+A migrated core reservation precedes native admission and retains server-generated
+child identity. A lost reply reattaches to the same native run; changed input or
+version conflicts. Verified ancestry shares fixed depth 4, total 64, outstanding 8
+and ten-minute reservation deadlines. Delegated workflow roots avoid starvation
+behind an awaiting parent while retaining UID maintenance fences. Parent
+cancellation and authority loss stop saved native children. Native thread and
+workflow dispatch independently check the persisted invocation and deadline.
+
+The existing workflow call API/SDK/CLI returns trusted child metadata. Its BB
+inspector shows strategy, exact version and state and opens scoped native child
+history. The administrative profile editor explains the distinction between
+worker selection and complete invocation. Results remain native history with a
+bounded text envelope; saved workflow JSON is serialized as text.
+
+Integration tests exposed two boundary regressions: the plugin lifecycle facade
+needed to forward and fence the new internal methods, and the Qwen socket profile
+parser needed to accept published delegation/workflow metadata. Both have focused
+regression coverage. No host-daemon wire change or public parent-ID API is added.
+
+Verification: 604 tests in 91 files, typechecks and lint/format passed. Docker
+passed 63/63 tasks (847725 ms), including both users' native UID/HOME/cwd,
+workflow and Qwen MCP composition, policy denials, nested cancellation, child
+inspection browser navigation, clean restart, replay revocation/regrant and the
+existing abrupt workflow crash suite. The verification record is
+[P4.2](control-plane-phase-98-verification.json).
+Explicit abrupt nested/admission-window crash recovery and directly reopened-child
+parent provenance remain P4.3. Pending reservations require explicit native
+replay/tool retry; this stage makes no automatic boot-queue or exactly-once claim.

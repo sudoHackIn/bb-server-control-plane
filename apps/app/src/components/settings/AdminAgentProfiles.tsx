@@ -590,7 +590,7 @@ export function AdminAgentProfiles({ client }: { client: Client }) {
               </label>
               <fieldset className="space-y-2 rounded border p-3 sm:col-span-2">
                 <legend className="px-1 text-sm font-medium">
-                  Workflow worker profiles
+                  Agent delegation
                 </legend>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -603,19 +603,20 @@ export function AdminAgentProfiles({ client }: { client: Client }) {
                       })
                     }
                   />
-                  Restrict worker profile selection
+                  Restrict workflow worker selection
                 </label>
                 <p className="text-xs text-muted-foreground">
-                  The agent's own pinned version is always eligible. Other
-                  versions also require the executing user's current access
-                  grant. Disabling this restriction preserves legacy worker
-                  selection.
+                  The agent's own pinned version can run as a worker. Complete
+                  agent calls require an explicit target version and the
+                  executing user's current access. Disabling this restriction
+                  preserves legacy worker selection and disables complete agent
+                  calls.
                 </p>
                 {draft.restrictDelegation && (
                   <label className="flex flex-col gap-1 text-sm">
-                    Allowed worker version IDs
+                    Allowed agent version IDs
                     <textarea
-                      aria-label="Allowed worker version IDs"
+                      aria-label="Allowed agent version IDs"
                       rows={3}
                       value={draft.allowedVersionIds}
                       onChange={(event) =>
@@ -628,9 +629,8 @@ export function AdminAgentProfiles({ client }: { client: Client }) {
                     />
                     <span className="text-xs text-muted-foreground">
                       Exact published version UUIDs, comma separated. Empty
-                      allows only the agent's own version. This configures
-                      workflow workers; it does not invoke another agent's
-                      workflow.
+                      permits only this agent's own worker configuration and
+                      disables complete agent calls.
                     </span>
                   </label>
                 )}

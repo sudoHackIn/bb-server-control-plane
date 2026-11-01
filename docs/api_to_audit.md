@@ -4064,3 +4064,30 @@ The test record is provenance, not a new authority or durable workflow engine.
 Snapshot reads require source and target access; registered root bindings remain
 the authority for native history, workers and execution. No script/model/tool/path
 or caller-selected personal UID override is accepted in the limited test API.
+
+## Managed published-agent invocation (internal)
+
+Only bundled Workflows calls `InternalDoNotUseBackgroundJobs.internal_DO_NOT_USE_resolveAgent`,
+`internal_DO_NOT_USE_invokeAgent`, `internal_DO_NOT_USE_registerAgentStop` and
+`internal_DO_NOT_USE_invokedWorkflowIds`. Core owns canonical admission through
+its existing agent workflow/thread services. Workflow `invokeAgent` and the
+`invoke_agent` BB/MCP tool share the same core service. The tool is registered
+only on a managed server, requires `bb:invoke_agent` plus the bb MCP source, and
+uses the authenticated native tool thread; arguments cannot select an owner,
+project, cwd, model, tools or source. Workflows supply their saved root binding.
+Both paths require an explicit exact target version in the parent's published
+allowlist plus current project/profile execution access. Legacy absence never
+authorizes this operation.
+
+Core reserves one durable invocation per parent/key, with pinned input, owner,
+project, ancestry and canonical child key before native admission. Child thread
+and workflow dispatch recheck this authority. The scheduler's ID list comes only
+from currently authorized core reservations and bypasses ordinary root slots to
+avoid parent/child starvation; UID pause fences still apply. Limits are fixed
+at depth 4, 64 calls and 8 outstanding invocations per verified root tree, with a
+10 minute wall-clock deadline per reservation. These are not configurable fields.
+The registered stop callback exists only during that native worker generation;
+core uses it under service scope solely for a previously saved child identity,
+including cleanup after grants are revoked. Disposal unregisters it. No public
+plugin or daemon wire surface is added. Stabilization requires explicit review
+of nested recovery, whole-tree budgets and cancellation before any public API.

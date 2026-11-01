@@ -48,7 +48,8 @@ function summary(call: WorkflowCallInspection) {
     model: call.execution.model,
     reasoningLevel: call.execution.reasoningLevel,
     permissionMode: call.execution.permissionMode,
-    profileVersionId: call.options.profileVersionId ?? null,
+    profileVersionId:
+      call.options.invokeVersionId ?? call.options.profileVersionId ?? null,
     providerRetryAttempts: call.providerRetryAttempts,
     repairAttempts: call.repairAttempts,
     error: call.error === null ? null : utf8Prefix(call.error, 8192),

@@ -399,20 +399,24 @@ export function claimQueuedRun(
   db: Db,
   maxActiveRuns: number,
   pausedOwnerIds: readonly string[] = [],
+  delegatedRunIds: readonly string[] = [],
 ): WorkflowRunRow | null {
   return db.transaction(() => {
     const active = db
       .prepare(
-        `SELECT COUNT(*) AS count FROM workflow_runs WHERE status = 'running'`,
+        `SELECT COUNT(*) AS count FROM workflow_runs WHERE status = 'running' AND id NOT IN (SELECT value FROM json_each(?))`,
       )
-      .get() as { count: number };
-    if (active.count >= maxActiveRuns) return null;
+      .get(JSON.stringify(delegatedRunIds)) as { count: number };
     const row = optionalRun(
       db
         .prepare(
-          `${RUN_SELECT} WHERE status = 'queued' AND (owner_user_id IS NULL OR owner_user_id NOT IN (SELECT value FROM json_each(?))) ORDER BY created_at LIMIT 1`,
+          `${RUN_SELECT} WHERE status = 'queued' AND (owner_user_id IS NULL OR owner_user_id NOT IN (SELECT value FROM json_each(?))) AND (? OR id IN (SELECT value FROM json_each(?))) ORDER BY created_at LIMIT 1`,
         )
-        .get(JSON.stringify(pausedOwnerIds)),
+        .get(
+          JSON.stringify(pausedOwnerIds),
+          active.count < maxActiveRuns ? 1 : 0,
+          JSON.stringify(delegatedRunIds),
+        ),
     );
     if (row === null) return null;
     const changed = db

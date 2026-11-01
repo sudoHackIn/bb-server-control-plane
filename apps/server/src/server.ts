@@ -1,3 +1,4 @@
+import { createControlPlaneAgentInvocations } from "./control-plane/agent-invocations.js";
 import { createControlPlaneInspectionService } from "./control-plane/inspections.js";
 import { createControlPlaneMcpCredentials } from "./control-plane/mcp-credentials.js";
 import {
@@ -861,6 +862,12 @@ export function createApp(
     }
     return next();
   });
+  const agentInvocations = controlPlane
+    ? createControlPlaneAgentInvocations(
+        deps,
+        createControlPlaneWorkflowRpc(deps.db, () => pluginService),
+      )
+    : undefined;
   const workflowWorkers = controlPlane
     ? createControlPlaneWorkflowWorkers(deps)
     : null;
@@ -885,6 +892,7 @@ export function createApp(
             builtin,
             pluginId === "automations" ? automationWorkers : workflowWorkers,
             deps.hub,
+            agentInvocations,
           )
         : null,
     sharedPorts: deps.sharedPorts,
@@ -1173,6 +1181,7 @@ export function createApp(
     sdkFetch,
     sdkWebsocket: privateRealtime?.websocket,
     closeWebSockets: async () => {
+      await agentInvocations?.close();
       await workflowWorkers?.close();
       await automationWorkers?.close();
       controlPlane?.close();

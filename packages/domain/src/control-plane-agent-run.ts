@@ -12,7 +12,14 @@ export const controlPlaneAgentRunStartSchema = z
       .refine((value) => value.trim().length > 0)
       .refine((value) => new TextEncoder().encode(value).byteLength <= 131072),
     source: z.literal("manual"),
-    idempotencyKey: z.string().min(1).max(200),
+    idempotencyKey: z
+      .string()
+      .min(1)
+      .max(200)
+      .refine(
+        (key) => !key.startsWith("invocation:"),
+        "Reserved agent invocation key",
+      ),
   })
   .strict();
 

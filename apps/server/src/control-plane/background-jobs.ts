@@ -1,3 +1,4 @@
+import type { createControlPlaneAgentInvocations } from "./agent-invocations.js";
 import {
   isControlPlaneInspectionRead,
   assertControlPlaneInspectionMutationAllowed,
@@ -72,6 +73,7 @@ export function createControlPlaneBackgroundJobs(
     | "listWorkers"
   > | null = null,
   notifier: DbNotifier = noopNotifier,
+  invocations?: ReturnType<typeof createControlPlaneAgentInvocations>,
 ): InternalDoNotUseBackgroundJobs {
   const kinds: InternalDoNotUseBackgroundJobBinding["kind"][] =
     pluginId === BUILTIN_WORKFLOWS_PLUGIN_ID
@@ -95,6 +97,35 @@ export function createControlPlaneBackgroundJobs(
     return job;
   }
   return {
+    internal_DO_NOT_USE_invokedWorkflowIds() {
+      if (pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID || !invocations) return [];
+      return invocations.workflowIds();
+    },
+    internal_DO_NOT_USE_invokeAgent(parent, input, signal) {
+      assertControlPlaneInspectionMutationAllowed();
+      if (pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID || !invocations)
+        return denied();
+      if (
+        parent.kind === "workflow" &&
+        required(parent.id).kind !== "workflow-run"
+      )
+        return denied();
+      return invocations.invoke(parent, input, signal);
+    },
+    internal_DO_NOT_USE_resolveAgent(id, versionId) {
+      if (
+        pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID ||
+        !invocations ||
+        required(id).kind !== "workflow-run"
+      )
+        return denied();
+      return invocations.resolve({ kind: "workflow", id }, versionId);
+    },
+    internal_DO_NOT_USE_registerAgentStop(stop) {
+      if (pluginId !== BUILTIN_WORKFLOWS_PLUGIN_ID || !invocations)
+        return () => {};
+      return invocations.registerStop(stop);
+    },
     internal_DO_NOT_USE_executionPausedUserIds() {
       const principal = currentControlPlanePrincipal();
       return db

@@ -1067,6 +1067,31 @@ export function createPluginApi(options: {
     const source = getBackgroundJobs();
     if (source === null) return (backgroundJobs = null);
     backgroundJobs = {
+      internal_DO_NOT_USE_invokedWorkflowIds() {
+        assertLive();
+        return source.internal_DO_NOT_USE_invokedWorkflowIds?.() ?? [];
+      },
+      internal_DO_NOT_USE_resolveAgent(id, versionId) {
+        assertBackgroundAdmission();
+        if (!source.internal_DO_NOT_USE_resolveAgent)
+          throw new Error("Published agent invocation is unavailable");
+        return source.internal_DO_NOT_USE_resolveAgent(id, versionId);
+      },
+      internal_DO_NOT_USE_invokeAgent(parent, input, signal) {
+        assertBackgroundAdmission();
+        if (!source.internal_DO_NOT_USE_invokeAgent)
+          throw new Error("Published agent invocation is unavailable");
+        return source.internal_DO_NOT_USE_invokeAgent(parent, input, signal);
+      },
+      internal_DO_NOT_USE_registerAgentStop(stop) {
+        assertLive();
+        return (
+          source.internal_DO_NOT_USE_registerAgentStop?.((runId) => {
+            assertLive();
+            return stop(runId);
+          }) ?? (() => {})
+        );
+      },
       get internal_DO_NOT_USE_inspectionRead() {
         assertLive();
         return source.internal_DO_NOT_USE_inspectionRead;

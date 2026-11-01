@@ -10,6 +10,7 @@ import type {
 
 export const MAX_WORKFLOW_SOURCE_BYTES = 512 * 1024;
 export const AGENT_OPTION_KEYS = new Set([
+  "invokeVersionId",
   "profileVersionId",
   "provider",
   "model",
@@ -130,6 +131,7 @@ const jsonSchemaValueSchema = z.union([
 
 const storedAgentOptionsSchema = z
   .object({
+    invokeVersionId: z.string().uuid().optional(),
     profileVersionId: z.string().uuid().optional(),
     selection: z
       .object({
@@ -147,6 +149,16 @@ const storedAgentOptionsSchema = z
 
 export function parseStoredAgentOptions(value: unknown): WorkflowAgentOptions {
   const options = storedAgentOptionsSchema.parse(value) as WorkflowAgentOptions;
+  if (
+    options.invokeVersionId &&
+    (options.profileVersionId !== undefined ||
+      options.selection !== null ||
+      options.outputSchema !== null ||
+      options.title !== null)
+  )
+    throw new Error(
+      "Published agent invocation cannot override worker settings",
+    );
   if (options.outputSchema !== null) {
     assertValidJsonSchema(options.outputSchema, "stored agent outputSchema");
   }
@@ -382,6 +394,15 @@ export function parseAgentOptions(
       throw new Error(`Unknown agent option ${JSON.stringify(key)}`);
   }
 
+  const invokeVersionId = optionalNonEmptyString(value, "invokeVersionId");
+  if (invokeVersionId !== null) {
+    z.string().uuid().parse(invokeVersionId);
+    for (const key of Object.keys(value))
+      if (!["invokeVersionId", "phase"].includes(key))
+        throw new Error(
+          "Published agent invocation cannot override worker settings",
+        );
+  }
   const profileVersionId = optionalNonEmptyString(value, "profileVersionId");
   if (profileVersionId !== null) z.string().uuid().parse(profileVersionId);
   const provider = optionalNonEmptyString(value, "provider");
@@ -426,6 +447,7 @@ export function parseAgentOptions(
   }
 
   return {
+    ...(invokeVersionId !== null ? { invokeVersionId } : {}),
     ...(profileVersionId !== null ? { profileVersionId } : {}),
     selection:
       provider !== null && model !== null && reasoningLevel !== null

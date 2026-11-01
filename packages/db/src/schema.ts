@@ -660,6 +660,46 @@ export const controlPlaneJobBindings = sqliteTable(
   ],
 );
 
+export const controlPlaneAgentInvocations = sqliteTable(
+  "control_plane_agent_invocations",
+  {
+    id: text("id").primaryKey(),
+    parentKind: text("parent_kind", { enum: ["thread", "workflow"] }).notNull(),
+    parentId: text("parent_id").notNull(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => controlPlaneProjects.projectId),
+    profileVersionId: text("profile_version_id")
+      .notNull()
+      .references(() => controlPlaneProfileVersions.id),
+    rootId: text("root_id").notNull(),
+    depth: integer("depth").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    input: text("input").notNull(),
+    childKey: text("child_key").notNull().unique(),
+    workflowRunId: text("workflow_run_id").notNull().unique(),
+    runId: text("run_id"),
+    state: text("state", {
+      enum: ["pending", "running", "succeeded", "failed", "cancelled"],
+    }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_agent_invocations_parent_key_idx").on(
+      table.parentKind,
+      table.parentId,
+      table.idempotencyKey,
+    ),
+    index("control_plane_agent_invocations_root_idx").on(
+      table.rootId,
+      table.state,
+    ),
+  ],
+);
+
 export const controlPlaneTestRuns = sqliteTable(
   "control_plane_test_runs",
   {

@@ -73,6 +73,21 @@ describe("workflow durable data", () => {
     });
   }
 
+  it("admits verified delegated roots when the normal root limit is full and still fences paused owners", () => {
+    const parent = newRun();
+    expect(claimQueuedRun(db, 1)?.id).toBe(parent.id);
+    const ordinary = newRun();
+    const child = newRun();
+    db.prepare("UPDATE workflow_runs SET owner_user_id='alice' WHERE id=?").run(
+      child.id,
+    );
+    expect(claimQueuedRun(db, 1)).toBeNull();
+    expect(claimQueuedRun(db, 1, ["alice"], [child.id])).toBeNull();
+    expect(claimQueuedRun(db, 1, [], [child.id])?.id).toBe(child.id);
+    expect(getRunRequired(db, ordinary.id).status).toBe("queued");
+    expect(claimQueuedRun(db, 1, [], [child.id])).toBeNull();
+  });
+
   it("does not let a paused owner block other owners or spend a queued run's start budget", () => {
     const alice = newRun(),
       bob = newRun();

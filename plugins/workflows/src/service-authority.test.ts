@@ -1148,3 +1148,89 @@ it("persists managed evaluator scopes across same-run replay and fences foreign 
     await test.harness.dispose();
   }
 });
+
+it("records complete-agent invocation as a durable call and reuses it only while the target remains allowed", async () => {
+  const test = fixture();
+  const target = randomUUID();
+  let allowed = true;
+  test.authority.internal_DO_NOT_USE_resolveAgent = (_binding, version) => {
+    if (!allowed || version !== target) throw new Error("Delegation revoked");
+    return {
+      profileVersionId: target,
+      ...{
+        providerId: "qwen-server",
+        model: "specialist",
+        reasoningLevel: "none",
+        permissionMode: "full",
+      },
+    };
+  };
+  const invoke = vi.fn(async () => ({
+    type: "agent-invocation-result",
+    runId: "child-workflow",
+    output: "complete workflow",
+  }));
+  test.authority.internal_DO_NOT_USE_invokeAgent = invoke;
+  test.authority.evaluateWorkflow = async (
+    _id,
+    _input,
+    signal,
+    _events,
+    onAgent,
+  ) => {
+    if (!onAgent) throw new Error("No agent adapter");
+    return onAgent(
+      "task",
+      {
+        invokeVersionId: target,
+        selection: null,
+        outputSchema: null,
+        title: null,
+        phase: null,
+      },
+      signal,
+      null,
+    );
+  };
+  const controller = new AbortController();
+  let worker: Promise<void> | undefined;
+  try {
+    const source = await test.service.start(test.input);
+    test.setCaller(null);
+    worker = test.service.runWorker(controller.signal);
+    await vi.waitFor(() =>
+      expect(
+        getRunRequired(test.db, source.id).status,
+        getRunRequired(test.db, source.id).error ?? "",
+      ).toBe("succeeded"),
+    );
+    expect(invoke).toHaveBeenCalledOnce();
+    const call = test.db
+      .prepare(
+        "SELECT child_thread_id,options_json FROM workflow_calls WHERE run_id=?",
+      )
+      .get(source.id);
+    expect(call).toMatchObject({ child_thread_id: null });
+    const resumed = await test.service.start({
+      ...test.input,
+      resumedFromRunId: source.id,
+    });
+    await vi.waitFor(() =>
+      expect(getRunRequired(test.db, resumed.id).status).toBe("succeeded"),
+    );
+    expect(invoke).toHaveBeenCalledOnce();
+    allowed = false;
+    const denied = await test.service.start({
+      ...test.input,
+      resumedFromRunId: source.id,
+    });
+    await vi.waitFor(() =>
+      expect(getRunRequired(test.db, denied.id).status).toBe("failed"),
+    );
+    expect(invoke).toHaveBeenCalledOnce();
+  } finally {
+    controller.abort();
+    await worker;
+    await test.harness.dispose();
+  }
+});

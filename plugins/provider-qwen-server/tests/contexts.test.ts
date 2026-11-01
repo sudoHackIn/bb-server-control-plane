@@ -25,6 +25,8 @@ test("provider resolves numeric identity through private service socket; denies 
     profile: {
       versionId: randomUUID(),
       definition: {
+        delegation: { allowedVersionIds: [randomUUID()] },
+        workflow: { definitionId: "wfd_approved", revision: 1 },
         prompt: "Approved",
         providerId: "qwen-server",
         model: "approved-model",
@@ -56,6 +58,43 @@ test("provider resolves numeric identity through private service socket; denies 
       await resolveServiceContext(socket, context.cwd, sessionId, "thr_test"),
       context,
     );
+    const { delegation, workflow, ...legacyDefinition } =
+      context.profile.definition;
+    const legacy = {
+      ...context,
+      profile: { ...context.profile, definition: legacyDefinition },
+    };
+    response = legacy;
+    assert.deepEqual(
+      await resolveServiceContext(socket, context.cwd, sessionId, "thr_test"),
+      legacy,
+    );
+    for (const definitionPatch of [
+      { delegation: { allowedVersionIds: ["latest"] } },
+      {
+        delegation: {
+          allowedVersionIds: [
+            delegation.allowedVersionIds[0],
+            delegation.allowedVersionIds[0],
+          ],
+        },
+      },
+      { delegation: { allowedVersionIds: [], tools: ["unapproved"] } },
+      { workflow: { definitionId: "../../unapproved", revision: 1 } },
+      { workflow: { ...workflow, revision: 0 } },
+    ]) {
+      response = {
+        ...context,
+        profile: {
+          ...context.profile,
+          definition: { ...context.profile.definition, ...definitionPatch },
+        },
+      };
+      await assert.rejects(
+        resolveServiceContext(socket, context.cwd, sessionId, "thr_test"),
+      );
+    }
+    response = context;
     const previousSocket = process.env.QWEN_SERVER_CONTEXT_SOCKET;
     const mcp = createSdkMcpServer({ name: "unverified", tools: [] });
     const connect = vi.spyOn(mcp.instance, "connect");

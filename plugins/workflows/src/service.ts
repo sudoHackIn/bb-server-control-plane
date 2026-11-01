@@ -915,6 +915,26 @@ export function createWorkflowService(
     });
   }
 
+  function resolveManagedProfile(
+    bindingId: string,
+    options: WorkflowAgentOptions,
+  ) {
+    if (!backgroundJobs)
+      throw new Error("Managed workflow authority is unavailable");
+    if (options.invokeVersionId) {
+      if (!backgroundJobs.internal_DO_NOT_USE_resolveAgent)
+        throw new Error("Published agent invocation is unavailable");
+      return backgroundJobs.internal_DO_NOT_USE_resolveAgent(
+        bindingId,
+        options.invokeVersionId,
+      );
+    }
+    return backgroundJobs.resolveWorkerProfile(
+      bindingId,
+      options.profileVersionId ?? null,
+    );
+  }
+
   async function validateSelection(
     run: WorkflowRunRow,
     options: WorkflowAgentOptions,
@@ -929,10 +949,7 @@ export function createWorkflowService(
     if (backgroundJobs) {
       const binding = bindingFor(run);
       if (!binding) throw new Error("Workflow binding is unavailable");
-      const approved = backgroundJobs.resolveWorkerProfile(
-        binding.id,
-        options.profileVersionId ?? null,
-      );
+      const approved = resolveManagedProfile(binding.id, options);
       throwIfCancelled(signal);
       if (
         options.selection !== null &&
@@ -950,7 +967,10 @@ export function createWorkflowService(
         permissionMode: approved.permissionMode,
       });
     }
-    if (options.profileVersionId !== undefined)
+    if (
+      options.profileVersionId !== undefined ||
+      options.invokeVersionId !== undefined
+    )
       throw new Error(
         "agent profileVersionId requires a shared control-plane server",
       );
@@ -1069,9 +1089,15 @@ export function createWorkflowService(
       const sourceBinding = bindingFor(source);
       if (!sourceBinding)
         throw new Error("Workflow replay authority is unavailable");
-      backgroundJobs.resolveWorkerProfile(
+      resolveManagedProfile(
         binding.id,
-        options.profileVersionId ?? sourceBinding.profileVersionId,
+        options.invokeVersionId
+          ? options
+          : {
+              ...options,
+              profileVersionId:
+                options.profileVersionId ?? sourceBinding.profileVersionId,
+            },
       );
       if (candidate.replayedFromCallId === null) break;
       candidate = getCallById(db, candidate.replayedFromCallId);
@@ -1087,10 +1113,7 @@ export function createWorkflowService(
     const options = parseStoredAgentOptions(
       parseJson(call.optionsJson, "workflow call options"),
     );
-    backgroundJobs.resolveWorkerProfile(
-      binding.id,
-      options.profileVersionId ?? null,
-    );
+    resolveManagedProfile(binding.id, options);
   }
 
   async function assertWorkerResultAuthority(call: WorkflowCallRow) {
@@ -1162,10 +1185,7 @@ export function createWorkflowService(
       const cacheKey = resolvedIdentity.cacheKey;
       selection = resolvedIdentity.selection;
       if (backgroundJobs && run.authorityBindingId)
-        backgroundJobs.resolveWorkerProfile(
-          run.authorityBindingId,
-          options.profileVersionId ?? null,
-        );
+        resolveManagedProfile(run.authorityBindingId, options);
       const sameRunCall = getCall(db, run.id, callIndex);
       if (replay.prefix) {
         if (sameRunCall !== null) {
@@ -1257,6 +1277,33 @@ export function createWorkflowService(
           throw new Error("Workflow origin is archived or deleted");
         }
         throwIfCancelled(signal);
+        if (options.invokeVersionId) {
+          if (
+            !backgroundJobs?.internal_DO_NOT_USE_invokeAgent ||
+            !run.authorityBindingId
+          )
+            throw new Error(
+              "Published agent invocation requires the shared server",
+            );
+          const value = await backgroundJobs.internal_DO_NOT_USE_invokeAgent(
+            { kind: "workflow", id: run.authorityBindingId },
+            {
+              versionId: options.invokeVersionId,
+              input: prompt,
+              key: `step:${callIndex}`,
+            },
+            signal,
+          );
+          assertCallAuthority(call);
+          settleCall(db, {
+            id: call.id,
+            status: "succeeded",
+            result: value,
+            error: null,
+          });
+          publishRunsChanged(run.originThreadId);
+          return value;
+        }
         spawningCalls.add(call.id);
         const child =
           backgroundJobs && run.authorityBindingId
@@ -1897,7 +1944,10 @@ export function createWorkflowService(
             ...(managedBinding
               ? {
                   profileVersionId:
-                    options.profileVersionId ?? managedBinding.profileVersionId,
+                    options.invokeVersionId ??
+                    options.profileVersionId ??
+                    managedBinding.profileVersionId,
+                  ...(options.invokeVersionId ? { invocationVersion: 1 } : {}),
                 }
               : {}),
           },
@@ -2266,16 +2316,12 @@ export function createWorkflowService(
     while (!signal.aborted) {
       const shouldClaim = claimRequested || backgroundJobs !== null;
       claimRequested = false;
-      while (
-        shouldClaim &&
-        !shuttingDown &&
-        !signal.aborted &&
-        active.size < currentSettings.maxActiveRuns
-      ) {
+      while (shouldClaim && !shuttingDown && !signal.aborted) {
         const run = claimQueuedRun(
           db,
           currentSettings.maxActiveRuns,
           backgroundJobs?.internal_DO_NOT_USE_executionPausedUserIds() ?? [],
+          backgroundJobs?.internal_DO_NOT_USE_invokedWorkflowIds?.() ?? [],
         );
         if (run === null) break;
         publishRunsChanged(run.originThreadId);

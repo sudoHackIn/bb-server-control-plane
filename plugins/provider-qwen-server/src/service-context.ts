@@ -3,6 +3,25 @@ import { z } from "zod";
 const profileDefinition = z
   .object({
     purpose: z.string().max(280).optional(),
+    delegation: z
+      .object({
+        allowedVersionIds: z
+          .array(z.string().uuid())
+          .max(128)
+          .refine(
+            (ids) => new Set(ids).size === ids.length,
+            "Duplicate versions",
+          ),
+      })
+      .strict()
+      .optional(),
+    workflow: z
+      .object({
+        definitionId: z.string().regex(/^wfd_[A-Za-z0-9-]{1,100}$/u),
+        revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      })
+      .strict()
+      .optional(),
     prompt: z.string().max(131072),
     providerId: z.literal("qwen-server"),
     model: z.string().min(1).max(200),

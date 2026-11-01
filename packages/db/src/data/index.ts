@@ -561,3 +561,4 @@ export * from "./control-plane-uid-maintenance.js";
 
 export * from "./control-plane-project-maintenance.js";
 export * from "./control-plane-project-roles.js";
+export * from "./control-plane-agent-invocations.js";

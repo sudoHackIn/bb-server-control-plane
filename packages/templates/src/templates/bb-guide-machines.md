@@ -347,7 +347,7 @@ Published definitions may include `delegation: {allowedVersionIds: ["<version-uu
 This limits the existing workflow `agent(prompt, {profileVersionId})` worker path
 to those exact immutable versions and the root's own pinned version. An empty
 list permits only that root version. Omission preserves legacy worker selection;
-it does not authorize future published-agent invocation. The administrator's
+it does not authorize published-agent invocation. The administrator's
 agent editor enables this restriction by default for new agents and preserves
 it when editing a version. Supply the same JSON through SDK profile
 create/publish or CLI `profiles create/publish --definition-stdin`.
@@ -355,7 +355,8 @@ This list never grants user access: the current executing user's profile/project
 grants are also checked at admission, resume, result and replay. Version IDs may
 be prepared before grants; missing or disabled targets cannot execute. A workflow
 profile selected as a worker contributes its model/tools, not its saved workflow;
-invoking an entire published agent is a separate forthcoming operation.
+invoke an entire published agent with the separate `invokeAgent` operation
+described below.
 
 Managed native thread creation requires `bb thread spawn --profile-version
 <version-id>` (SDK/native HTTP field `controlPlaneProfileVersionId`) with a
@@ -1222,3 +1223,37 @@ recalled by revoking source read access. Execution continues under the test's
 current project/profile authority. Draft edits or publication do not rewrite an
 admitted snapshot. The workspace and runtime credentials are not copied or frozen;
 prepare any files/relative workflow sources in the selected test project.
+
+### Published-agent composition
+
+A shared-server workflow may call `await invokeAgent("<version-uuid>", "input")`
+to execute a published conversation or its complete frozen workflow. The parent's
+`delegation.allowedVersionIds` must explicitly include that version; current
+execution-owner/project/profile access is independently required. The old
+`agent(prompt, {profileVersionId})` only selects a worker's configuration.
+No model, tools, owner, project, cwd or source overrides are accepted.
+
+Start the authoring workflow through the existing limited API/SDK
+`workflows.start` or `bb server access workflows start --project <project-id>
+--profile-version <parent-version-id> --script-stdin --json`.
+Read its steps using `bb server access workflows history <run-id> --json` and
+`workflows call <run-id> <call-id> --json` (SDK `workflows.inspectCall`).
+The call's optional `agentInvocation` contains the saved child run, status,
+strategy and profile version, and the inspector links to its native history.
+The result object has type `agent-invocation-result`, invocation/run/project and
+profile IDs, `strategy`, and text `output`; workflow JSON is serialized as text.
+
+For Qwen, enable MCP source `bb` and tool `bb:invoke_agent` in the parent's
+published version. The tool takes `versionId`, text `input`, and repeatable `key`.
+It waits for the same core invocation path, using the authenticated native
+thread as parent. Standalone servers cannot use these managed calls. No new
+external endpoint accepts a parent ID as execution authority.
+
+Core persists admission before launch and reuses the same child on a retry of
+the same parent/key/input/version. A changed request conflicts. Fixed bounds are
+depth 4, 64 calls and 8 outstanding invocations per verified root tree, and a
+10 minute deadline per reservation. Ordinary workflow root slots do not block
+a parent's authorized child; UID maintenance fences still apply. Cancellation
+stops the saved native child; current parent and target grants are rechecked on
+selection, dispatch, waiting and replay. Exactly-once external side effects are
+not guaranteed.

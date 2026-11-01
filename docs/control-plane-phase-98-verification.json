@@ -1,0 +1,92 @@
+{
+  "scope": "P4.2 complete published-agent invocation from workflows and Qwen BB/MCP",
+  "changes": {
+    "sharedCoreAdmissionForConversationAndSavedWorkflow": true,
+    "explicitPinnedTargetPolicyAndCurrentGrants": true,
+    "persistedParentAuthorityAndServerGeneratedChildIdentity": true,
+    "durableReservationBeforeNativeAdmission": true,
+    "migration": "0166_empty_zeigeist",
+    "treeLimits": {
+      "maxDepth": 4,
+      "maxCalls": 64,
+      "maxOutstanding": 8,
+      "deadlineMs": 600000
+    },
+    "nativeChildCancellationAndScopedInspection": true,
+    "workflowDsl": "invokeAgent(versionId, textInput)",
+    "qwenTool": {
+      "name": "invoke_agent",
+      "profileTool": "bb:invoke_agent",
+      "mcpSource": "bb"
+    },
+    "managementSurfaces": "existing agent-runs and workflow inspection API/SDK/CLI",
+    "newPublicParentIdEndpoint": false,
+    "pluginLifecycleFacadeAndQwenMetadataSchemaRegressionsFixed": true,
+    "hostDaemonWireChanged": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 604,
+    "testFilesPassed": 91,
+    "testsByPackage": {
+      "serverControlPlane": 161,
+      "pluginSdkLifecycle": 19,
+      "nativeWorkflows": 308,
+      "ui": 83,
+      "domain": 2,
+      "serverQwenProvider": 31
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "changedFileFormat": "passed",
+    "dockerStatus": "passed",
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p4-invocations-browser-chrome\" BB_TEST_BROWSER_CHANNEL=chrome caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "manualVisualReview": [
+      "invoked-agent-card-mobile.png",
+      "worker-policy-desktop.png"
+    ],
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/server -- test/services/plugins/plugin-sdk.test.ts",
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=bb-plugin-provider-qwen-server",
+      "pnpm exec turbo run test --filter=@bb/domain -- test/control-plane-profile.test.ts",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane src/components/settings/AdminAgentProfiles.test.tsx src/components/settings/AdminDiagnosticAccess.test.tsx src/components/settings/AdminProjectRoles.test.tsx src/components/thread/timeline/ThreadTimelineRows.presentation.test.tsx src/App.project-settings-routes.test.tsx",
+      "pnpm exec turbo run typecheck --filter=bb-plugin-provider-qwen-server --filter=@bb/server --filter=bb-plugin-workflows --filter=@bb/app --filter=@bb/cli"
+    ],
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 847725,
+    "browserChannel": "chrome",
+    "browserVersion": "156.0.8078.74",
+    "proofs": {
+      "publishedAgentConversationAndWorkflowCompositionTwoUsers": true,
+      "qwenMcpPublishedAgentInvocationTwoUsers": true,
+      "qwenMcpDeniedTargetCreatesNoInvocationTwoUsers": true,
+      "parentCancellationStopsDelegatedWorkflowAndWorker": true,
+      "publishedAgentCompositionMetadataAndResultsSurviveRestart": true,
+      "publishedAgentCompositionReplayRevocationAndRegrant": true,
+      "publishedWorkflowAgentsNativeUidHomeCwdTwoUsers": true,
+      "revokedBobCredentialStillDeniedAfterRestart": true,
+      "personalAutomationLoggedOutOwnerDeniedAfterRestart": true,
+      "abruptCrashWorkflowRecoveryVerified": true,
+      "publishedAgentChildInspectionNavigationBrowser": true,
+      "workerDelegationPolicyCreatedAndRepublishedInBrowser": true
+    }
+  },
+  "limitations": [
+    "Input and result output are text; saved workflow JSON is serialized in the result envelope. The envelope is bounded to 1 MiB.",
+    "Delegation limits are fixed in this slice. Legacy absent policy permits historical worker selection but never complete published-agent invocation.",
+    "Native Qwen/thread concurrency queues still apply. Awaited children require available harness capacity; delegated workflow root admission does not reserve Qwen process capacity.",
+    "Pending reservations reattach through explicit native replay/tool retry; no automatic boot queue or exactly-once effects are claimed.",
+    "P4.3 retains explicit abrupt nested/admission-window crash tests, recovery hardening and directly reopened-child parent provenance.",
+    "The workflow call remains queued while the core invocation is running; its agentInvocation metadata exposes the actual child state.",
+    "Docker uses stock Qwen and a deterministic model fixture, not corporate harness authorization."
+  ],
+  "verificationNotes": [
+    "Real migrated SQLite verifies authority, key conflicts, per-root depth/outstanding/total budgets, expired native thread/workflow dispatch, lost admission replies and cancellation during delayed admission.",
+    "Native workflow scheduler tests cover delegated admission at ordinary root capacity and maintenance fences.",
+    "The plugin lifecycle facade forwards and fences all new internal methods, including stop callback generations.",
+    "The Qwen Unix-socket profile parser accepts delegation and workflow metadata while rejecting malformed/duplicate/unknown policy fields.",
+    "Default bundled Chromium also crashed on about:blank on this host; production browser checks use installed Chrome.",
+    "The token-revocation fixture preserves existing workflow/automation 401 assertions after restart, then performs fresh certificate authorization only for the new two-owner composition checks and logs out again."
+  ]
+}
