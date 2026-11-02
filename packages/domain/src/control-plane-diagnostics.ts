@@ -43,3 +43,20 @@ export const controlPlaneInspectionPageSchema = z
     nextCursor: z.string().nullable(),
   })
   .strict();
+
+export const controlPlaneDelegationSchema = z
+  .object({
+    invocationId: z.string().uuid(),
+    state: z.enum(["pending", "running", "succeeded", "failed", "cancelled"]),
+    cleanupPending: z.boolean(),
+    depth: z.number().int().positive(),
+    deadlineAt: z.number(),
+    parent: z
+      .object({ kind: z.enum(["thread", "workflow"]), id: z.string() })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type ControlPlaneDelegation = z.infer<
+  typeof controlPlaneDelegationSchema
+>;

@@ -12,6 +12,7 @@ import { request } from "node:https";
 export function createUserThreadFixture({ db, users }) {
   const failedWorkers = new Map();
   let resumed = false;
+  let crashHasHappened = false;
   let saved;
   const sessions = new Map();
   function handle(body, res) {
@@ -135,6 +136,21 @@ export function createUserThreadFixture({ db, users }) {
           (tool) => tool.function?.name === "mcp__bb__invoke_agent",
         ),
       );
+    }
+    if (
+      !first &&
+      !crashHasHappened &&
+      (marker.startsWith("worker-hang-crash-delegation-") ||
+        marker === "worker-hang-delegation-chat-alice")
+    ) {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(": awaiting crash\n\n");
+      const heartbeat = setInterval(
+        () => res.write(": awaiting crash\n\n"),
+        1000,
+      );
+      res.once("close", () => clearInterval(heartbeat));
+      return true;
     }
     const delta =
       invocationPending && !first
@@ -789,6 +805,9 @@ export function createUserThreadFixture({ db, users }) {
 
       await releaseIdleSessions(false);
       const workflowAgents = await verifyPublishedWorkflowAgents({
+        origin,
+        launch,
+        signal,
         password,
         subjects: created,
         userRequest: (login, path, options = {}) =>
@@ -1330,15 +1349,30 @@ export function createUserThreadFixture({ db, users }) {
       };
     },
     async beforeCrash(serverPid) {
+      await saved.authorize({ login: "bob" });
+      try {
+        await saved.workflowAgents.beforeCrash();
+      } finally {
+        await saved.command("bob", ["logout", "--json"]);
+      }
       await saved.workflows.beforeCrash();
       await saved.automations.beforeCrash(serverPid);
     },
+    async assertBeforeCrash() {
+      saved.workflowAgents.assertBeforeCrash();
+    },
     async afterCrashShutdown() {
+      crashHasHappened = true;
       await saved.workflows.afterCrashShutdown();
+      await saved.workflowAgents.afterCrashShutdown();
     },
     async afterCrash() {
       const workflowProof = await saved.workflows.afterCrash();
-      return { ...workflowProof, ...(await saved.automations.afterCrash()) };
+      return {
+        ...workflowProof,
+        ...(await saved.automations.afterCrash()),
+        ...(await saved.workflowAgents.afterCrash()),
+      };
     },
     async beforeRestart() {
       await saved.workflows.beforeRestart();

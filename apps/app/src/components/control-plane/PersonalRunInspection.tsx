@@ -1,3 +1,4 @@
+import { DelegatedRunBanner } from "./DelegatedRunBanner";
 import { PersonalCallDiagnostics } from "./PersonalCallDiagnostics";
 import { PersonalWorkflowTrace } from "./PersonalWorkflowTrace";
 import { personalInspectionSearch } from "./personal-inspection-navigation";
@@ -87,6 +88,9 @@ export function PersonalRunInspection({
       aria-label="Run inspection"
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
     >
+      {overview?.delegation && (
+        <DelegatedRunBanner value={overview.delegation} />
+      )}
       <PersonalPageHeader
         icon="Workflow"
         title={overview?.run.name ?? "Run inspection"}

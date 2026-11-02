@@ -1,8 +1,12 @@
+import { once } from "node:events";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 export async function verifyPublishedWorkflowAgents({
   subjects,
+  origin,
+  launch,
+  signal,
   userRequest,
   userCommand,
   sendAdmin,
@@ -12,6 +16,82 @@ export async function verifyPublishedWorkflowAgents({
   db,
 }) {
   const published = [];
+  const crashRuns = [];
+  let crashCapacity = null;
+  async function adminCommand(args, input = "") {
+    const child = launch(["apps/cli/dist/index.js", ...args], {
+      env: {
+        ...process.env,
+        HOME: "/tmp/bb-workflow-admin",
+        BB_SERVER_URL: origin,
+        BB_CLI: "",
+        BB_CLI_ERROR_LOG: "0",
+        NODE_EXTRA_CA_CERTS: "/tmp/bb-test-certificates/ca.crt",
+      },
+    });
+    let output = "",
+      error = "";
+    child.stdout.on("data", (part) => (output += part));
+    child.stderr.on("data", (part) => (error += part));
+    child.stdin.end(input);
+    const [code] = await once(child, "exit", { signal });
+    return { code, output, error };
+  }
+  async function capacity(args) {
+    const login = await adminCommand(
+      [
+        "server",
+        "access",
+        "login",
+        "--login",
+        "operator",
+        "--password-stdin",
+        "--json",
+      ],
+      password,
+    );
+    assert.equal(login.code, 0, login.error || login.output);
+    await wait(async () => {
+      const result = await adminCommand(["plugin", "list", "--json"]);
+      assert.equal(result.code, 0, result.error || result.output);
+      const plugin = JSON.parse(result.output).plugins.find(
+        (row) => row.id === "concurrency-limit",
+      );
+      assert.notEqual(plugin?.status, "error", plugin?.statusDetail);
+      return plugin?.status === "running";
+    }, "concurrency plugin ready after restart");
+    let value = null;
+    await wait(async () => {
+      const result = await adminCommand([
+        "concurrency-limit",
+        ...args,
+        "--json",
+      ]);
+      if (
+        result.code !== 0 &&
+        result.error.includes("unknown command 'concurrency-limit'")
+      )
+        return false;
+      assert.equal(result.code, 0, result.error || result.output);
+      value = JSON.parse(result.output);
+      return true;
+    }, "concurrency command registration after restart");
+    return value;
+  }
+  async function fixture(mode, input) {
+    const child = launch([
+      "workflow-worker-check.mjs",
+      mode,
+      JSON.stringify(input),
+    ]);
+    let output = "",
+      error = "";
+    child.stdout.on("data", (part) => (output += part));
+    child.stderr.on("data", (part) => (error += part));
+    child.stdin.end();
+    assert.equal((await once(child, "exit", { signal }))[0], 0, error);
+    return JSON.parse(output);
+  }
   const base = "/control-plane/user/agent-runs";
   const definitions = "/control-plane/user/workflow-definitions";
   const metadata =
@@ -936,6 +1016,7 @@ export async function verifyPublishedWorkflowAgents({
       0,
     );
     published.push({
+      workflowAgent: agent.body,
       compositionSource: {
         profileVersionId: delegationProfile.body.version.id,
         script: delegationScript,
@@ -945,6 +1026,7 @@ export async function verifyPublishedWorkflowAgents({
         runId: composed.body.runId,
         callId: composedHistory.calls[1].id,
         childRunId: composedOutput.workflow.runId,
+        chatRunId: composedOutput.chat.runId,
       },
       subject,
       body,
@@ -976,6 +1058,320 @@ export async function verifyPublishedWorkflowAgents({
       publishedWorkflowAgentsIdempotencyAndForeignAccessDenied: true,
       publishedWorkflowAgentsNativeHistoryAndReplay: true,
       publishedWorkflowStepsPinnedProfileAndForeignChildScope: true,
+    },
+    async beforeCrash() {
+      const hostId = db
+        .prepare(
+          "SELECT host_id FROM control_plane_projects WHERE project_id=?",
+        )
+        .get(published[0].subject.project.projectId).host_id;
+      const limits = await capacity(["status"]);
+      assert.equal(limits.globalLimit, null);
+      const host = limits.hosts.find((row) => row.id === hostId);
+      assert.ok(host);
+      crashCapacity = { hostId, previous: host.override };
+      const reserved = await capacity(["host", hostId, "6"]);
+      assert.equal(reserved.effectiveLimit, 6);
+      for (const item of published) {
+        const login = item.subject.user.login;
+        const marker = `worker-hang-crash-delegation-${login}`;
+        const pendingInput = `BB_PERSONAL_delegated-window-${login}`;
+        const nested = `invokeAgent(${JSON.stringify(item.workflowAgent.version.id)},"BB_PERSONAL_${marker}")`;
+        const first =
+          login === "alice"
+            ? `parallel([()=>${nested},()=>invokeAgent(${JSON.stringify(item.subject.profile.body.version.id)},"BB_PERSONAL_worker-hang-delegation-chat-alice")])`
+            : nested;
+        const script = `export const meta={name:"delegation-crash",description:"Nested native invocation recovery"}; const first=await ${first}; return [first,await invokeAgent(${JSON.stringify(item.subject.profile.body.version.id)},${JSON.stringify(pendingInput)})];`;
+        const launched = await userRequest(
+          login,
+          "/control-plane/user/workflows",
+          {
+            method: "POST",
+            body: {
+              projectId: item.subject.project.projectId,
+              profileVersionId: item.compositionSource.profileVersionId,
+              script,
+            },
+          },
+        );
+        assert.equal(launched.status, 201, JSON.stringify(launched.body));
+        await wait(
+          async () => {
+            try {
+              await readFile(
+                `${item.subject.user.home}/bb-personal-${marker}.json`,
+              );
+              return true;
+            } catch (error) {
+              if (error.code === "ENOENT") return false;
+              throw error;
+            }
+          },
+          `nested invocation before crash ${login}`,
+          90000,
+        );
+        const parent = db
+          .prepare(
+            "SELECT id FROM control_plane_job_bindings WHERE kind='workflow-run' AND object_id=?",
+          )
+          .get(launched.body.id);
+        const delegated = db
+          .prepare(
+            "SELECT * FROM control_plane_agent_invocations WHERE parent_id=? AND idempotency_key='step:0'",
+          )
+          .get(parent.id);
+        assert.equal(delegated.state, "running");
+        assert.ok(delegated.run_id?.startsWith("wfa_"));
+        let conversation = null;
+        if (login === "alice") {
+          await wait(
+            async () => {
+              try {
+                await readFile(
+                  `${item.subject.user.home}/bb-personal-worker-hang-delegation-chat-alice.json`,
+                );
+                return true;
+              } catch (error) {
+                if (error.code === "ENOENT") return false;
+                throw error;
+              }
+            },
+            "live delegated conversation before crash",
+            90000,
+          );
+          conversation = db
+            .prepare(
+              "SELECT * FROM control_plane_agent_invocations WHERE parent_id=? AND idempotency_key='step:1'",
+            )
+            .get(parent.id);
+          assert.equal(conversation.state, "running");
+          assert.ok(conversation.run_id?.startsWith("thr_"));
+        }
+        const pending = await fixture("reserve-invocation", {
+          parentId: parent.id,
+          versionId: item.subject.profile.body.version.id,
+          input: pendingInput,
+          key: login === "alice" ? "step:2" : "step:1",
+        });
+        assert.equal(pending.state, "pending");
+        assert.equal(pending.runId, null);
+        assert.equal(
+          db
+            .prepare(
+              "SELECT count(*) AS n FROM control_plane_threads WHERE run_idempotency_key=?",
+            )
+            .get(pending.childKey).n,
+          0,
+        );
+        crashRuns.push({
+          item,
+          parentId: parent.id,
+          runId: launched.body.id,
+          delegated,
+          pending,
+          conversation,
+        });
+      }
+    },
+    assertBeforeCrash() {
+      for (const row of crashRuns) {
+        const saved = db
+          .prepare(
+            "SELECT state FROM control_plane_agent_invocations WHERE id=?",
+          )
+          .get(row.delegated.id);
+        assert.equal(
+          saved.state,
+          "running",
+          "Delegated workflow must still be active at the actual kill",
+        );
+        assert.ok(
+          db
+            .prepare(
+              "SELECT count(*) AS n FROM threads t JOIN control_plane_threads o ON o.thread_id=t.id JOIN control_plane_job_bindings b ON b.id=o.job_binding_id JOIN control_plane_job_bindings p ON p.id=b.source_binding_id WHERE p.object_id=? AND t.status IN ('active','starting')",
+            )
+            .get(row.delegated.run_id).n > 0,
+        );
+        assert.equal(
+          db
+            .prepare(
+              "SELECT state FROM control_plane_agent_invocations WHERE id=?",
+            )
+            .get(row.pending.id).state,
+          "pending",
+        );
+        if (row.conversation) {
+          assert.equal(
+            db
+              .prepare(
+                "SELECT state FROM control_plane_agent_invocations WHERE id=?",
+              )
+              .get(row.conversation.id).state,
+            "running",
+          );
+          assert.ok(
+            ["active", "starting"].includes(
+              db
+                .prepare("SELECT status FROM threads WHERE id=?")
+                .get(row.conversation.run_id).status,
+            ),
+          );
+        }
+      }
+    },
+    async afterCrashShutdown() {
+      const alice = crashRuns.find(
+        (row) => row.item.subject.user.login === "alice",
+      );
+      assert.ok(alice);
+      await fixture("access", {
+        profileId: alice.item.workflowAgent.profile.id,
+        userId: alice.item.subject.user.id,
+        allowed: false,
+      });
+    },
+    async afterCrash() {
+      for (const row of crashRuns) {
+        const login = row.item.subject.user.login;
+        await wait(
+          () => {
+            const call = db
+              .prepare(
+                "SELECT state,cleanup_pending FROM control_plane_agent_invocations WHERE id=?",
+              )
+              .get(row.delegated.id);
+            return (
+              call.state === (login === "alice" ? "cancelled" : "succeeded") &&
+              call.cleanup_pending === 0
+            );
+          },
+          `nested invocation reconciles after crash ${login}`,
+          90000,
+        ).catch((error) => {
+          const calls = db
+            .prepare(
+              "SELECT id,idempotency_key,state,cleanup_pending,run_id FROM control_plane_agent_invocations WHERE parent_id=?",
+            )
+            .all(row.parentId);
+          throw new Error(
+            `Nested recovery snapshot ${JSON.stringify({ login, parent: row.runId, calls })}`,
+            { cause: error },
+          );
+        });
+        const calls = db
+          .prepare(
+            "SELECT * FROM control_plane_agent_invocations WHERE parent_id=? ORDER BY idempotency_key",
+          )
+          .all(row.parentId);
+        assert.equal(calls.length, login === "alice" ? 3 : 2);
+        assert.equal(calls[0].id, row.delegated.id);
+        assert.equal(calls[0].run_id, row.delegated.run_id);
+        const pendingCall = calls.find((call) => call.id === row.pending.id);
+        assert.equal(pendingCall.created_at, row.pending.createdAt);
+        assert.equal(pendingCall.depth, row.pending.depth);
+        if (login === "alice") {
+          await wait(() => {
+            const call = db
+              .prepare(
+                "SELECT state,cleanup_pending FROM control_plane_agent_invocations WHERE id=?",
+              )
+              .get(row.conversation.id);
+            return call.state === "cancelled" && call.cleanup_pending === 0;
+          }, "interrupted delegated conversation fenced after crash");
+          assert.equal(
+            db
+              .prepare(
+                "SELECT count(*) AS n FROM control_plane_threads WHERE run_idempotency_key=?",
+              )
+              .get(row.conversation.child_key).n,
+            1,
+          );
+          assert.ok(
+            !["active", "starting"].includes(
+              db
+                .prepare("SELECT status FROM threads WHERE id=?")
+                .get(row.conversation.run_id).status,
+            ),
+          );
+          await wait(
+            () =>
+              db
+                .prepare(
+                  "SELECT state,cleanup_pending FROM control_plane_agent_invocations WHERE id=?",
+                )
+                .get(row.pending.id).state === "cancelled",
+            "failed parent fences pending sibling",
+          );
+          assert.equal(
+            db
+              .prepare(
+                "SELECT count(*) AS n FROM control_plane_threads WHERE run_idempotency_key=?",
+              )
+              .get(row.pending.childKey).n,
+            0,
+          );
+          assert.equal(
+            db
+              .prepare(
+                "SELECT count(*) AS n FROM threads t JOIN control_plane_threads o ON o.thread_id=t.id JOIN control_plane_job_bindings b ON b.id=o.job_binding_id JOIN control_plane_job_bindings p ON p.id=b.source_binding_id WHERE p.object_id=? AND t.status IN ('active','starting')",
+              )
+              .get(row.delegated.run_id).n,
+            0,
+          );
+        } else {
+          await wait(
+            () =>
+              db
+                .prepare(
+                  "SELECT state FROM control_plane_agent_invocations WHERE id=?",
+                )
+                .get(row.pending.id).state === "succeeded",
+            "pending admission resumes after crash",
+          );
+          assert.equal(
+            db
+              .prepare(
+                "SELECT count(*) AS n FROM control_plane_threads WHERE run_idempotency_key=?",
+              )
+              .get(row.pending.childKey).n,
+            1,
+          );
+          const proof = JSON.parse(
+            await readFile(
+              `${row.item.subject.user.home}/bb-personal-delegated-window-bob.json`,
+              "utf8",
+            ),
+          );
+          assert.equal(proof.uid, row.item.subject.user.uid);
+          assert.equal(proof.home, row.item.subject.user.home);
+          assert.equal(proof.cwd, row.item.subject.project.cwd);
+        }
+      }
+      const alice = crashRuns.find(
+        (row) => row.item.subject.user.login === "alice",
+      );
+      await fixture("access", {
+        profileId: alice.item.workflowAgent.profile.id,
+        userId: alice.item.subject.user.id,
+        allowed: true,
+      });
+      assert.ok(crashCapacity);
+      const restoredCapacity = await capacity([
+        "host",
+        crashCapacity.hostId,
+        crashCapacity.previous === null
+          ? "auto"
+          : String(crashCapacity.previous),
+      ]);
+      assert.equal(restoredCapacity.override, crashCapacity.previous);
+      return {
+        crashFixtureHostCapacityScopedAndRestored: true,
+        nestedPublishedWorkflowCrashReusesNativeIdentity: true,
+        nestedConversationCrashFencedWithoutDuplicate: true,
+        pendingInvocationWindowSurvivesCrashWithoutDuplicateChild: true,
+        revokedDelegationAfterCrashFencesDescendants: true,
+        invocationDepthAndDeadlineNotResetAfterCrash: true,
+      };
     },
     async afterRestart() {
       for (const saved of published) {

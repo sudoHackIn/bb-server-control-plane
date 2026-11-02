@@ -1261,6 +1261,7 @@ export async function verifyManagedRuntime({
       ...descendants,
     ];
     const exited = once(child, "exit", { signal });
+    await personal.assertBeforeCrash();
     child.kill("SIGKILL");
     await exited;
     const cleanupDeadline = Date.now() + 20000;

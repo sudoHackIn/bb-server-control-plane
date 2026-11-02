@@ -1,3 +1,4 @@
+import { controlPlaneDelegationSchema } from "./control-plane-diagnostics.js";
 import { z } from "zod";
 import {
   approvalPendingInteractionResolutionSchema,
@@ -25,6 +26,7 @@ export const controlPlaneThreadSendSchema = z
   })
   .strict();
 export const controlPlaneThreadSummarySchema = z.object({
+  delegation: controlPlaneDelegationSchema.optional(),
   id: z.string(),
   projectId: z.string(),
   profileVersionId: z.string().uuid().nullable(),

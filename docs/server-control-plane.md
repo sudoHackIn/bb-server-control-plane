@@ -116,16 +116,18 @@ and [P3.5 verification](control-plane-phase-96-verification.json).
 
 Goal: an agent chooses an allowed specialist at runtime; a workflow can invoke that specialist by version.
 
-- [ ] P4.3: Exercise abrupt crashes during nested conversation/workflow invocation and the reservation-to-native-admission window. Verify explicit reattachment/replay, current grants and remaining tree/deadline budgets without duplicate native identities or orphaned active children.
-- [ ] Preserve delegation provenance when a child is reopened directly: show its authorized parent and distinguish readonly completed children from resumable work. Test cancellation/revocation during nested recovery, including maintenance pauses and plugin generation replacement. Verify bounded failure when awaited children exhaust native Qwen/thread capacity.
+- [ ] P4.4: Exercise physical native Qwen/thread capacity exhaustion with an awaiting parent and child. Verify bounded failure, cancellation, capacity release and a subsequent successful call without resetting invocation budgets/deadlines. Decide whether explicit child-capacity reservation is necessary from that evidence.
 
 P4.1 worker policy is delivered; see [its contract](control-plane-workflow-agents.md#worker-delegation-policy)
 and [verification](control-plane-phase-97-verification.json). P4.2 adds complete
 published-agent invocation through workflows and Qwen BB/MCP, verified ancestry,
 fixed tree/deadline budgets, native cancellation, scoped results and child
 inspection navigation. See [the invocation contract](control-plane-workflow-agents.md#complete-published-agent-invocation)
-and [verification](control-plane-phase-98-verification.json). The remaining slice
-above concerns nested crash recovery and directly reopened-child provenance.
+and [verification](control-plane-phase-98-verification.json). P4.3 adds nested
+crash recovery checks, durable cleanup fencing/retry and parent provenance for
+directly reopened children. See [its contract](control-plane-workflow-agents.md#delegation-recovery-and-provenance)
+and [verification](control-plane-phase-99-verification.json). Physical harness
+capacity exhaustion remains open above.
 
 ### P5 — More triggers and richer contracts
 

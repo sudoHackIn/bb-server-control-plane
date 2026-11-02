@@ -1257,3 +1257,20 @@ a parent's authorized child; UID maintenance fences still apply. Cancellation
 stops the saved native child; current parent and target grants are rechecked on
 selection, dispatch, waiting and replay. Exactly-once external side effects are
 not guaranteed.
+
+### Delegated run provenance and recovery
+
+Managed child inspection responses include optional `delegation` metadata:
+`invocationId`, `state`, `cleanupPending`, `depth`, `deadlineAt`, and `parent`.
+The parent reference is present only when the caller can read it. Use the
+existing server inspection workflow/thread commands or the corresponding
+`inspections.workflows.inspect` and `inspections.threads.get` SDK methods.
+A parent reference is navigation context, never permission to execute as that
+parent. Normal personal thread reads expose the same scoped metadata.
+
+Pending invocation reservations retain their original child identity and limits
+across restart. Native workflow replay or explicit tool retry may reattach;
+the core reconciler only fences/cleans stale work. Interrupted conversations
+fail unless a completed native turn proves success. `cleanupPending` means
+execution is already fenced and cleanup will retry with the current plugin.
+Closed delegated conversations cannot be continued independently.

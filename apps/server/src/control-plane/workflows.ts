@@ -407,7 +407,11 @@ export function createControlPlaneWorkflowService(
       });
       if (raw === null) return notFound();
       const value = controlPlaneWorkflowInspectionSchema
-        .omit({ profileVersionId: true, workflowRevision: true })
+        .omit({
+          profileVersionId: true,
+          workflowRevision: true,
+          delegation: true,
+        })
         .parse(raw);
       if (value.run.id !== runId)
         throw new ApiError(

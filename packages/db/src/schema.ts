@@ -682,6 +682,9 @@ export const controlPlaneAgentInvocations = sqliteTable(
     childKey: text("child_key").notNull().unique(),
     workflowRunId: text("workflow_run_id").notNull().unique(),
     runId: text("run_id"),
+    cleanupPending: integer("cleanup_pending", { mode: "boolean" })
+      .notNull()
+      .default(false),
     state: text("state", {
       enum: ["pending", "running", "succeeded", "failed", "cancelled"],
     }).notNull(),

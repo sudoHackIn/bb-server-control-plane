@@ -1,0 +1,1 @@
+ALTER TABLE `control_plane_agent_invocations` ADD `cleanup_pending` integer DEFAULT false NOT NULL;

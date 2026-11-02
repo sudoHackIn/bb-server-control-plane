@@ -1,3 +1,5 @@
+import { readControlPlaneDelegation } from "./delegation-provenance.js";
+import { createInspectionPolicy } from "./inspection-policy.js";
 import { assertExecutionAdmission } from "../services/system/execution-admission.js";
 import { createControlPlaneThreadStreams } from "./thread-stream.js";
 import { createThreadTimelineWindows } from "../services/threads/thread-timeline-windows.js";
@@ -138,6 +140,21 @@ export function createControlPlaneThreadService({
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       archived: row.archivedAt !== null,
+      delegation: inspectionRead
+        ? undefined
+        : readControlPlaneDelegation(
+            deps.db,
+            createInspectionPolicy(deps.db, {
+              kind: "user",
+              userId,
+              authorized: () => true,
+            }),
+            userId,
+            "thread",
+            id,
+            userId,
+            row.projectId,
+          ),
     };
   }
   function run(userId: string, id: string) {

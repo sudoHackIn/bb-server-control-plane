@@ -1,11 +1,13 @@
 import { listThreadEventRows } from "../services/threads/thread-data.js";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or, gt, ne } from "drizzle-orm";
 import { z } from "zod";
 import {
   controlPlaneAgentInvocations as calls,
   CONTROL_PLANE_AGENT_INVOCATION_LIMITS,
   controlPlaneJobBindings,
   controlPlaneThreads,
+  ControlPlaneThreadError,
+  ControlPlaneJobError,
   getThread,
   requireControlPlaneInvocationTarget,
   requireControlPlaneInvocation,
@@ -47,6 +49,13 @@ const inputSchema = z
     key: z.string().min(1).max(200),
   })
   .strict();
+function maintenance(error: unknown) {
+  return (
+    (error instanceof ControlPlaneThreadError ||
+      error instanceof ControlPlaneJobError) &&
+    error.reason === "maintenance"
+  );
+}
 type Parent = z.infer<typeof parentSchema>;
 type Input = z.infer<typeof inputSchema>;
 
@@ -63,8 +72,13 @@ export function createControlPlaneAgentInvocations(
   );
   const active = new Map<string, Promise<JsonValue>>();
   const controllers = new Set<AbortController>();
+  const cleanupWarnings = new Set<string>();
   let stopWorkflow: ((id: string) => Promise<boolean>) | null = null;
   let closed = false;
+  let cursor = "";
+  let reconciling: Promise<void> | null = null;
+  const timer = setInterval(() => void reconcile().catch(() => {}), 1000);
+  timer.unref();
   function resolve(parent: Parent, versionId: string) {
     assertControlPlaneInspectionMutationAllowed();
     const context = requireControlPlaneInvocationTarget(
@@ -82,6 +96,14 @@ export function createControlPlaneAgentInvocations(
     return context;
   }
   async function cancel(call: typeof calls.$inferSelect) {
+    const fenced = deps.db
+      .update(calls)
+      .set({ state: "cancelled", cleanupPending: true })
+      .where(and(eq(calls.id, call.id), ne(calls.state, "succeeded")))
+      .returning()
+      .get();
+    if (!fenced) return;
+    call = fenced;
     if (!call.runId) {
       const workflow = deps.db
         .select()
@@ -114,9 +136,10 @@ export function createControlPlaneAgentInvocations(
     }
     deps.db
       .update(calls)
-      .set({ state: "cancelled" })
+      .set({ cleanupPending: false })
       .where(eq(calls.id, call.id))
       .run();
+    cleanupWarnings.delete(call.id);
   }
   async function execute(
     parent: Parent,
@@ -187,6 +210,17 @@ export function createControlPlaneAgentInvocations(
       const runId = call.runId;
       const deadline =
         call.createdAt + CONTROL_PLANE_AGENT_INVOCATION_LIMITS.timeoutMs;
+      async function pause() {
+        await new Promise<void>((finish) => {
+          const timer = setTimeout(done, 100);
+          function done() {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", done);
+            finish();
+          }
+          signal.addEventListener("abort", done, { once: true });
+        });
+      }
       while (true) {
         if (
           closed ||
@@ -194,7 +228,13 @@ export function createControlPlaneAgentInvocations(
           (call.state !== "succeeded" && Date.now() > deadline)
         )
           throw new Error("Agent invocation cancelled or timed out");
-        resolve(parent, input.versionId);
+        try {
+          resolve(parent, input.versionId);
+        } catch (error) {
+          if (!maintenance(error)) throw error;
+          await pause();
+          continue;
+        }
         if (
           parent.kind === "thread" &&
           !["active", "starting"].includes(
@@ -219,7 +259,15 @@ export function createControlPlaneAgentInvocations(
         const result = await withControlPlaneUser(context.user.id, () =>
           agents.result(context.user.id, runId),
         );
-        resolve(parent, input.versionId);
+        if (closed || signal.aborted)
+          throw new Error("Agent invocation cancelled");
+        try {
+          resolve(parent, input.versionId);
+        } catch (error) {
+          if (!maintenance(error)) throw error;
+          await pause();
+          continue;
+        }
         const failed = ["error", "failed", "cancelled"].includes(
           result.run.status,
         );
@@ -254,22 +302,25 @@ export function createControlPlaneAgentInvocations(
           };
           if (Buffer.byteLength(JSON.stringify(value)) > 1048576)
             throw new Error("Agent invocation result exceeds 1 MiB");
-          deps.db
+          const committed = deps.db
             .update(calls)
             .set({ state: "succeeded" })
-            .where(eq(calls.id, call.id))
-            .run();
+            .where(
+              and(
+                eq(calls.id, call.id),
+                inArray(calls.state, ["pending", "running", "succeeded"]),
+                eq(calls.cleanupPending, false),
+              ),
+            )
+            .returning()
+            .get();
+          if (!committed)
+            throw new Error(
+              "Agent invocation cancelled before result admission",
+            );
           return value;
         }
-        await new Promise<void>((finish) => {
-          const timer = setTimeout(done, 100);
-          function done() {
-            clearTimeout(timer);
-            signal.removeEventListener("abort", done);
-            finish();
-          }
-          signal.addEventListener("abort", done, { once: true });
-        });
+        await pause();
       }
     } catch (error) {
       if (cleanup.promise) await cleanup.promise.catch(() => {});
@@ -279,7 +330,78 @@ export function createControlPlaneAgentInvocations(
       signal.removeEventListener("abort", onAbort);
     }
   }
+  function reconcile(): Promise<void> {
+    if (closed) return Promise.resolve();
+    if (reconciling) return reconciling;
+    reconciling = withControlPlaneService(async () => {
+      const rows = deps.db
+        .select()
+        .from(calls)
+        .where(
+          and(
+            gt(calls.id, cursor),
+            or(
+              inArray(calls.state, ["pending", "running"]),
+              eq(calls.cleanupPending, true),
+            ),
+          ),
+        )
+        .orderBy(calls.id)
+        .limit(64)
+        .all();
+      cursor = rows.length === 64 ? rows[63].id : "";
+      for (const row of rows) {
+        if (closed) break;
+        let invalid = row.cleanupPending;
+        if (!invalid) {
+          try {
+            requireControlPlaneInvocation(deps.db, row);
+          } catch (error) {
+            if (maintenance(error)) continue;
+            invalid = true;
+          }
+        }
+        if (!invalid && row.parentKind === "workflow") {
+          const binding = deps.db
+            .select()
+            .from(controlPlaneJobBindings)
+            .where(eq(controlPlaneJobBindings.id, row.parentId))
+            .get();
+          if (binding) {
+            try {
+              const parent = await workflows.get(
+                row.ownerUserId,
+                binding.objectId,
+              );
+              invalid = !["queued", "running"].includes(parent.status);
+            } catch {
+              continue;
+            }
+          }
+        }
+        if (invalid)
+          await cancel(row).catch((error: unknown) => {
+            if (cleanupWarnings.has(row.id)) return;
+            cleanupWarnings.add(row.id);
+            deps.logger.warn(
+              {
+                invocationId: row.id,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown cleanup failure",
+              },
+              "Delegated agent cleanup will retry",
+            );
+          });
+      }
+    }).finally(() => {
+      reconciling = null;
+    });
+    return reconciling;
+  }
   return {
+    reconcile,
     workflowIds() {
       return deps.db
         .select({ call: calls })
@@ -357,8 +479,10 @@ export function createControlPlaneAgentInvocations(
     },
     async close() {
       closed = true;
+      clearInterval(timer);
       for (const controller of controllers) controller.abort();
       await Promise.allSettled(active.values());
+      await reconciling;
       threads.close();
     },
   };

@@ -1,0 +1,74 @@
+{
+  "scope": "P4.3 delegated invocation crash recovery and directly reopened-child provenance",
+  "changes": {
+    "durableCleanupFenceAndGenerationRetry": true,
+    "migration": "0167_supreme_ultimates",
+    "pagedCurrentAuthorityAndParentLivenessReconciliation": true,
+    "maintenanceDoesNotResetReservationDeadline": true,
+    "lateAdmissionAndResultCannotReopenCancelledInvocation": true,
+    "authorizedParentMetadataOnInspectionAndPersonalThreadReads": true,
+    "readOnlyDelegatedConversationWithoutIndependentComposer": true,
+    "existingInspectionApiSdkCli": true,
+    "newPublicExecutionEndpoint": false,
+    "hostDaemonWireChanged": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 556,
+    "testFilesPassed": 82,
+    "testsByPackage": {
+      "serverControlPlane": 163,
+      "nativeWorkflows": 308,
+      "ui": 85
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "dockerStatus": "passed",
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p4-recovery-browser-chrome\" BB_TEST_BROWSER_CHANNEL=chrome caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "changedFileFormat": "passed",
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=bb-plugin-workflows",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane src/components/settings/AdminAgentProfiles.test.tsx src/components/settings/AdminDiagnosticAccess.test.tsx src/components/settings/AdminProjectRoles.test.tsx src/components/thread/timeline/ThreadTimelineRows.presentation.test.tsx src/App.project-settings-routes.test.tsx",
+      "pnpm exec turbo run typecheck --filter=@bb/server --filter=@bb/app --filter=@bb/cli"
+    ],
+    "verificationNotes": [
+      "Real migrated SQLite covers cancellation during delayed admission, generation-safe cleanup retries, deadline expiry during maintenance, and scoped parent provenance with deleted/foreign parents.",
+      "The existing 308 native workflow tests include scheduler root-capacity sharing and current-grant/replay rules.",
+      "New UI tests verify parent navigation clears child selections and hides unreadable parents; the Docker browser checks both directly reopened inspections and normal conversation pages.",
+      "The final crash fixture gates model completion after the 30-second shell timeout and asserts native calls are still active at SIGKILL; completed calls cannot masquerade as interrupted work.",
+      "The Docker VM exposes 3 processors, so automatic BB host capacity is 3. Preparing five simultaneous crash actors uses an explicit test-host override of 6, restored to its prior value after recovery. Docker CPU/memory and the user live BB are unchanged.",
+      "The test refreshes the volatile administrative CLI session after restart and waits for plugin/command registration before restoring host capacity. Earlier fixture failures did not count as accepted verification; ordinary user token/session tests remain unchanged.",
+      "Focused invocation tests (6) passed again after diagnostic logging, and banner tests (2) passed after replacing an unsupported icon with the existing BB ChevronLeft. The final full Docker image and browser pass include that icon correction."
+    ],
+    "manualVisualReview": [
+      "invoked-agent-inspection-mobile.png",
+      "delegated-thread-parent.png"
+    ],
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 831858,
+    "browserChannel": "chrome",
+    "browserVersion": "156.0.8078.74",
+    "proofs": {
+      "crashFixtureHostCapacityScopedAndRestored": true,
+      "nestedPublishedWorkflowCrashReusesNativeIdentity": true,
+      "nestedConversationCrashFencedWithoutDuplicate": true,
+      "pendingInvocationWindowSurvivesCrashWithoutDuplicateChild": true,
+      "revokedDelegationAfterCrashFencesDescendants": true,
+      "invocationDepthAndDeadlineNotResetAfterCrash": true,
+      "abruptCrashWorkflowRecoveryVerified": true,
+      "publishedAgentCompositionReplayRevocationAndRegrant": true,
+      "personalAutomationLoggedOutOwnerDeniedAfterRestart": true,
+      "reopenedDelegatedWorkflowAndThreadParentNavigationBrowser": true,
+      "delegatedConversationHasNoIndependentComposerBrowser": true,
+      "productionBrowserRenderingVerified": true
+    }
+  },
+  "limitations": [
+    "The core reconciler does not launch pending work; the native workflow recovery scheduler or explicit tool retry reattaches to the saved identity.",
+    "An interrupted conversation is not automatically repeated. Recovery fails closed unless its completed native turn proves success. External effects are not exactly-once.",
+    "The admission-window Docker fixture uses the real core reservation function for the next saved parent step, verifies no native child exists, and then kills the server before that step reaches admission. It adds no production fault-injection endpoint.",
+    "Fixed wall deadlines include maintenance time. Physical native Qwen/thread capacity exhaustion tests remain a follow-up; workflow root-slot admission does not reserve Qwen processes.",
+    "Docker uses stock Qwen and a deterministic model fixture, not corporate authorization.",
+    "cleanupPending records an unfinished core cleanup handoff. Native stop/release retains its existing durable intent/retry semantics; a cleared flag does not promise instantaneous OS process exit."
+  ]
+}

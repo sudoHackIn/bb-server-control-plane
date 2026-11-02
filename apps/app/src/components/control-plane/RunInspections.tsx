@@ -1,3 +1,4 @@
+import { DelegatedRunBanner } from "./DelegatedRunBanner";
 import { RunTestForm } from "./RunTestForm";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -89,6 +90,11 @@ export function RunInspections({
   if (runId && kind === "thread")
     return (
       <section className="flex min-h-0 flex-1 flex-col">
+        {!thread.isError &&
+          thread.data?.delegation &&
+          thread.data.projectId === projectId && (
+            <DelegatedRunBanner value={thread.data.delegation} />
+          )}
         <PersonalPageHeader
           icon="MessageSquare"
           title="Conversation inspection"

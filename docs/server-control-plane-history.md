@@ -3877,3 +3877,38 @@ existing abrupt workflow crash suite. The verification record is
 Explicit abrupt nested/admission-window crash recovery and directly reopened-child
 parent provenance remain P4.3. Pending reservations require explicit native
 replay/tool retry; this stage makes no automatic boot-queue or exactly-once claim.
+
+## P4.3 — Delegation recovery and reopened-child provenance
+
+Core now reconciles pending/running delegated calls against their saved parent,
+current grants and original deadline. It fences cancellation before native
+cleanup, persists `cleanupPending`, and retries cleanup with the current plugin
+generation. Late result/admission replies cannot reopen a cancelled call. UID
+maintenance preserves waiting work within the original wall deadline; successful
+results and tree counters are not reset by recovery. The reconciler does not
+launch work or claim exactly-once external effects.
+
+The shared provenance reader resolves child identity from core reservations,
+independently checks access to the parent and returns no parent reference when
+it is unreadable. Existing inspection API/SDK/CLI and normal personal thread
+reads expose the metadata. Directly reopened conversation/workflow inspections
+show a parent link, and ordinary delegated conversation pages replace the
+independent composer with read-only/parent-controlled context.
+
+The crash fixture runs Alice and Bob under their real UID/HOME/cwd. Bob keeps
+the nested workflow identity through native recovery and reuses a saved
+pre-admission reservation for exactly one conversation. Alice has an active
+workflow and conversation when the server is killed; target revocation must
+fence both and prevent a pending sibling from launching. The admission-window
+setup uses the real core reservation function before the next saved parent step
+and adds no production fault-injection endpoint. Interrupted conversations fail
+closed unless a completed native turn proves success.
+
+Verification: 556 focused tests in 82 files, typechecks and lint/format passed.
+The complete Docker suite passed 63/63 tasks (831858 ms), including actual
+active-at-kill assertions, both recovery strategies, scoped UI parent navigation
+and restoration of the test host's previous capacity after fresh admin login.
+See [the recovery contract](control-plane-workflow-agents.md#delegation-recovery-and-provenance)
+and [the verification record](control-plane-phase-99-verification.json).
+Dedicated physical Qwen/thread queue exhaustion coverage remains in the active
+plan; the workflow root-slot exception does not reserve harness processes.

@@ -1,3 +1,4 @@
+import { createControlPlaneInspectionService } from "../../src/control-plane/inspections.js";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { turnScope } from "@bb/domain";
@@ -9,6 +10,8 @@ import { expect, it, vi } from "vitest";
 import { createMigratedConnection } from "@bb/db/testing";
 import {
   controlPlaneAgentInvocations,
+  controlPlaneJobBindings,
+  reserveControlPlaneUidMaintenance,
   appendStoredThreadEvent,
   createControlPlaneProfile,
   threads,
@@ -460,6 +463,245 @@ it("fences a pending reservation immediately when cancellation races native work
     } finally {
       release();
       await service.close();
+    }
+  });
+});
+
+it("fences abandoned reservations and retries durable workflow cleanup across callback generations", async () => {
+  await withTestHarness(async (harness) => {
+    const { alice, bob } = seedControlPlaneJobSubjects(harness.db);
+    setControlPlaneProfileAccess(
+      harness.db,
+      bob.profile.profileId,
+      alice.user.id,
+      true,
+    );
+    const version = publishControlPlaneProfileVersion(
+      harness.db,
+      alice.profile.profileId,
+      {
+        prompt: "Delegate",
+        providerId: "qwen-server",
+        model: "qwen-test",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: [],
+        mcpServers: [],
+        delegation: { allowedVersionIds: [bob.profile.versionId] },
+      },
+    );
+    const parent = createThread(harness.db, harness.hub, {
+      projectId: alice.project.id,
+      environmentId: alice.environment.id,
+      providerId: "qwen-server",
+      status: "active",
+      controlPlaneOwnerUserId: alice.user.id,
+      controlPlaneProfileVersionId: version.id,
+    });
+    const call = reserveControlPlaneAgentInvocation(
+      harness.db,
+      { kind: "thread", id: parent.id },
+      {
+        versionId: bob.profile.versionId,
+        input: "task",
+        key: "crash-before-reply",
+      },
+    );
+    createControlPlaneJobBinding(harness.db, {
+      ...alice.input,
+      objectId: call.workflowRunId,
+      userId: alice.user.id,
+      profileVersionId: bob.profile.versionId,
+      originThreadId: null,
+    });
+    const service = createControlPlaneAgentInvocations(
+      harness.deps,
+      async () => {
+        throw new Error("Unexpected workflow read");
+      },
+    );
+    const first = vi.fn(async () => {
+      throw new Error("Plugin generation disposed");
+    });
+    const removeFirst = service.registerStop(first);
+    try {
+      setControlPlaneProfileAccess(
+        harness.db,
+        bob.profile.profileId,
+        alice.user.id,
+        false,
+      );
+      await service.reconcile();
+      expect(first).toHaveBeenCalledWith(call.workflowRunId);
+      expect(
+        harness.db.select().from(controlPlaneAgentInvocations).get(),
+      ).toMatchObject({
+        id: call.id,
+        state: "cancelled",
+        cleanupPending: true,
+        createdAt: call.createdAt,
+        depth: 1,
+      });
+      setControlPlaneProfileAccess(
+        harness.db,
+        bob.profile.profileId,
+        alice.user.id,
+        true,
+      );
+      expect(() =>
+        requireControlPlaneJobDispatch(
+          harness.db,
+          harness.db
+            .select()
+            .from(controlPlaneJobBindings)
+            .where(eq(controlPlaneJobBindings.objectId, call.workflowRunId))
+            .get()!.id,
+        ),
+      ).toThrow("not authorized");
+      const next = vi.fn(async () => true);
+      service.registerStop(next);
+      removeFirst();
+      await service.reconcile();
+      expect(next).toHaveBeenCalledWith(call.workflowRunId);
+      expect(
+        harness.db.select().from(controlPlaneAgentInvocations).get(),
+      ).toMatchObject({ state: "cancelled", cleanupPending: false });
+      expect(
+        harness.db.select().from(controlPlaneAgentInvocations).all(),
+      ).toHaveLength(1);
+      const paused = reserveControlPlaneAgentInvocation(
+        harness.db,
+        { kind: "thread", id: parent.id },
+        {
+          versionId: bob.profile.versionId,
+          input: "task",
+          key: "capacity-wait",
+        },
+      );
+      reserveControlPlaneUidMaintenance(harness.db, {
+        userId: alice.user.id,
+        projectId: alice.project.id,
+        operationId: "00000000-0000-4000-8000-000000000123",
+        rootGeneration: 0,
+      });
+      await service.reconcile();
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneAgentInvocations)
+          .where(eq(controlPlaneAgentInvocations.id, paused.id))
+          .get(),
+      ).toMatchObject({ state: "pending", createdAt: paused.createdAt });
+      const expiredAt = Date.now() - 600001;
+      harness.db
+        .update(controlPlaneAgentInvocations)
+        .set({ createdAt: expiredAt })
+        .where(eq(controlPlaneAgentInvocations.id, paused.id))
+        .run();
+      await service.reconcile();
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneAgentInvocations)
+          .where(eq(controlPlaneAgentInvocations.id, paused.id))
+          .get(),
+      ).toMatchObject({
+        state: "cancelled",
+        cleanupPending: false,
+        createdAt: expiredAt,
+        depth: 1,
+      });
+    } finally {
+      await service.close();
+    }
+  });
+});
+
+it("discovers delegated thread provenance from native identity and hides unreadable parents", async () => {
+  await withTestHarness(async (harness) => {
+    const { alice, bob } = seedControlPlaneJobSubjects(harness.db);
+    setControlPlaneProfileAccess(
+      harness.db,
+      bob.profile.profileId,
+      alice.user.id,
+      true,
+    );
+    const version = publishControlPlaneProfileVersion(
+      harness.db,
+      alice.profile.profileId,
+      {
+        prompt: "Delegate",
+        providerId: "qwen-server",
+        model: "qwen-test",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: [],
+        mcpServers: [],
+        delegation: { allowedVersionIds: [bob.profile.versionId] },
+      },
+    );
+    const parent = createControlPlaneJobBinding(harness.db, {
+      ...alice.input,
+      userId: alice.user.id,
+      profileVersionId: version.id,
+    });
+    const call = reserveControlPlaneAgentInvocation(
+      harness.db,
+      { kind: "workflow", id: parent.id },
+      { versionId: bob.profile.versionId, input: "task", key: "step:0" },
+    );
+    const child = createThread(harness.db, harness.hub, {
+      projectId: alice.project.id,
+      environmentId: alice.environment.id,
+      providerId: "qwen-server",
+      status: "idle",
+      controlPlaneOwnerUserId: alice.user.id,
+      controlPlaneProfileVersionId: bob.profile.versionId,
+      controlPlaneRun: {
+        source: "manual",
+        idempotencyKey: call.childKey,
+        inputDigest: "digest",
+      },
+    });
+    const inspections = createControlPlaneInspectionService(
+      harness.deps,
+      async () => {
+        throw new Error("Unexpected workflow RPC");
+      },
+    );
+    try {
+      const own = inspections.forActor({
+        kind: "user",
+        userId: alice.user.id,
+        authorized: () => true,
+      });
+      expect(
+        own.threads(null, child.id).get(child.id).delegation,
+      ).toMatchObject({
+        invocationId: call.id,
+        state: "pending",
+        parent: { kind: "workflow", id: parent.objectId },
+      });
+      harness.db
+        .update(controlPlaneJobBindings)
+        .set({ deletedAt: Date.now() })
+        .where(eq(controlPlaneJobBindings.id, parent.id))
+        .run();
+      expect(
+        own.threads(null, child.id).get(child.id).delegation?.parent,
+      ).toBeNull();
+      expect(() =>
+        inspections
+          .forActor({
+            kind: "user",
+            userId: bob.user.id,
+            authorized: () => true,
+          })
+          .threads(null, child.id)
+          .get(child.id),
+      ).toThrow();
+    } finally {
+      inspections.close();
     }
   });
 });

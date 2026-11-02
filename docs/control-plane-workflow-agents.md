@@ -351,3 +351,38 @@ configurable delegation limits, broader catalogue discovery, and a richer
 composition editor are outside this slice. Existing agent-runs/history and
 inspection API/SDK/CLI remain the management surfaces. No host protocol change
 or exactly-once side-effect guarantee is claimed.
+
+## Delegation recovery and provenance
+
+P4.3 reconciles persisted pending/running invocations in bounded pages. It
+rechecks saved parent authority, current target grants, native parent liveness
+and the original reservation deadline. Transient workflow-read failures are
+retried; an inaccessible target, stopped parent or expired reservation fences
+the invocation before native cleanup. `cleanupPending` is durable and cleanup
+handoff is retried through the current plugin generation. Native stop/release
+retains its existing durable intent and retry semantics; a cleared flag does not
+promise instantaneous OS process exit. A cancelled reservation cannot
+become successful through a late result or admission reply.
+
+UID maintenance pauses are distinct from revocation. Waiting invocations and
+reconciliation preserve paused work within its original deadline. Neither
+maintenance nor server restart resets the tree counters, depth or created time.
+The core reconciler does not launch pending work: native workflow recovery or
+an explicit tool retry reattaches to its existing identity. Successful workflow
+prefix replay retains native semantics. An interrupted conversation is a failed
+invocation unless its native completed turn proves success; recovery does not
+invent another conversation or claim exactly-once external effects.
+
+Inspection workflow summaries and thread reads expose optional `delegation`
+metadata: invocation ID/state, cleanup status, depth, deadline and an authorized
+parent reference. Missing parent access yields `parent: null`; the metadata
+never grants access. Normal personal thread reads use the same policy. Directly
+reopened child inspections show their saved parent; ordinary child conversation
+pages replace the independent composer with that context. Execution remains
+parent-controlled, while closed child history is read-only.
+
+The existing inspection API, SDK and `bb server inspections` commands carry
+this metadata; no parent-ID execution endpoint or daemon wire change is added.
+Native Qwen concurrency capacity remains separate from the workflow root-slot
+exception. The fixed deadline bounds waiting, but dedicated exhaustion/admission
+capacity tests remain a follow-up.

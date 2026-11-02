@@ -1,3 +1,4 @@
+import { DelegatedRunBanner } from "./DelegatedRunBanner";
 import { RunInspections } from "./RunInspections";
 import { PersonalRunInspection } from "./PersonalRunInspection";
 import { useState } from "react";
@@ -532,7 +533,13 @@ function WorkspaceNavigation({
           !mismatchedThread &&
           !invalidMessage &&
           (threadId === null ||
-            (selectedThread && detail.data && !detail.isError)) && (
+            (selectedThread && detail.data && !detail.isError)) &&
+          (detail.data?.delegation ? (
+            <DelegatedRunBanner
+              value={detail.data.delegation}
+              projectId={project.data.projectId}
+            />
+          ) : (
             <PersonalConversationComposer
               key={`${selectedProject.projectId}:${selectedThread?.id ?? "new"}`}
               client={client}
@@ -545,7 +552,7 @@ function WorkspaceNavigation({
                 )
               }
             />
-          )}
+          ))}
       </SidebarInset>
     </>
   );

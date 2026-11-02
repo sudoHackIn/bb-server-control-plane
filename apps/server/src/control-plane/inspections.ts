@@ -1,3 +1,4 @@
+import { readControlPlaneDelegation } from "./delegation-provenance.js";
 import { createControlPlaneTestRunService } from "./test-runs.js";
 import { z } from "zod";
 import { ApiError } from "../errors.js";
@@ -62,9 +63,36 @@ export function createControlPlaneInspectionService(
         },
         thread: readableWorker,
       });
+      function delegation(
+        kind: "thread" | "workflow",
+        id: string,
+        ownerUserId: string,
+        projectId: string,
+      ) {
+        return readControlPlaneDelegation(
+          deps.db,
+          policy,
+          key,
+          kind,
+          id,
+          ownerUserId,
+          projectId,
+        );
+      }
       const workflows = {
-        inspect: (id: string, after: number, limit: number) =>
-          native.inspect(key, id, after, limit),
+        async inspect(id: string, after: number, limit: number) {
+          const value = await native.inspect(key, id, after, limit);
+          const binding = policy.workflow(key, id);
+          return {
+            ...value,
+            delegation: delegation(
+              "workflow",
+              id,
+              binding.ownerUserId,
+              binding.projectId,
+            ),
+          };
+        },
         call: (id: string, callId: string) =>
           native.inspectCall(key, id, callId),
         trace: (
@@ -88,7 +116,19 @@ export function createControlPlaneInspectionService(
           },
         });
         return {
-          get: (id: string) => service.get(key, id),
+          get(id: string) {
+            const value = service.get(key, id);
+            const context = policy.thread(id, rootRunId);
+            return {
+              ...value,
+              delegation: delegation(
+                "thread",
+                id,
+                context.ownerUserId,
+                context.row.projectId,
+              ),
+            };
+          },
           events: (id: string, after: number, limit: number) =>
             service.events(key, id, { after, limit }),
           timeline: (id: string) => service.timeline(key, id),

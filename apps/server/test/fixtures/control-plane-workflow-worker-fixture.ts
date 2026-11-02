@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   createConnection,
+  reserveControlPlaneAgentInvocation,
   createControlPlaneJobBinding,
   createThread,
   getThread,
@@ -21,7 +22,14 @@ import {
 } from "@bb/db";
 
 const mode = z
-  .enum(["create", "verify", "orphan", "access", "notification-retry"])
+  .enum([
+    "create",
+    "verify",
+    "orphan",
+    "access",
+    "notification-retry",
+    "reserve-invocation",
+  ])
   .parse(process.argv[2]);
 const db = createConnection("/srv/bb/bb.db");
 const statePath = "/srv/bb/workflow-worker-proof.json";
@@ -38,7 +46,23 @@ const savedSchema = z
   )
   .length(2);
 try {
-  if (mode === "notification-retry") {
+  if (mode === "reserve-invocation") {
+    const input = z
+      .object({
+        parentId: z.string().uuid(),
+        versionId: z.string().uuid(),
+        input: z.string(),
+        key: z.string(),
+      })
+      .strict()
+      .parse(JSON.parse(process.argv[3] ?? ""));
+    const value = reserveControlPlaneAgentInvocation(
+      db,
+      { kind: "workflow", id: input.parentId },
+      input,
+    );
+    process.stdout.write(JSON.stringify(value) + "\n");
+  } else if (mode === "notification-retry") {
     const runIds = z
       .array(z.string())
       .length(2)

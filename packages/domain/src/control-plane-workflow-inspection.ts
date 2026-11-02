@@ -1,3 +1,4 @@
+import { controlPlaneDelegationSchema } from "./control-plane-diagnostics.js";
 import { z } from "zod";
 import { jsonValueSchema } from "./json-value.js";
 import {
@@ -22,6 +23,7 @@ export const controlPlaneWorkflowCallSummarySchema =
     .strict();
 export const controlPlaneWorkflowInspectionSchema = z
   .object({
+    delegation: controlPlaneDelegationSchema.optional(),
     run: controlPlaneWorkflowRunSchema,
     input: jsonValueSchema,
     sourceHash: z.string(),

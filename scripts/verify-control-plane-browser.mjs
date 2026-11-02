@@ -949,6 +949,30 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       bob.page.getByRole("heading", { name: bobUser.title, exact: true }),
     );
     const aliceLocation = alice.page.url();
+    const delegatedChat = aliceUser.inspection.composition.chatRunId;
+    await alice.page.goto(
+      `${ready.origin}/projects/${aliceUser.projectId}/threads/${delegatedChat}`,
+    );
+    await visible(
+      alice.page.getByRole("complementary", { name: "Delegated run" }),
+    );
+    assert.equal(
+      await alice.page.locator('[contenteditable="true"]').count(),
+      0,
+    );
+    await alice.page
+      .getByRole("button", { name: "Inspect parent", exact: true })
+      .click();
+    await alice.page.waitForURL(
+      (url) =>
+        url.pathname === `/projects/${aliceUser.projectId}` &&
+        url.searchParams.get("inspectRun") ===
+          aliceUser.inspection.composition.runId,
+    );
+    await visible(
+      alice.page.getByRole("region", { name: "Run inspection", exact: true }),
+    );
+    await alice.page.goto(aliceLocation);
     await alice.page.goto(
       `${ready.origin}/projects/${bobUser.projectId}/threads/${bobUser.threadId}`,
     );
@@ -1048,6 +1072,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       personalAutomationBrowserCancellationReapsActualCommands: true,
       personalAutomationBrowserForeignReadsAndMutationsDenied: true,
       productionBrowserRenderingVerified: true,
+      delegatedConversationHasNoIndependentComposerBrowser: true,
       publishedWorkflowAgentCatalogTaskResultBrowser: true,
       workflowInspectionBrowserNativeThreadAndNavigation: true,
       workflowTraceTreeAndParallelBrowser: true,
@@ -1379,6 +1404,35 @@ async function verifyAdministrativeDefinitions({
     "Run inspection",
     "invoked-agent-inspection",
   );
+  await page.reload();
+  await visible(page.getByRole("complementary", { name: "Delegated run" }));
+  await visible(page.getByText("Closed delegated run", { exact: true }));
+  await page
+    .getByRole("button", { name: "Inspect parent", exact: true })
+    .click();
+  await page.waitForURL(
+    (url) =>
+      url.searchParams.get("inspectRun") === composition.runId &&
+      !url.searchParams.has("inspectCall"),
+  );
+  assert.ok(composition.chatRunId);
+  await page.goto(
+    `${ready.origin}/settings/projects/${ready.users[0].projectId}/inspections?inspectKind=thread&inspectRun=${composition.chatRunId}`,
+  );
+  await visible(page.getByRole("complementary", { name: "Delegated run" }));
+  await visible(page.getByText("Closed delegated run", { exact: true }));
+  if (artifacts)
+    await page.screenshot({
+      path: join(artifacts, "delegated-thread-parent.png"),
+    });
+  await page
+    .getByRole("button", { name: "Inspect parent", exact: true })
+    .click();
+  await page.waitForURL(
+    (url) =>
+      url.searchParams.get("inspectRun") === composition.runId &&
+      url.searchParams.get("inspectKind") === "workflow",
+  );
   await page.goto(`${ready.origin}/settings/projects`);
   await page
     .getByRole("button", { name: "Manage server agents", exact: true })
@@ -1592,6 +1646,7 @@ async function verifyAdministrativeDefinitions({
   return {
     nativeAdministrativeDefinitionUiRendered: true,
     publishedAgentChildInspectionNavigationBrowser: true,
+    reopenedDelegatedWorkflowAndThreadParentNavigationBrowser: true,
     workerDelegationPolicyCreatedAndRepublishedInBrowser: true,
     workerDelegationPolicyDesktopAndMobileLayout: true,
     administrativeDefinitionsShowBothOwners: true,
