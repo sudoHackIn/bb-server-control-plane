@@ -1283,3 +1283,39 @@ No automatic capacity bypass or child reservation is applied. Allow headroom
 for synchronous delegation (at least parent plus child); saturation can still
 fail within the fixed deadline. Same-key retry never resets that deadline or
 the saved invocation budgets.
+
+### Project webhook triggers
+
+`bb server access webhooks create <project-id> --profile-version <version-id>
+--name <name> [--input-field <field>] --json` pins the current user, project and
+published agent version. The selected top-level JSON string field (default
+`input`) becomes task text. Event payloads cannot select execution authority.
+Creation returns a delivery path and a one-time secret; only its SHA-256 digest
+is persisted. Use HTTPS and the `Authorization: Bearer <secret>` header, never
+a URL parameter. `webhooks rotate <id> --json` replaces the secret immediately.
+
+`webhooks list <project-id> [--cursor <id>] --json`, `get <id>`,
+`history <id> [--cursor <id>]`, `disable <id>` and `enable <id>` use the limited
+user API. Disabling prevents future delivery admission; existing runs continue.
+The user Webhooks page exposes the same management and history operations.
+
+Deliver JSON to `POST /control-plane/webhooks/<id>/deliver`, authenticated with
+the webhook secret and a stable `X-BB-Delivery-ID` (1–200 letters, digits,
+`_`, `.`, `:`, `-`). Body limit is 256 KiB; selected task text is at most 128 KiB.
+A repeated ID with the same exact JSON bytes reuses its reservation/run; a
+changed payload returns 409. The user API rejects reserved `webhook:` run keys.
+
+`webhooks deliver <id> --delivery-id <id> --payload-file <file>
+--secret-stdin --json` reads the secret from private stdin. The SDK equivalents
+are `createControlPlaneClient(...).webhooks.create/list/get/history/setEnabled/
+rotate/deliver`. Delivery uses the supplied webhook credential, not the user's
+session. Management requires the ordinary authenticated user credential.
+
+202/`accepted` means native run admission, not successful execution. Open the
+run for its actual status/output. Invalid mapping or unavailable admission is
+recorded as `failed` (422) in trigger history. Retry a transient failure or lost
+reply with the same event ID and bytes; pending admission survives restart but
+is not an automatic background retry queue. Current user/project/profile grants
+are checked before admission and replay. Delivery secrets grant no read access
+to projects, chats or results. This generic bearer protocol does not implement
+GitHub/Slack signature formats or event-specific adapters.

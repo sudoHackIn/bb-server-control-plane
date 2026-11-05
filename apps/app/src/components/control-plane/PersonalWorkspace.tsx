@@ -1,3 +1,4 @@
+import { PersonalWebhooks } from "./PersonalWebhooks";
 import { DelegatedRunBanner } from "./DelegatedRunBanner";
 import { RunInspections } from "./RunInspections";
 import { PersonalRunInspection } from "./PersonalRunInspection";
@@ -81,6 +82,7 @@ function WorkspaceNavigation({
   const preferredAgentId = new URLSearchParams(location.search).get("agent");
   const agentView = view === "agents";
   const workflowView = view === "workflows";
+  const webhookView = view === "webhooks";
   const automationView = view === "automations";
   const integrationView = view === "integrations";
   const diagnosticView = view === "inspections";
@@ -212,6 +214,7 @@ function WorkspaceNavigation({
     next:
       | "agents"
       | "workflows"
+      | "webhooks"
       | "automations"
       | "integrations"
       | "inspections",
@@ -266,6 +269,16 @@ function WorkspaceNavigation({
                   >
                     <Icon name="Calendar" />
                     <span>Automations</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    aria-current={webhookView ? "page" : undefined}
+                    className="aria-[current=page]:bg-sidebar-accent"
+                    onClick={() => openView("webhooks")}
+                  >
+                    <Icon name="Zap" />
+                    <span>Webhooks</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
@@ -456,6 +469,13 @@ function WorkspaceNavigation({
               );
             }}
           />
+        ) : webhookView && selectedProject ? (
+          <PersonalWebhooks
+            key={`${bootstrap.session.user.id}:${selectedProject.projectId}`}
+            client={client}
+            projectId={selectedProject.projectId}
+            canCreate={project.data?.canRun === true}
+          />
         ) : integrationView && selectedProject ? (
           <PersonalProjectMcp
             key={bootstrap.session.user.id + ":" + selectedProject.projectId}
@@ -526,6 +546,7 @@ function WorkspaceNavigation({
           !inspectionRunId &&
           !agentView &&
           !workflowView &&
+          !webhookView &&
           !automationView &&
           !integrationView &&
           project.data &&

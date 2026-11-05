@@ -436,8 +436,12 @@ function PersonalAgentRunList({
               {run.title ?? run.runId}
             </button>
             <span>
-              {run.source === "automation" ? "Scheduled" : "Manual"} ·{" "}
-              <PersonalStatus status={run.status} />
+              {run.source === "automation"
+                ? "Scheduled"
+                : run.source === "webhook"
+                  ? "Webhook"
+                  : "Manual"}{" "}
+              · <PersonalStatus status={run.status} />
             </span>
             {["pending", "starting", "active", "queued", "running"].includes(
               run.status,

@@ -1959,3 +1959,59 @@ export const projectAttachmentBackfills = sqliteTable(
     error: text("error"),
   },
 );
+
+export const controlPlaneWebhooks = sqliteTable(
+  "control_plane_webhooks",
+  {
+    id: text("id").primaryKey(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => controlPlaneProjects.projectId),
+    profileVersionId: text("profile_version_id")
+      .notNull()
+      .references(() => controlPlaneProfileVersions.id),
+    name: text("name").notNull(),
+    inputField: text("input_field").notNull(),
+    secretHash: text("secret_hash").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("control_plane_webhooks_owner_idx").on(
+      table.ownerUserId,
+      table.projectId,
+      table.id,
+    ),
+  ],
+);
+
+export const controlPlaneWebhookDeliveries = sqliteTable(
+  "control_plane_webhook_deliveries",
+  {
+    id: text("id").primaryKey(),
+    webhookId: text("webhook_id")
+      .notNull()
+      .references(() => controlPlaneWebhooks.id),
+    deliveryKey: text("delivery_key").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    state: text("state", { enum: ["pending", "accepted", "failed"] }).notNull(),
+    runId: text("run_id"),
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_webhook_deliveries_key_idx").on(
+      table.webhookId,
+      table.deliveryKey,
+    ),
+    index("control_plane_webhook_deliveries_run_idx").on(table.runId),
+    index("control_plane_webhook_deliveries_page_idx").on(
+      table.webhookId,
+      table.id,
+    ),
+  ],
+);

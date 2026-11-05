@@ -1,3 +1,8 @@
+import { createControlPlaneWebhookService } from "./webhooks.js";
+import {
+  isControlPlaneWebhookPath,
+  installControlPlaneWebhookRoutes,
+} from "./webhook-routes.js";
 import {
   installControlPlaneInspectionRoutes,
   installControlPlaneDiagnosticGrantRoutes,
@@ -101,6 +106,7 @@ export function certificateLogin(context: Context): string | null {
 
 export function isUserAuthPath(path: string, method: string): boolean {
   if (
+    isControlPlaneWebhookPath(path, method) ||
     isControlPlaneMcpPath(path, method) ||
     isControlPlaneAutomationPath(path, method) ||
     isControlPlaneThreadPath(path, method) ||
@@ -201,6 +207,19 @@ export function createControlPlaneUserAccess(
       );
       if (mcp)
         installControlPlaneMcpRoutes(app, registry.db, mcp, authenticate);
+      if (threads && workflows)
+        installControlPlaneWebhookRoutes(
+          app,
+          createControlPlaneWebhookService(
+            registry.db,
+            createControlPlaneAgentWorkflowService(
+              registry.db,
+              threads,
+              workflows,
+            ),
+          ),
+          authenticate,
+        );
       if (threads)
         installControlPlaneThreadRoutes(
           app,

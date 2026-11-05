@@ -1177,6 +1177,13 @@
       "when": 1793572870895,
       "tag": "0167_supreme_ultimates",
       "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "6",
+      "when": 1793893139919,
+      "tag": "0168_condemned_viper",
+      "breakpoints": true
     }
   ]
 }

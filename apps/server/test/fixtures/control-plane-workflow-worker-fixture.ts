@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   createConnection,
   controlPlaneAgentInvocations,
+  controlPlaneWebhookDeliveries,
   CONTROL_PLANE_AGENT_INVOCATION_LIMITS,
   reserveControlPlaneAgentInvocation,
   createControlPlaneJobBinding,
@@ -32,6 +33,7 @@ const mode = z
     "notification-retry",
     "reserve-invocation",
     "expire-invocation",
+    "webhook-lost-reply",
   ])
   .parse(process.argv[2]);
 const db = createConnection("/srv/bb/bb.db");
@@ -49,7 +51,23 @@ const savedSchema = z
   )
   .length(2);
 try {
-  if (mode === "expire-invocation") {
+  if (mode === "webhook-lost-reply") {
+    const { id } = z
+      .object({ id: z.string().uuid() })
+      .strict()
+      .parse(JSON.parse(process.argv[3] ?? ""));
+    const before = db
+      .select()
+      .from(controlPlaneWebhookDeliveries)
+      .where(eq(controlPlaneWebhookDeliveries.id, id))
+      .get();
+    assert.equal(before?.state, "accepted");
+    db.update(controlPlaneWebhookDeliveries)
+      .set({ state: "pending", runId: null })
+      .where(eq(controlPlaneWebhookDeliveries.id, id))
+      .run();
+    process.stdout.write(JSON.stringify({ saved: true }) + "\n");
+  } else if (mode === "expire-invocation") {
     const { id } = z
       .object({ id: z.string().uuid() })
       .strict()

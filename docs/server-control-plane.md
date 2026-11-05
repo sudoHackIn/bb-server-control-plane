@@ -136,7 +136,12 @@ and [verification](control-plane-phase-100-verification.json).
 
 ### P5 — More triggers and richer contracts
 
-- [ ] Add webhook delivery with configured owner/project, authenticated source, bounded payload, input mapping, idempotency and visible failures.
+P5.1 webhook triggers are delivered through the personal UI, limited API, SDK
+and CLI. Owner/project authority, source authentication, bounded text mapping,
+idempotent admission and delivery history reuse native agent runs. See
+[the webhook contract](control-plane-webhooks.md) and
+[verification](control-plane-phase-101-verification.json).
+
 - [ ] Add task-source polling with per-user credentials, checkpoint, duplicate handling, backoff and current-grant checks.
 - [ ] Add structured input/output, files/artifacts and interactive workflow-backed agents when a concrete use case needs them. Verify scoped history, artifacts and subscriptions.
 

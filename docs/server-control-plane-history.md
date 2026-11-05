@@ -3949,3 +3949,32 @@ soak. See [the verification record](control-plane-phase-100-verification.json).
 Verification: 164 control-plane tests in 45 files, typecheck and lint/format
 passed. The final Docker composite passed 63/63 tasks (877586 ms), including
 Chrome UI, clean restart and nested crash recovery.
+
+## P5.1 — Project webhook triggers
+
+A project owner can bind a published conversation or workflow agent to an
+external webhook in the personal workspace. The limited API, SDK and CLI expose
+the same creation, listing, disable/enable, secret rotation and delivery history.
+The server stores only the digest of a one-time random secret. Source payloads
+cannot select the owner, project, model or permissions; current saved authority
+is checked through the existing native agent admission path.
+
+Deliveries reserve a stable identity before launch and reuse native idempotency
+for concurrent requests, redelivery and a lost acknowledgement after restart.
+Mapping selects one bounded top-level text field. Invalid mapping or unavailable
+admission is visible in owner-scoped history. Accepted means admitted, not
+completed; result links open the existing read-only inspector. Secrets grant
+submission only, and foreign management/history/result reads remain denied.
+
+The Docker fixture runs conversation and workflow agents for Alice and Bob under
+their registered UID/HOME/cwd, exercises secret rotation, disable, revocation,
+CLI delivery, concurrent duplicates and a deliberately persisted lost-reply
+window. Chrome checks creation, labels, secret dismissal, history and compact
+layout. This slice uses a generic bearer protocol and explicit source redelivery;
+vendor signature adapters, polling and automatic redelivery remain separate.
+See [the contract](control-plane-webhooks.md) and
+[the verification record](control-plane-phase-101-verification.json).
+
+Verification: 235 focused tests in 62 files, typecheck and lint/format passed.
+The final Docker composite passed 63/63 tasks (834840 ms), including Chrome,
+clean restart and nested crash recovery.

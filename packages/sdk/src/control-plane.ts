@@ -1,3 +1,4 @@
+import { createControlPlaneWebhookClient } from "./control-plane-webhooks.js";
 import { createControlPlaneTestRunClient } from "./control-plane-test-runs.js";
 import {
   createControlPlaneInspectionClient,
@@ -184,6 +185,10 @@ export function createControlPlaneClient(args: {
   const agentRuns = createControlPlaneAgentRunClient(request, requestResponse);
   return {
     agentRuns,
+    webhooks: createControlPlaneWebhookClient(request, {
+      origin: args.origin,
+      fetch: fetcher,
+    }),
     testRuns: createControlPlaneTestRunClient(request, "user"),
     async browserContext(signal?: AbortSignal) {
       return controlPlaneBrowserContextSchema.parse(

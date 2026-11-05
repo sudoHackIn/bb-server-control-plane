@@ -1,0 +1,47 @@
+{
+  "scope": "P5.1 project webhook triggers for published agents",
+  "changes": {
+    "limitedApiSdkCliUi": true,
+    "ownerProjectPinnedVersionAuthority": true,
+    "hashedOneTimeRotatableSecret": true,
+    "durableDeliveryReservationAndNativeIdempotency": true,
+    "migration": "0168_condemned_viper",
+    "hostDaemonWireChanged": false,
+    "newPluginApi": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 235,
+    "testFilesPassed": 62,
+    "typecheck": "passed",
+    "lint": "passed",
+    "changedFileFormat": "passed",
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane",
+      "pnpm exec turbo run test --filter=@bb/cli -- src/__tests__/command-output/server-webhooks.test.ts",
+      "pnpm exec turbo run typecheck --filter=@bb/server --filter=@bb/app --filter=@bb/cli"
+    ],
+    "dockerStatus": "passed",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 834840,
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p5-webhooks-browser\" BB_TEST_BROWSER_CHANNEL=chrome caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "proofs": {
+      "webhookCreateRotateDisableHistoryAndForeignDenialBrowser": true,
+      "webhookTwoUserConversationWorkflowUidHomeCwdAndIdempotency": true,
+      "webhookSecretRotationDisableAndRevocation": true,
+      "webhookDeliveryIdentityAndLostReplyRecoveryAfterRestart": true
+    },
+    "notes": [
+      "The lost-reply fixture changes only the delivery acknowledgement to pending after native admission; redelivery after restart retains the original native run identity.",
+      "Desktop and 390px mobile webhook screenshots were inspected; the form has an explicit accessible Agent label and no horizontal page overflow.",
+      "Initial deployment attempts revealed a missing fixture COPY, a private CLI payload with the wrong UID, and an inaccessible select label. All were fixed before the final full passing run.",
+      "The aggregate deployment timeout increased from 900000 to 1200000 ms for the expanded composite; individual waits, production deadlines and native capacity limits are unchanged."
+    ]
+  },
+  "limitations": [
+    "Generic bearer HTTPS protocol; vendor signature adapters and custom executable mappings are not implemented.",
+    "One bounded top-level text field; accepted means native admission, not execution success.",
+    "Recovery uses explicit source redelivery; no automatic delivery queue or exactly-once external-effect guarantee.",
+    "Verified with stock Qwen and deterministic test model, not corporate-fork authorization."
+  ]
+}

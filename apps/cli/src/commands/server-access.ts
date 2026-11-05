@@ -1,3 +1,4 @@
+import { registerServerWebhookCommands } from "./server-webhooks.js";
 import { registerServerInspectionCommands } from "./server-inspections.js";
 import { registerServerMcpCommands } from "./server-mcp.js";
 import { registerServerAutomationCommands } from "./server-automations.js";
@@ -63,6 +64,12 @@ export function registerServerAccessCommands(
     }),
   );
   registerServerThreadCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
+  registerServerWebhookCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,
       fetch: cliFetch,

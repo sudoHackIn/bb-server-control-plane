@@ -459,3 +459,5 @@ This index lists every command path that the core CLI registers, including alias
 - `bb browser watch`
 - `bb browser import-sources`
 - `bb browser import-cookies`
+
+- `bb server access webhooks create|list|get|history|enable|disable|rotate|deliver` — project webhook triggers, one-time secrets and delivery history; see `bb guide machines`.

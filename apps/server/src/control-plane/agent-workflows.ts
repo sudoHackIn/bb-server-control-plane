@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { createHash } from "node:crypto";
 import { and, asc, eq, gt, isNull, like } from "drizzle-orm";
 import {
+  controlPlaneWebhookDeliveries,
   controlPlaneJobBindings,
   controlPlaneProfileVersions,
   controlPlaneProjectAccess,
@@ -32,6 +33,14 @@ export function createControlPlaneAgentWorkflowService(
   threads: ControlPlaneThreadService,
   workflows: ControlPlaneWorkflowService,
 ) {
+  function provenance(run: z.infer<typeof controlPlaneAgentRunSchema>) {
+    const delivery = db
+      .select({ id: controlPlaneWebhookDeliveries.id })
+      .from(controlPlaneWebhookDeliveries)
+      .where(eq(controlPlaneWebhookDeliveries.runId, run.runId))
+      .get();
+    return delivery ? { ...run, source: "webhook" as const } : run;
+  }
   const isWorkflow = (id: string) => /^wfa_[a-f0-9]{64}$/u.test(id);
   function conflict(): never {
     throw new ApiError(
@@ -50,7 +59,9 @@ export function createControlPlaneAgentWorkflowService(
   }
   async function get(userId: string, id: string) {
     if (!isWorkflow(id))
-      return controlPlaneAgentRunSchema.parse(threads.run(userId, id));
+      return provenance(
+        controlPlaneAgentRunSchema.parse(threads.run(userId, id)),
+      );
     binding(userId, id);
     const workflow = await workflows.get(userId, id);
     return summary(userId, workflow);
@@ -60,21 +71,23 @@ export function createControlPlaneAgentWorkflowService(
     workflow: z.infer<typeof controlPlaneWorkflowRunSchema>,
   ) {
     const saved = binding(userId, workflow.id);
-    return controlPlaneAgentRunSchema.parse({
-      runId: workflow.id,
-      threadId: null,
-      workflowRunId: workflow.id,
-      strategy: "workflow",
-      projectId: saved.projectId,
-      profileId: profileId(saved.profileVersionId),
-      profileVersionId: saved.profileVersionId,
-      source: "manual",
-      title: workflow.name,
-      status: workflow.status,
-      createdAt: workflow.createdAt,
-      updatedAt:
-        workflow.finishedAt ?? workflow.startedAt ?? workflow.createdAt,
-    });
+    return provenance(
+      controlPlaneAgentRunSchema.parse({
+        runId: workflow.id,
+        threadId: null,
+        workflowRunId: workflow.id,
+        strategy: "workflow",
+        projectId: saved.projectId,
+        profileId: profileId(saved.profileVersionId),
+        profileVersionId: saved.profileVersionId,
+        source: "manual",
+        title: workflow.name,
+        status: workflow.status,
+        createdAt: workflow.createdAt,
+        updatedAt:
+          workflow.finishedAt ?? workflow.startedAt ?? workflow.createdAt,
+      }),
+    );
   }
   function profileId(versionId: string) {
     const row = db
@@ -188,7 +201,7 @@ export function createControlPlaneAgentWorkflowService(
         throw new ApiError(404, "project_not_found", "Project not found");
       const regularPage = threads.listRuns(userId, options);
       const regular = regularPage.runs.map((run) =>
-        controlPlaneAgentRunSchema.parse(run),
+        provenance(controlPlaneAgentRunSchema.parse(run)),
       );
       const accessible = accessibleControlPlaneProjects(db)
         .where(eq(controlPlaneProjectAccess.userId, userId))

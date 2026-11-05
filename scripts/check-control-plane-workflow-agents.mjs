@@ -1,3 +1,4 @@
+import { verifyWebhooks } from "./check-control-plane-webhooks.mjs";
 import { once } from "node:events";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -8,6 +9,7 @@ export async function verifyPublishedWorkflowAgents({
   launch,
   signal,
   userRequest,
+  webhookRequest,
   userCommand,
   sendAdmin,
   adminToken,
@@ -1242,6 +1244,17 @@ export async function verifyPublishedWorkflowAgents({
       childThreadId: history.calls[0].childThreadId,
     });
   }
+  const webhooks = await verifyWebhooks({
+    published,
+    send: webhookRequest,
+    userRequest,
+    userCommand,
+    sendAdmin,
+    adminToken,
+    wait,
+    fixture,
+    db,
+  });
   return {
     inspections: published.map((item) => ({
       login: item.subject.user.login,
@@ -1251,6 +1264,8 @@ export async function verifyPublishedWorkflowAgents({
       childThreadId: item.childThreadId,
     })),
     verification: {
+      webhookTwoUserConversationWorkflowUidHomeCwdAndIdempotency: true,
+      webhookSecretRotationDisableAndRevocation: true,
       workflowInspectionNativeMetadataCliAndForeignDenial: true,
       workflowTraceNestedScopesParallelAndReplay: true,
       workflowCallDiagnosticsAndNativeEditArtifacts: true,
@@ -1793,6 +1808,7 @@ export async function verifyPublishedWorkflowAgents({
         ),
       );
       return {
+        ...(await webhooks.afterRestart()),
         publishedAgentCompositionMetadataAndResultsSurviveRestart: true,
         publishedAgentCompositionReplayRevocationAndRegrant: true,
         workflowTraceStructureSurvivesRestart: true,

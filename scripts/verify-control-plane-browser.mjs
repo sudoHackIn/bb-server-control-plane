@@ -221,6 +221,138 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       `${ready.origin}/projects/${aliceUser.projectId}`,
     );
     await alice.page
+      .getByRole("button", { name: "Webhooks", exact: true })
+      .click();
+    await visible(
+      alice.page.getByRole("heading", { name: "Webhooks", exact: true }),
+    );
+    await alice.page
+      .getByLabel("Name", { exact: true })
+      .fill("Browser webhook");
+    await alice.page
+      .getByLabel("Agent", { exact: true })
+      .selectOption({ label: "Personal alice" });
+    await alice.page.getByLabel("Text field", { exact: true }).fill("task");
+    const hookResponse = alice.page.waitForResponse(
+      (response) =>
+        response.url() === ready.origin + "/control-plane/user/webhooks" &&
+        response.request().method() === "POST",
+    );
+    await alice.page
+      .getByRole("button", { name: "Create webhook", exact: true })
+      .click();
+    const hookCreated = await (await hookResponse).json();
+    await visible(
+      alice.page.getByText("Save your webhook secret", { exact: true }),
+    );
+    assert.equal(
+      await alice.page
+        .getByLabel("Secret", { exact: true })
+        .getAttribute("type"),
+      "password",
+    );
+    await alice.page
+      .getByRole("button", { name: "Dismiss secret", exact: true })
+      .click();
+    assert.equal(
+      await alice.page.getByLabel("Secret", { exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      (
+        await bob.context.request.get(
+          `${ready.origin}/control-plane/user/webhooks/${hookCreated.webhook.id}/history`,
+        )
+      ).status(),
+      404,
+    );
+    const invalidDelivery = await alice.context.request.post(
+      ready.origin + hookCreated.webhook.deliveryPath,
+      {
+        headers: {
+          authorization: `Bearer ${hookCreated.secret}`,
+          "x-bb-delivery-id": "browser-invalid",
+        },
+        data: { task: 42 },
+      },
+    );
+    assert.equal(invalidDelivery.status(), 422);
+    await visible(
+      alice.page.getByText("The selected field must contain task text.", {
+        exact: true,
+      }),
+    );
+    await alice.page
+      .getByRole("button", { name: "Disable", exact: true })
+      .click();
+    await visible(
+      alice.page.getByRole("button", { name: "Enable", exact: true }),
+    );
+    const rotationResponse = alice.page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/webhooks/${hookCreated.webhook.id}/rotate`) &&
+        response.request().method() === "POST",
+    );
+    await alice.page
+      .getByRole("button", { name: "Rotate secret", exact: true })
+      .click();
+    const rotated = await (await rotationResponse).json();
+    assert.notEqual(rotated.secret, hookCreated.secret);
+    await visible(
+      alice.page.getByRole("button", { name: "Dismiss secret", exact: true }),
+    );
+    await alice.page
+      .getByRole("button", { name: "Dismiss secret", exact: true })
+      .click();
+    assert.equal(
+      (
+        await alice.context.request.post(
+          ready.origin + hookCreated.webhook.deliveryPath,
+          {
+            headers: {
+              authorization: `Bearer ${hookCreated.secret}`,
+              "x-bb-delivery-id": "old-secret",
+            },
+            data: { task: "no launch" },
+          },
+        )
+      ).status(),
+      401,
+    );
+    await alice.page.reload();
+    await visible(
+      alice.page.getByRole("heading", { name: "Webhooks", exact: true }),
+    );
+    assert.equal(
+      await alice.page.getByLabel("Secret", { exact: true }).count(),
+      0,
+    );
+    await alice.page.getByRole("button", { name: /Browser webhook/u }).click();
+    await visible(
+      alice.page.getByText("The selected field must contain task text.", {
+        exact: true,
+      }),
+    );
+    const webhookArtifacts = process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS;
+    if (webhookArtifacts) {
+      await mkdir(webhookArtifacts, { recursive: true, mode: 0o700 });
+      await alice.page.screenshot({
+        path: join(webhookArtifacts, "webhooks-desktop.png"),
+      });
+      const viewport = alice.page.viewportSize();
+      await alice.page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(
+        await alice.page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+        true,
+      );
+      await alice.page.screenshot({
+        path: join(webhookArtifacts, "webhooks-mobile.png"),
+      });
+      if (viewport) await alice.page.setViewportSize(viewport);
+    }
+    await alice.page
       .getByRole("button", { name: "Agents", exact: true })
       .click();
     await visible(
@@ -1071,6 +1203,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       personalAutomationBrowserQwenUidHomeCwdVerified: true,
       personalAutomationBrowserCancellationReapsActualCommands: true,
       personalAutomationBrowserForeignReadsAndMutationsDenied: true,
+      webhookCreateRotateDisableHistoryAndForeignDenialBrowser: true,
       productionBrowserRenderingVerified: true,
       delegatedConversationHasNoIndependentComposerBrowser: true,
       publishedWorkflowAgentCatalogTaskResultBrowser: true,

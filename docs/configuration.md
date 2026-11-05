@@ -1884,3 +1884,14 @@ workflow operation or the `invoke_agent` BB tool. That operation requires an
 explicit target entry even for self calls and enforces fixed tree limits: depth
 4, 64 total and 8 outstanding calls, 10 minutes per reservation. Enable
 `bb:invoke_agent` and MCP source `bb` to offer the tool to Qwen.
+
+### Shared-server webhook triggers
+
+The restricted personal Webhooks page and `bb server access webhooks` commands
+configure per-owner triggers with immutable project/agent version and a selected
+top-level JSON text field. The only external delivery route requires its own
+one-time-issued bearer secret and `X-BB-Delivery-ID`; no new listener or general
+BB API exposure is enabled. Body/task limits are 256/128 KiB, at most 64 native
+admissions are in flight per service, and failed/pending requests require source
+redelivery with the same ID and exact bytes. Disable or rotate through the owner
+API to stop future admission. See [webhook contracts](control-plane-webhooks.md).

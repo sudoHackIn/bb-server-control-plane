@@ -805,6 +805,7 @@ export function createUserThreadFixture({ db, users }) {
 
       await releaseIdleSessions(false);
       const workflowAgents = await verifyPublishedWorkflowAgents({
+        webhookRequest: send,
         origin,
         launch,
         signal,
