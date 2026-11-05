@@ -116,7 +116,8 @@ and [P3.5 verification](control-plane-phase-96-verification.json).
 
 Goal: an agent chooses an allowed specialist at runtime; a workflow can invoke that specialist by version.
 
-- [ ] P4.4: Exercise physical native Qwen/thread capacity exhaustion with an awaiting parent and child. Verify bounded failure, cancellation, capacity release and a subsequent successful call without resetting invocation budgets/deadlines. Decide whether explicit child-capacity reservation is necessary from that evidence.
+P4 is complete. The existing native concurrency limits remain strict; delegated
+children do not receive an automatic capacity bypass or reserved process slot.
 
 P4.1 worker policy is delivered; see [its contract](control-plane-workflow-agents.md#worker-delegation-policy)
 and [verification](control-plane-phase-97-verification.json). P4.2 adds complete
@@ -126,8 +127,12 @@ inspection navigation. See [the invocation contract](control-plane-workflow-agen
 and [verification](control-plane-phase-98-verification.json). P4.3 adds nested
 crash recovery checks, durable cleanup fencing/retry and parent provenance for
 directly reopened children. See [its contract](control-plane-workflow-agents.md#delegation-recovery-and-provenance)
-and [verification](control-plane-phase-99-verification.json). Physical harness
-capacity exhaustion remains open above.
+and [verification](control-plane-phase-99-verification.json). P4.4 verifies a
+native Qwen parent occupying the last slot, cancellation and deadline fencing,
+slot reuse and a subsequent delegated call for both users. The waiter now
+observes persisted cancellation even when the child never started. See
+[capacity semantics](control-plane-workflow-agents.md#delegation-recovery-and-provenance)
+and [verification](control-plane-phase-100-verification.json).
 
 ### P5 — More triggers and richer contracts
 

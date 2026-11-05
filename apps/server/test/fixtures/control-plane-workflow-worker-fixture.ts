@@ -6,6 +6,8 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
   createConnection,
+  controlPlaneAgentInvocations,
+  CONTROL_PLANE_AGENT_INVOCATION_LIMITS,
   reserveControlPlaneAgentInvocation,
   createControlPlaneJobBinding,
   createThread,
@@ -29,6 +31,7 @@ const mode = z
     "access",
     "notification-retry",
     "reserve-invocation",
+    "expire-invocation",
   ])
   .parse(process.argv[2]);
 const db = createConnection("/srv/bb/bb.db");
@@ -46,7 +49,25 @@ const savedSchema = z
   )
   .length(2);
 try {
-  if (mode === "reserve-invocation") {
+  if (mode === "expire-invocation") {
+    const { id } = z
+      .object({ id: z.string().uuid() })
+      .strict()
+      .parse(JSON.parse(process.argv[3] ?? ""));
+    const before = db
+      .select()
+      .from(controlPlaneAgentInvocations)
+      .where(eq(controlPlaneAgentInvocations.id, id))
+      .get();
+    assert.equal(before?.state, "running");
+    const createdAt =
+      Date.now() - CONTROL_PLANE_AGENT_INVOCATION_LIMITS.timeoutMs - 1000;
+    db.update(controlPlaneAgentInvocations)
+      .set({ createdAt })
+      .where(eq(controlPlaneAgentInvocations.id, id))
+      .run();
+    process.stdout.write(JSON.stringify({ createdAt }) + "\n");
+  } else if (mode === "reserve-invocation") {
     const input = z
       .object({
         parentId: z.string().uuid(),

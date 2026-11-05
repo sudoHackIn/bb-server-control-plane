@@ -1274,3 +1274,12 @@ the core reconciler only fences/cleans stale work. Interrupted conversations
 fail unless a completed native turn proves success. `cleanupPending` means
 execution is already fenced and cleanup will retry with the current plugin.
 Closed delegated conversations cannot be continued independently.
+
+Native Qwen thread capacity is independent of workflow root slots. A conversation
+awaiting `invoke_agent` retains its native slot; at capacity one its conversation
+child waits until cancellation or the original ten-minute deadline. Persisted
+cancellation releases the waiter even when the child never started a turn.
+No automatic capacity bypass or child reservation is applied. Allow headroom
+for synchronous delegation (at least parent plus child); saturation can still
+fail within the fixed deadline. Same-key retry never resets that deadline or
+the saved invocation budgets.

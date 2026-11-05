@@ -222,9 +222,17 @@ export function createControlPlaneAgentInvocations(
         });
       }
       while (true) {
+        const current = deps.db
+          .select({ state: calls.state, cleanupPending: calls.cleanupPending })
+          .from(calls)
+          .where(eq(calls.id, callId))
+          .get();
         if (
           closed ||
           signal.aborted ||
+          !current ||
+          current.cleanupPending ||
+          ["failed", "cancelled"].includes(current.state) ||
           (call.state !== "succeeded" && Date.now() > deadline)
         )
           throw new Error("Agent invocation cancelled or timed out");

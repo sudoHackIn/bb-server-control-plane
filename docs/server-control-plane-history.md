@@ -3912,3 +3912,40 @@ See [the recovery contract](control-plane-workflow-agents.md#delegation-recovery
 and [the verification record](control-plane-phase-99-verification.json).
 Dedicated physical Qwen/thread queue exhaustion coverage remains in the active
 plan; the workflow root-slot exception does not reserve harness processes.
+
+## P4.4 — Native delegation capacity exhaustion
+
+A Qwen conversation waiting for `invoke_agent` retains its native execution
+slot. The Docker fixture now sets the isolated test host to one slot and proves
+that the parent is active while its child is held by the actual concurrency
+plugin. For Alice and Bob separately it cancels the parent, expires a second
+reservation, runs a fresh leaf with the same one-slot limit, then permits two
+slots and completes a new parent/child invocation under the registered
+UID/HOME/cwd. Foreign child reads and independent sends remain denied; cancelled
+children leave no execution proof after capacity is restored. Each original
+host override is restored, without changing Docker resources or the live BB.
+
+The core waiter now reads persisted invocation cancellation before polling
+native results. A queued child can be cancelled without ever producing a
+`turn/completed` event; the old waiter would otherwise remain pending until its
+locally captured deadline. The regression test fails before this fix and passes
+after it. Same-key retry retains the cancelled record, child identity, ancestry,
+original deadline and counted tree budget. Native stop retains queued messages;
+current invocation authority continues to fence their dispatch.
+
+Decision: keep configured native limits strict and use bounded failure under
+saturation. Do not silently bypass the concurrency plugin or reserve extra
+processes in this slice. Synchronous conversation delegation needs headroom
+for its waiting parents and children; guaranteed progress with simultaneously
+saturated parents would require admission reservations before parent startup.
+The workflow root-slot exemption remains distinct from native harness capacity.
+
+The deployment fixture accelerates deadline expiry by aging only its private
+invocation record using a test-only executable. Production has no new expiry
+endpoint/configuration, and its ten-minute deadline is unchanged. This verifies
+native cancellation and queue behavior without claiming a ten-minute wall-clock
+soak. See [the verification record](control-plane-phase-100-verification.json).
+
+Verification: 164 control-plane tests in 45 files, typecheck and lint/format
+passed. The final Docker composite passed 63/63 tasks (877586 ms), including
+Chrome UI, clean restart and nested crash recovery.

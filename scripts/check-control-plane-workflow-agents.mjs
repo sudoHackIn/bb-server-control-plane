@@ -862,6 +862,212 @@ export async function verifyPublishedWorkflowAgents({
       ),
       { uid: user.uid, home: user.home, cwd: project.cwd },
     );
+    const capacityHostId = db
+      .prepare("SELECT host_id FROM control_plane_projects WHERE project_id=?")
+      .get(project.projectId).host_id;
+    const capacityBefore = await capacity(["status"]);
+    const previousLimit = capacityBefore.hosts.find(
+      (row) => row.id === capacityHostId,
+    ).override;
+    const invocationFor = (parentId) =>
+      db
+        .prepare(
+          "SELECT * FROM control_plane_agent_invocations WHERE parent_kind='thread' AND parent_id=?",
+        )
+        .get(parentId);
+    const threadState = (id) =>
+      db.prepare("SELECT status FROM threads WHERE id=?").get(id)?.status;
+    const capacityParents = [];
+    try {
+      assert.equal(
+        (await capacity(["host", capacityHostId, "1"])).effectiveLimit,
+        1,
+      );
+      for (const outcome of ["cancel", "deadline"]) {
+        const marker = `delegator-capacity-${outcome}-${user.login}`;
+        const parent = await userRequest(
+          user.login,
+          "/control-plane/user/threads",
+          {
+            method: "POST",
+            body: {
+              projectId: project.projectId,
+              profileVersionId: delegatorProfile.body.version.id,
+              message: `BB_PERSONAL_${marker} BB_INVOKE_VERSION=${profile.body.version.id}`,
+            },
+          },
+        );
+        assert.equal(parent.status, 201, JSON.stringify(parent.body));
+        capacityParents.push(parent.body.id);
+        let blocked;
+        await wait(() => {
+          blocked = invocationFor(parent.body.id);
+          if (!blocked?.run_id) return false;
+          const queue = db
+            .prepare(
+              "SELECT state,waiting_on,wait_holder FROM queued_thread_messages WHERE thread_id=?",
+            )
+            .all(blocked.run_id);
+          return (
+            threadState(parent.body.id) === "active" &&
+            queue.some((row) => row.wait_holder === "plugin:concurrency-limit")
+          );
+        }, `native child capacity blocked ${outcome} ${user.login}`);
+        assert.notEqual(threadState(blocked.run_id), "active");
+        assert.equal(
+          (await userRequest(otherLogin, `${base}/${blocked.run_id}/result`))
+            .status,
+          404,
+        );
+        await assert.rejects(
+          readFile(
+            `${user.home}/bb-personal-delegated-mcp-capacity-${outcome}-${user.login}.json`,
+          ),
+          { code: "ENOENT" },
+        );
+        let deadline = blocked.created_at;
+        if (outcome === "cancel") {
+          assert.equal(
+            (
+              await userRequest(
+                user.login,
+                `/control-plane/user/threads/${parent.body.id}/stop`,
+                { method: "POST" },
+              )
+            ).status,
+            200,
+          );
+        } else {
+          const expired = await fixture("expire-invocation", {
+            id: blocked.id,
+          });
+          deadline = expired.createdAt;
+        }
+        await wait(() => {
+          const call = invocationFor(parent.body.id);
+          return (
+            call?.state === "cancelled" &&
+            call.cleanup_pending === 0 &&
+            threadState(parent.body.id) === "idle"
+          );
+        }, `capacity ${outcome} releases parent ${user.login}`);
+        const ended = invocationFor(parent.body.id);
+        assert.equal(ended.id, blocked.id);
+        assert.equal(ended.run_id, blocked.run_id);
+        assert.equal(ended.created_at, deadline);
+        assert.equal(ended.depth, blocked.depth);
+        assert.equal(ended.root_id, blocked.root_id);
+        assert.equal(
+          db
+            .prepare(
+              "SELECT count(*) AS count FROM control_plane_agent_invocations WHERE root_id=?",
+            )
+            .get(ended.root_id).count,
+          1,
+        );
+        assert.equal(
+          (
+            await userRequest(
+              user.login,
+              `/control-plane/user/threads/${blocked.run_id}/send`,
+              {
+                method: "POST",
+                body: { message: "must not restart cancelled child" },
+              },
+            )
+          ).status,
+          409,
+        );
+        assert.notEqual(threadState(blocked.run_id), "active");
+      }
+      const leaf = await userRequest(
+        user.login,
+        "/control-plane/user/threads",
+        {
+          method: "POST",
+          body: {
+            projectId: project.projectId,
+            profileVersionId: profile.body.version.id,
+            message: `BB_PERSONAL_capacity-leaf-${user.login}`,
+          },
+        },
+      );
+      assert.equal(leaf.status, 201, JSON.stringify(leaf.body));
+      capacityParents.push(leaf.body.id);
+      await wait(
+        () => threadState(leaf.body.id) === "idle",
+        `released single slot runs next leaf ${user.login}`,
+      );
+      assert.deepEqual(
+        JSON.parse(
+          await readFile(
+            `${user.home}/bb-personal-capacity-leaf-${user.login}.json`,
+            "utf8",
+          ),
+        ),
+        { uid: user.uid, home: user.home, cwd: project.cwd },
+      );
+      assert.equal(
+        (await capacity(["host", capacityHostId, "2"])).effectiveLimit,
+        2,
+      );
+      const recovered = await userRequest(
+        user.login,
+        "/control-plane/user/threads",
+        {
+          method: "POST",
+          body: {
+            projectId: project.projectId,
+            profileVersionId: delegatorProfile.body.version.id,
+            message: `BB_PERSONAL_delegator-capacity-recovered-${user.login} BB_INVOKE_VERSION=${profile.body.version.id}`,
+          },
+        },
+      );
+      assert.equal(recovered.status, 201, JSON.stringify(recovered.body));
+      capacityParents.push(recovered.body.id);
+      await wait(
+        () =>
+          invocationFor(recovered.body.id)?.state === "succeeded" &&
+          threadState(recovered.body.id) === "idle",
+        `capacity subsequent invocation succeeds ${user.login}`,
+      );
+      assert.deepEqual(
+        JSON.parse(
+          await readFile(
+            `${user.home}/bb-personal-delegated-mcp-capacity-recovered-${user.login}.json`,
+            "utf8",
+          ),
+        ),
+        { uid: user.uid, home: user.home, cwd: project.cwd },
+      );
+      for (const outcome of ["cancel", "deadline"]) {
+        await assert.rejects(
+          readFile(
+            `${user.home}/bb-personal-delegated-mcp-capacity-${outcome}-${user.login}.json`,
+          ),
+          { code: "ENOENT" },
+        );
+      }
+    } finally {
+      for (const id of capacityParents) {
+        if (["active", "starting"].includes(threadState(id)))
+          await userRequest(
+            user.login,
+            `/control-plane/user/threads/${id}/stop`,
+            { method: "POST" },
+          );
+      }
+      assert.equal(
+        (
+          await capacity([
+            "host",
+            capacityHostId,
+            previousLimit === null ? "auto" : String(previousLimit),
+          ])
+        ).override,
+        previousLimit,
+      );
+    }
     const mcpDeniedProfile = await sendAdmin(
       "/control-plane/admin/profiles",
       {
@@ -1051,6 +1257,9 @@ export async function verifyPublishedWorkflowAgents({
       workflowInspectionReplayProvenance: true,
       publishedAgentConversationAndWorkflowCompositionTwoUsers: true,
       qwenMcpPublishedAgentInvocationTwoUsers: true,
+      nativeDelegationCapacityCancellationTwoUsers: true,
+      nativeDelegationCapacityDeadlineTwoUsers: true,
+      nativeDelegationCapacityReleaseAndSubsequentSuccessTwoUsers: true,
       qwenMcpDeniedTargetCreatesNoInvocationTwoUsers: true,
       parentCancellationStopsDelegatedWorkflowAndWorker: true,
       publishedWorkflowAgentsNativeUidHomeCwdTwoUsers: true,

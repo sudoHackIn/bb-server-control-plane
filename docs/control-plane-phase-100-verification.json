@@ -1,0 +1,51 @@
+{
+  "scope": "P4.4 native Qwen delegation capacity exhaustion",
+  "changes": {
+    "persistedCancellationReleasesAwaitingCaller": true,
+    "strictNativeConcurrencyLimitsUnchanged": true,
+    "automaticChildCapacityReservation": false,
+    "newPublicApi": false,
+    "databaseMigration": false,
+    "hostDaemonWireChanged": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 164,
+    "testFilesPassed": 45,
+    "typecheck": "passed",
+    "lint": "passed",
+    "changedFileFormat": "passed",
+    "regression": "New real-SQLite test timed out before the fix (6 passed, 1 failed); all 7 invocation tests pass after the fix, including unchanged same-key cancelled retry.",
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane-agent-invocations.test.ts",
+      "pnpm exec turbo run typecheck --filter=@bb/server"
+    ],
+    "dockerStatus": "passed",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 877586,
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p4-capacity-browser\" BB_TEST_BROWSER_CHANNEL=chrome caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "proofs": {
+      "productionBrowserRenderingVerified": true,
+      "nativeDelegationCapacityCancellationTwoUsers": true,
+      "nativeDelegationCapacityDeadlineTwoUsers": true,
+      "nativeDelegationCapacityReleaseAndSubsequentSuccessTwoUsers": true,
+      "crashFixtureHostCapacityScopedAndRestored": true,
+      "nestedPublishedWorkflowCrashReusesNativeIdentity": true,
+      "pendingInvocationWindowSurvivesCrashWithoutDuplicateChild": true,
+      "revokedDelegationAfterCrashFencesDescendants": true,
+      "invocationDepthAndDeadlineNotResetAfterCrash": true
+    },
+    "notes": [
+      "Each user runs with a native one-slot parent/child wait, explicit cancellation, expiry, a successful leaf at the unchanged one-slot limit, then successful delegation at two slots. Actual UID/HOME/cwd and foreign result denial are checked.",
+      "Deadline expiry is accelerated only by a test executable aging the private database reservation. The production deadline stays 600000 ms; this is not a ten-minute wall-clock soak.",
+      "Cancelled native queue messages may remain inspectable; background sends return 409 run_is_not_chat and cancelled children produce no execution files after capacity is restored.",
+      "The test restores the original host override. Docker resources and live BB limits are unchanged.",
+      "Earlier fixture assertions incorrectly expected queue deletion and HTTP 403 for background sends. Those runs did not count as acceptance; the final full deployment passed with the actual native contracts."
+    ]
+  },
+  "decision": "No automatic child-slot reservation or concurrency bypass. Bounded cancellation/deadline failure is supported under saturation. Guaranteed progress needs a separate parent admission policy; operational headroom alone cannot guarantee it.",
+  "limitations": [
+    "Verified with stock Qwen and the deterministic test model, not corporate-fork authorization.",
+    "No exactly-once external effect guarantee."
+  ]
+}

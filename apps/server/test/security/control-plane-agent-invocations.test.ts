@@ -358,6 +358,137 @@ it("reuses an admitted conversation after a lost reply and rejects its interrupt
   });
 });
 
+it("releases an awaiting caller when reconciliation cancels a child that never started", async () => {
+  await withTestHarness(async (harness) => {
+    const { alice, bob } = seedControlPlaneJobSubjects(harness.db);
+    setControlPlaneProfileAccess(
+      harness.db,
+      bob.profile.profileId,
+      alice.user.id,
+      true,
+    );
+    const version = publishControlPlaneProfileVersion(
+      harness.db,
+      alice.profile.profileId,
+      {
+        prompt: "Delegate",
+        providerId: "qwen-server",
+        model: "qwen-test",
+        reasoningLevel: "none",
+        permissionMode: "full",
+        tools: [],
+        mcpServers: [],
+        delegation: { allowedVersionIds: [bob.profile.versionId] },
+      },
+    );
+    const parent = createThread(harness.db, harness.hub, {
+      projectId: alice.project.id,
+      environmentId: alice.environment.id,
+      providerId: "qwen-server",
+      status: "active",
+      controlPlaneOwnerUserId: alice.user.id,
+      controlPlaneProfileVersionId: version.id,
+    });
+    const reference = { kind: "thread" as const, id: parent.id };
+    const input = {
+      versionId: bob.profile.versionId,
+      input: "task",
+      key: "retry-after-lost-reply",
+    };
+    const call = reserveControlPlaneAgentInvocation(
+      harness.db,
+      reference,
+      input,
+    );
+    const digest = createHash("sha256")
+      .update(
+        JSON.stringify({
+          projectId: alice.project.id,
+          profileVersionId: bob.profile.versionId,
+          input: "task",
+          source: "manual",
+        }),
+      )
+      .digest("hex");
+    const child = createThread(harness.db, harness.hub, {
+      projectId: alice.project.id,
+      environmentId: alice.environment.id,
+      providerId: "qwen-server",
+      status: "idle",
+      controlPlaneOwnerUserId: alice.user.id,
+      controlPlaneProfileVersionId: bob.profile.versionId,
+      controlPlaneRun: {
+        source: "manual",
+        idempotencyKey: call.childKey,
+        inputDigest: digest,
+      },
+    });
+    const service = createControlPlaneAgentInvocations(
+      harness.deps,
+      async () => {
+        throw new Error("Unexpected workflow RPC");
+      },
+    );
+    try {
+      const invoked = withControlPlaneUser(alice.user.id, () =>
+        service.invoke(reference, input, new AbortController().signal),
+      );
+      const rejected = expect(invoked).rejects.toThrow("cancelled");
+      await vi.waitFor(() => {
+        expect(
+          harness.db
+            .select()
+            .from(controlPlaneAgentInvocations)
+            .where(eq(controlPlaneAgentInvocations.id, call.id))
+            .get()?.state,
+        ).toBe("running");
+      });
+      harness.db
+        .update(controlPlaneAgentInvocations)
+        .set({ createdAt: Date.now() - 600001 })
+        .where(eq(controlPlaneAgentInvocations.id, call.id))
+        .run();
+      const expiredAt = harness.db
+        .select()
+        .from(controlPlaneAgentInvocations)
+        .where(eq(controlPlaneAgentInvocations.id, call.id))
+        .get()?.createdAt;
+      await service.reconcile();
+      await rejected;
+      const saved = harness.db
+        .select()
+        .from(controlPlaneAgentInvocations)
+        .where(eq(controlPlaneAgentInvocations.id, call.id))
+        .get();
+      expect(saved).toMatchObject({
+        id: call.id,
+        runId: child.id,
+        state: "cancelled",
+        createdAt: expiredAt,
+        depth: call.depth,
+        rootId: call.rootId,
+      });
+      await expect(
+        withControlPlaneUser(alice.user.id, () =>
+          service.invoke(reference, input, new AbortController().signal),
+        ),
+      ).rejects.toThrow("cancelled");
+      expect(
+        harness.db
+          .select()
+          .from(controlPlaneAgentInvocations)
+          .where(eq(controlPlaneAgentInvocations.id, call.id))
+          .get(),
+      ).toEqual(saved);
+      expect(
+        harness.db.select().from(controlPlaneAgentInvocations).all(),
+      ).toHaveLength(1);
+    } finally {
+      await service.close();
+    }
+  });
+});
+
 it("fences a pending reservation immediately when cancellation races native workflow admission", async () => {
   await withTestHarness(async (harness) => {
     const { alice } = seedControlPlaneJobSubjects(harness.db);

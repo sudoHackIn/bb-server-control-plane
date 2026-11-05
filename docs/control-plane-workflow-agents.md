@@ -384,5 +384,21 @@ parent-controlled, while closed child history is read-only.
 The existing inspection API, SDK and `bb server inspections` commands carry
 this metadata; no parent-ID execution endpoint or daemon wire change is added.
 Native Qwen concurrency capacity remains separate from the workflow root-slot
-exception. The fixed deadline bounds waiting, but dedicated exhaustion/admission
-capacity tests remain a follow-up.
+exception. A native conversation awaiting `invoke_agent` still occupies its
+thread slot. With one slot and an awaited conversation child, the child stays
+queued until cancellation or the original ten-minute invocation deadline.
+The waiter reads persisted cancellation as well as native results: a child
+cancelled before its first turn need not produce a completion event to release
+the parent. Native stop may retain the queued message for inspection; current
+invocation authority prevents its dispatch or a new send after cancellation.
+Repeated same-key calls cannot reopen the cancelled reservation or
+reset its ancestry, counters or deadline.
+
+No child reservation or concurrency bypass is added. A bounded failure is the
+current contract under saturation; reserve operational headroom for synchronous
+conversation delegation (parent plus child requires at least two host/global
+slots, deeper trees require more). This avoids silently exceeding configured
+process limits. Workflows that await children without a Qwen parent consume no
+parent harness slot. Guaranteed progress under simultaneous parent saturation
+would require a separate admission policy reserving capacity before parents
+start; merely increasing the limit does not guarantee it.
