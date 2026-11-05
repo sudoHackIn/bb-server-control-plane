@@ -1319,3 +1319,28 @@ is not an automatic background retry queue. Current user/project/profile grants
 are checked before admission and replay. Delivery secrets grant no read access
 to projects, chats or results. This generic bearer protocol does not implement
 GitHub/Slack signature formats or event-specific adapters.
+
+### Poll project task sources
+
+`bb server access task-sources` uses the limited authenticated API. The initial
+adapter reads project-local Beads under the registered UID/HOME/cwd. Initialize
+Beads in the project first; the source is created paused. Administrators publish
+the pinned agent version, and its current grants are checked on every poll/start.
+
+```bash
+bb server access task-sources create <project-id> --profile-version <version-id> --name 'Ready work' --interval 300 --json
+bb server access task-sources list <project-id> --json
+bb server access task-sources enable <source-id> --json
+bb server access task-sources poll <source-id> --json
+bb server access task-sources get <source-id> --json
+bb server access task-sources history <source-id> --json
+bb server access task-sources disable <source-id> --json
+```
+
+List/history accept `--cursor`. The SDK is `createControlPlaneClient().taskSources`
+(create/get/list/setEnabled/poll/history). A source keeps one native run per task
+ID, including retry after restart. Accepted is admission, not execution success.
+Open the native result/inspection for completion. Pausing preserves pending tasks
+and does not cancel admitted runs. Beads tasks are not automatically claimed or
+closed. Larger than 1000-task/1-MiB snapshots fail without advancing a checkpoint.
+Beads uses workspace credentials; remote credential-based adapters are separate.

@@ -106,3 +106,5 @@ export * from "./control-plane-diagnostics.js";
 export * from "./control-plane-test-run.js";
 
 export * from "./control-plane-webhook.js";
+
+export * from "./control-plane-task-source.js";

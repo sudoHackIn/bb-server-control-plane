@@ -8,6 +8,7 @@ import {
   createConnection,
   controlPlaneAgentInvocations,
   controlPlaneWebhookDeliveries,
+  controlPlaneTaskSourceItems,
   CONTROL_PLANE_AGENT_INVOCATION_LIMITS,
   reserveControlPlaneAgentInvocation,
   createControlPlaneJobBinding,
@@ -34,6 +35,7 @@ const mode = z
     "reserve-invocation",
     "expire-invocation",
     "webhook-lost-reply",
+    "task-source-lost-reply",
   ])
   .parse(process.argv[2]);
 const db = createConnection("/srv/bb/bb.db");
@@ -51,7 +53,23 @@ const savedSchema = z
   )
   .length(2);
 try {
-  if (mode === "webhook-lost-reply") {
+  if (mode === "task-source-lost-reply") {
+    const { id } = z
+      .object({ id: z.string().uuid() })
+      .strict()
+      .parse(JSON.parse(process.argv[3] ?? ""));
+    const before = db
+      .select()
+      .from(controlPlaneTaskSourceItems)
+      .where(eq(controlPlaneTaskSourceItems.id, id))
+      .get();
+    assert.equal(before?.state, "accepted");
+    db.update(controlPlaneTaskSourceItems)
+      .set({ state: "pending", runId: null })
+      .where(eq(controlPlaneTaskSourceItems.id, id))
+      .run();
+    process.stdout.write(JSON.stringify({ saved: true }) + "\n");
+  } else if (mode === "webhook-lost-reply") {
     const { id } = z
       .object({ id: z.string().uuid() })
       .strict()

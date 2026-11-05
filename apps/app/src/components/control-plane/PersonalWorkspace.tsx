@@ -1,3 +1,4 @@
+import { PersonalTaskSources } from "./PersonalTaskSources";
 import { PersonalWebhooks } from "./PersonalWebhooks";
 import { DelegatedRunBanner } from "./DelegatedRunBanner";
 import { RunInspections } from "./RunInspections";
@@ -82,6 +83,7 @@ function WorkspaceNavigation({
   const preferredAgentId = new URLSearchParams(location.search).get("agent");
   const agentView = view === "agents";
   const workflowView = view === "workflows";
+  const taskSourceView = view === "task-sources";
   const webhookView = view === "webhooks";
   const automationView = view === "automations";
   const integrationView = view === "integrations";
@@ -215,6 +217,7 @@ function WorkspaceNavigation({
       | "agents"
       | "workflows"
       | "webhooks"
+      | "task-sources"
       | "automations"
       | "integrations"
       | "inspections",
@@ -269,6 +272,16 @@ function WorkspaceNavigation({
                   >
                     <Icon name="Calendar" />
                     <span>Automations</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    aria-current={taskSourceView ? "page" : undefined}
+                    className="aria-[current=page]:bg-sidebar-accent"
+                    onClick={() => openView("task-sources")}
+                  >
+                    <Icon name="ListTodo" />
+                    <span>Task sources</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
@@ -469,6 +482,13 @@ function WorkspaceNavigation({
               );
             }}
           />
+        ) : taskSourceView && selectedProject ? (
+          <PersonalTaskSources
+            key={`${bootstrap.session.user.id}:${selectedProject.projectId}`}
+            client={client}
+            projectId={selectedProject.projectId}
+            canCreate={project.data?.canRun === true}
+          />
         ) : webhookView && selectedProject ? (
           <PersonalWebhooks
             key={`${bootstrap.session.user.id}:${selectedProject.projectId}`}
@@ -546,6 +566,7 @@ function WorkspaceNavigation({
           !inspectionRunId &&
           !agentView &&
           !workflowView &&
+          !taskSourceView &&
           !webhookView &&
           !automationView &&
           !integrationView &&

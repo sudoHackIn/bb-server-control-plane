@@ -1,3 +1,4 @@
+import { registerServerTaskSourceCommands } from "./server-task-sources.js";
 import { registerServerWebhookCommands } from "./server-webhooks.js";
 import { registerServerInspectionCommands } from "./server-inspections.js";
 import { registerServerMcpCommands } from "./server-mcp.js";
@@ -64,6 +65,12 @@ export function registerServerAccessCommands(
     }),
   );
   registerServerThreadCommands(access, () =>
+    createControlPlaneClient({
+      origin: endpoint(getUrl(), "/").origin,
+      fetch: cliFetch,
+    }),
+  );
+  registerServerTaskSourceCommands(access, () =>
     createControlPlaneClient({
       origin: endpoint(getUrl(), "/").origin,
       fetch: cliFetch,

@@ -83,6 +83,10 @@ try {
       "check-control-plane-automations.mjs",
     ],
     [
+      "scripts/check-control-plane-task-sources.mjs",
+      "check-control-plane-task-sources.mjs",
+    ],
+    [
       "scripts/check-control-plane-webhooks.mjs",
       "check-control-plane-webhooks.mjs",
     ],

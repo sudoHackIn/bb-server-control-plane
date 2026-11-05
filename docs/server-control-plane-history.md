@@ -3978,3 +3978,37 @@ See [the contract](control-plane-webhooks.md) and
 Verification: 235 focused tests in 62 files, typecheck and lint/format passed.
 The final Docker composite passed 63/63 tasks (834840 ms), including Chrome,
 clean restart and nested crash recovery.
+
+## P5.2 — Task-source abstraction and Beads adapter
+
+The generic source service separates adapter reads from durable task admission.
+An adapter returns stable IDs, task input and an opaque checkpoint. The core
+persists the batch before advancing its checkpoint, retries pending items with
+native idempotency, applies bounded concurrency/backoff, and rechecks the saved
+owner/project/profile. The first adapter reads ready project-local Beads tasks
+through the existing managed script supervisor under the user's UID/HOME/cwd.
+The Docker image pins the real Beads CLI and verifies its release checksum.
+
+The personal Task sources view and limited API/SDK/CLI create paused sources,
+enable/pause them, request polling and expose task history with native inspection
+links. Each project has one Beads source; it keeps one admission per external ID
+and the original input across later edits and retry. The source does not claim or
+close Beads tasks, and no public endpoint accepts executable adapter code.
+Beads uses the user's workspace identity. Remote credential-based adapters need
+their own validated configuration and per-user secret resolver when introduced;
+this slice does not add an unused token field.
+
+Native reader recovery preserves the previous job ID for cleanup and allocates
+a new ID before the next launch. An early Docker attempt exposed that stopped
+supervisor IDs are intentionally fenced forever; reusing one was fixed without
+weakening that fence or expanding filesystem permissions. Intentional pause and
+shutdown do not count as source failures. Failure backoff never accelerates a
+source whose configured interval already exceeds the one-hour cap.
+
+See [the adapter and polling contract](control-plane-task-sources.md) and
+[the verification record](control-plane-phase-102-verification.json).
+
+Verification: 243 unique focused tests in 64 files, typecheck and changed-file
+lint/format passed. The Docker composite passed 63/63 tasks (882776 ms), including
+Chrome desktop/mobile, real Beads reads, native Qwen runs, clean restart and
+crash recovery. The final image rebuild passed 62/62 build tasks.

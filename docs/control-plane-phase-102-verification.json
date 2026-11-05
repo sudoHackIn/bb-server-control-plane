@@ -1,0 +1,57 @@
+{
+  "scope": "P5.2 common task-source kernel and project-local Beads adapter",
+  "changes": {
+    "limitedApiSdkCliUi": true,
+    "genericAdapterWithSavedUserProjectContext": true,
+    "beadsVersion": "1.3.4",
+    "beadsSha256Pinned": true,
+    "registeredUidHomeCwd": true,
+    "durableBatchCheckpointAndTaskJournal": true,
+    "nativePrivateIdempotencyKeys": true,
+    "pauseAbortAndBoundedBackoff": true,
+    "freshReaderIdAfterConfirmedCleanup": true,
+    "migration": "0169_perpetual_gorilla_man",
+    "hostDaemonWireChanged": false,
+    "newPluginApi": false
+  },
+  "verification": {
+    "uniqueTestsPassed": 243,
+    "testFilesPassed": 64,
+    "typecheck": "passed",
+    "lint": "passed",
+    "changedFileFormat": "passed",
+    "commands": [
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane",
+      "pnpm exec turbo run test --filter=@bb/server -- test/security/control-plane-task-sources.test.ts test/security/control-plane-script-runner.test.ts",
+      "pnpm exec turbo run test --filter=@bb/app -- src/components/control-plane",
+      "pnpm exec turbo run test --filter=@bb/cli -- src/__tests__/command-output/server-task-sources.test.ts",
+      "pnpm exec turbo run typecheck --filter=@bb/server --filter=@bb/app --filter=@bb/cli"
+    ],
+    "dockerStatus": "passed",
+    "dockerTurboTasksPassed": 63,
+    "dockerCompositeDurationMs": 882776,
+    "dockerCommand": "BB_CONTROL_PLANE_BROWSER_ARTIFACTS=\"$BB_THREAD_STORAGE/p52-beads-browser\" BB_TEST_BROWSER_CHANNEL=chrome caffeinate -i pnpm exec turbo run test:control-plane-deployment --filter=@bb/server --env-mode=loose -- --browser-only",
+    "finalImageBuildTasksPassed": 62,
+    "proofs": {
+      "taskSourceBeadsStatusHistoryAndPausedControlsBrowser": true,
+      "taskSourceBeadsTwoUsersUidHomeCwdReadyDependenciesAndDuplicates": true,
+      "taskSourceBeadsLostReplyRecoveryAfterRestart": true
+    },
+    "notes": [
+      "174 server tests passed across 47 files; the additional long-interval backoff regression and the complete final 7-test source suite passed. Together with 67 UI tests and 1 CLI test, there are 243 unique tests.",
+      "Real Beads initializes dependency-linked tasks for Alice and Bob. Only ready work starts; native result files prove UID/HOME/cwd. Foreign reads/polls/results and revoked grants are denied.",
+      "Repeated polling and post-restart lost-reply recovery retain the same reservation and native run ID, with one native admission row. Beads issues remain open, as specified by this read-only adapter.",
+      "Initial Docker attempts exposed reuse of a permanently stopped supervisor ID and a recovery fixture writing through a readonly database descriptor. The reader now persists a fresh ID after cleanup; the fixture uses the existing private recovery executable.",
+      "Final additive source/user/project adapter context was checked by the generic-adapter test and typecheck, then rebuilt into the final image; Beads ignores these metadata fields and its deployed execution path is unchanged.",
+      "Desktop and 390px mobile Task sources screenshots were inspected. Chrome checked saved history and disabled polling controls for a paused source.",
+      "Executed on Linux arm64 in Docker. The amd64 release checksum is pinned but amd64 was not executed in this run."
+    ]
+  },
+  "limitations": [
+    "Only the Beads adapter is exposed; remote source configuration and encrypted per-user credentials remain in the plan.",
+    "Beads uses a complete bounded ready snapshot: at most 1000 tasks / 1 MiB; oversized responses fail without advancing checkpoint.",
+    "One immutable source per project/kind and one admission per task ID. Edits or reopening do not automatically create a new run.",
+    "No automatic Beads claim/close/sync, distributed consumer lock, multi-process scheduler lease or exactly-once external-effect guarantee.",
+    "Verified with stock Qwen and deterministic model, not corporate-fork authorization."
+  ]
+}

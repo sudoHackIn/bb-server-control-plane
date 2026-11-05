@@ -1,3 +1,4 @@
+import { controlPlaneTaskSourceItems } from "@bb/db";
 import type { z } from "zod";
 import { createHash } from "node:crypto";
 import { and, asc, eq, gt, isNull, like } from "drizzle-orm";
@@ -39,7 +40,13 @@ export function createControlPlaneAgentWorkflowService(
       .from(controlPlaneWebhookDeliveries)
       .where(eq(controlPlaneWebhookDeliveries.runId, run.runId))
       .get();
-    return delivery ? { ...run, source: "webhook" as const } : run;
+    if (delivery) return { ...run, source: "webhook" as const };
+    const task = db
+      .select({ id: controlPlaneTaskSourceItems.id })
+      .from(controlPlaneTaskSourceItems)
+      .where(eq(controlPlaneTaskSourceItems.runId, run.runId))
+      .get();
+    return task ? { ...run, source: "task-source" as const } : run;
   }
   const isWorkflow = (id: string) => /^wfa_[a-f0-9]{64}$/u.test(id);
   function conflict(): never {

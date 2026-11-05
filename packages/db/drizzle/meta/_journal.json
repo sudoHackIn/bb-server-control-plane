@@ -1184,6 +1184,13 @@
       "when": 1793893139919,
       "tag": "0168_condemned_viper",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "6",
+      "when": 1793902232650,
+      "tag": "0169_perpetual_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

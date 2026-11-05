@@ -142,7 +142,13 @@ idempotent admission and delivery history reuse native agent runs. See
 [the webhook contract](control-plane-webhooks.md) and
 [verification](control-plane-phase-101-verification.json).
 
-- [ ] Add task-source polling with per-user credentials, checkpoint, duplicate handling, backoff and current-grant checks.
+P5.2 delivers a common task-source adapter/kernel and a project-local Beads
+implementation: durable task/checkpoint journal, native idempotency, backoff,
+current grants and the personal UI/API/SDK/CLI. Beads reads under the registered
+UID/HOME/cwd; it does not claim or close tasks. See [the contract](control-plane-task-sources.md)
+and [verification](control-plane-phase-102-verification.json).
+
+- [ ] With the first remote task-source adapter, add its validated connection configuration and encrypted per-user credentials. The current Beads adapter uses workspace identity; it does not need a token.
 - [ ] Add structured input/output, files/artifacts and interactive workflow-backed agents when a concrete use case needs them. Verify scoped history, artifacts and subscriptions.
 
 ### P6 — Advanced extension points

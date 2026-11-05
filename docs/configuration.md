@@ -1895,3 +1895,14 @@ BB API exposure is enabled. Body/task limits are 256/128 KiB, at most 64 native
 admissions are in flight per service, and failed/pending requests require source
 redelivery with the same ID and exact bytes. Disable or rotate through the owner
 API to stop future admission. See [webhook contracts](control-plane-webhooks.md).
+
+### Project task-source polling
+
+Personal Task sources bind an approved agent to ready work in a project.
+The first adapter reads Beads through the managed UID/HOME/cwd launcher; initialize
+that project's `.beads` under its registered user, then enable the paused source.
+Docker pins Beads 1.3.4 with checksum verification; non-Docker installations need
+that CLI at `/usr/local/bin/bd`. Poll intervals range from 60 to 86400 seconds.
+The generic service persists task identities, original input and checkpoint,
+retries failed admission with backoff, and rechecks current grants. It does not
+automatically claim or close Beads tasks. See [task-source contracts and limits](control-plane-task-sources.md).

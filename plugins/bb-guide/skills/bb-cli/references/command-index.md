@@ -461,3 +461,5 @@ This index lists every command path that the core CLI registers, including alias
 - `bb browser import-cookies`
 
 - `bb server access webhooks create|list|get|history|enable|disable|rotate|deliver` — project webhook triggers, one-time secrets and delivery history; see `bb guide machines`.
+
+- `bb server access task-sources create <project-id> --profile-version <id> --name <name> [--interval <seconds>] --json`: create a paused Beads polling trigger; enable/disable/poll/get take its ID, list takes a project ID, history takes a source ID. List/history accept `--cursor`. Polling preserves task IDs and native run identity; see the Machines guide for authority, retry and Beads setup.

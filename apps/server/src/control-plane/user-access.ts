@@ -1,3 +1,8 @@
+import { createControlPlaneTaskSourceService } from "./task-sources/service.js";
+import {
+  installControlPlaneTaskSourceRoutes,
+  isControlPlaneTaskSourcePath,
+} from "./task-sources/routes.js";
 import { createControlPlaneWebhookService } from "./webhooks.js";
 import {
   isControlPlaneWebhookPath,
@@ -106,6 +111,7 @@ export function certificateLogin(context: Context): string | null {
 
 export function isUserAuthPath(path: string, method: string): boolean {
   if (
+    isControlPlaneTaskSourcePath(path, method) ||
     isControlPlaneWebhookPath(path, method) ||
     isControlPlaneMcpPath(path, method) ||
     isControlPlaneAutomationPath(path, method) ||
@@ -156,6 +162,17 @@ export function createControlPlaneUserAccess(
   mcp?: ControlPlaneMcpCredentials,
   inspections?: ControlPlaneInspectionService,
 ) {
+  const taskSources =
+    threads && workflows
+      ? createControlPlaneTaskSourceService(
+          registry.db,
+          createControlPlaneAgentWorkflowService(
+            registry.db,
+            threads,
+            workflows,
+          ),
+        )
+      : undefined;
   const provision = createControlPlaneProvisioner(registry);
   const authenticate = (context: Context) => {
     const authorization = context.req.header("authorization");
@@ -179,6 +196,7 @@ export function createControlPlaneUserAccess(
     usesBrowserCredential: browser.usesCookie,
     clearBrowserSession: browser.clear,
     close: () => {
+      taskSources?.close();
       threads?.close();
       inspections?.close();
     },
@@ -189,6 +207,10 @@ export function createControlPlaneUserAccess(
       administrator: (context: Context) => string | null = () => null,
     ) {
       browser.install(app, signOutAdministrator);
+      if (taskSources) {
+        installControlPlaneTaskSourceRoutes(app, taskSources, authenticate);
+        taskSources.start();
+      }
       installControlPlaneDiagnosticGrantRoutes(app, registry.db);
       if (inspections)
         installControlPlaneInspectionRoutes(

@@ -221,6 +221,52 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       `${ready.origin}/projects/${aliceUser.projectId}`,
     );
     await alice.page
+      .getByRole("button", { name: "Task sources", exact: true })
+      .click();
+    await visible(
+      alice.page.getByRole("heading", { name: "Task sources", exact: true }),
+    );
+    await alice.page.getByRole("button", { name: /Beads alice/u }).click();
+    await visible(
+      alice.page.getByRole("heading", { name: "Tasks received", exact: true }),
+    );
+    assert.equal(
+      await alice.page
+        .getByRole("button", { name: "Poll now", exact: true })
+        .isDisabled(),
+      true,
+    );
+    await visible(
+      alice.page.getByText("BB_PERSONAL_poll-alice", { exact: true }),
+    );
+    if (process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS) {
+      await mkdir(process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS, {
+        recursive: true,
+        mode: 0o700,
+      });
+      await alice.page.screenshot({
+        path: join(
+          process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS,
+          "task-sources-desktop.png",
+        ),
+      });
+      const viewport = alice.page.viewportSize();
+      await alice.page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(
+        await alice.page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+        true,
+      );
+      await alice.page.screenshot({
+        path: join(
+          process.env.BB_CONTROL_PLANE_BROWSER_ARTIFACTS,
+          "task-sources-mobile.png",
+        ),
+      });
+      if (viewport) await alice.page.setViewportSize(viewport);
+    }
+    await alice.page
       .getByRole("button", { name: "Webhooks", exact: true })
       .click();
     await visible(
@@ -1203,6 +1249,7 @@ export async function verifyControlPlaneBrowser({ name, ready }) {
       personalAutomationBrowserQwenUidHomeCwdVerified: true,
       personalAutomationBrowserCancellationReapsActualCommands: true,
       personalAutomationBrowserForeignReadsAndMutationsDenied: true,
+      taskSourceBeadsStatusHistoryAndPausedControlsBrowser: true,
       webhookCreateRotateDisableHistoryAndForeignDenialBrowser: true,
       productionBrowserRenderingVerified: true,
       delegatedConversationHasNoIndependentComposerBrowser: true,

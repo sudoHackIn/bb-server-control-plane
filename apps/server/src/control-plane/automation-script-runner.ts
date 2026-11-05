@@ -70,18 +70,49 @@ export async function runControlPlaneAutomationScript(
         throw new Error("Script execution is not authorized");
       return context;
     });
+  return runControlPlaneManagedScript(
+    db,
+    () => {
+      const context = authority();
+      return {
+        user: context.user,
+        project: context.project,
+        maintenanceGeneration: context.maintenanceGeneration,
+        policyIdentity: JSON.stringify([
+          context.profileVersion.id,
+          context.binding.sourceBindingId,
+          context.binding.originThreadId,
+        ]),
+      };
+    },
+    parsed,
+    signal,
+  );
+}
+
+export async function runControlPlaneManagedScript(
+  db: DbConnection,
+  authority: () => {
+    user: { id: string; uid: number; home: string };
+    project: { projectId: string; cwd: string };
+    maintenanceGeneration: number;
+    policyIdentity: string;
+  },
+  input: z.input<typeof inputSchema>,
+  signal: AbortSignal,
+): Promise<ControlPlaneScriptResult> {
+  assertExecutionAdmission(db);
+  const parsed = inputSchema.parse(input);
   const context = authority();
   const identity = (value: typeof context) =>
     JSON.stringify({
       user: value.user.id,
       uid: value.user.uid,
-      maintenanceGeneration: value.maintenanceGeneration,
       home: value.user.home,
-      cwd: value.project.cwd,
       project: value.project.projectId,
-      profile: value.profileVersion.id,
-      source: value.binding.sourceBindingId,
-      origin: value.binding.originThreadId,
+      cwd: value.project.cwd,
+      maintenanceGeneration: value.maintenanceGeneration,
+      policyIdentity: value.policyIdentity,
     });
   const initial = identity(context);
   const recheck = () => {

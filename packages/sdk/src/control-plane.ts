@@ -1,3 +1,4 @@
+import { createControlPlaneTaskSourceClient } from "./control-plane-task-sources.js";
 import { createControlPlaneWebhookClient } from "./control-plane-webhooks.js";
 import { createControlPlaneTestRunClient } from "./control-plane-test-runs.js";
 import {
@@ -185,6 +186,7 @@ export function createControlPlaneClient(args: {
   const agentRuns = createControlPlaneAgentRunClient(request, requestResponse);
   return {
     agentRuns,
+    taskSources: createControlPlaneTaskSourceClient(request),
     webhooks: createControlPlaneWebhookClient(request, {
       origin: args.origin,
       fetch: fetcher,

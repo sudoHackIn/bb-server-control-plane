@@ -17,7 +17,10 @@ export const controlPlaneAgentRunStartSchema = z
       .min(1)
       .max(200)
       .refine(
-        (key) => !key.startsWith("invocation:") && !key.startsWith("webhook:"),
+        (key) =>
+          !key.startsWith("invocation:") &&
+          !key.startsWith("webhook:") &&
+          !key.startsWith("task-source:"),
         "Reserved agent invocation key",
       ),
   })
@@ -31,7 +34,7 @@ export const controlPlaneAgentRunSchema = z.object({
   projectId: z.string(),
   profileId: z.string().uuid(),
   profileVersionId: z.string().uuid(),
-  source: z.enum(["manual", "automation", "webhook"]),
+  source: z.enum(["manual", "automation", "webhook", "task-source"]),
   title: z.string().nullable(),
   status: z.union([
     threadStatusSchema,

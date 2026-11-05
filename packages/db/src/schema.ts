@@ -2015,3 +2015,72 @@ export const controlPlaneWebhookDeliveries = sqliteTable(
     ),
   ],
 );
+
+export const controlPlaneTaskSources = sqliteTable(
+  "control_plane_task_sources",
+  {
+    id: text("id").primaryKey(),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => controlPlaneUsers.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    profileVersionId: text("profile_version_id")
+      .notNull()
+      .references(() => controlPlaneProfileVersions.id),
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    intervalSeconds: integer("interval_seconds").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    checkpoint: text("checkpoint"),
+    nextPollAt: integer("next_poll_at").notNull(),
+    lastPollAt: integer("last_poll_at"),
+    failures: integer("failures").notNull().default(0),
+    error: text("error"),
+    readerJobId: text("reader_job_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("control_plane_task_sources_owner_project").on(
+      table.ownerUserId,
+      table.projectId,
+      table.id,
+    ),
+    index("control_plane_task_sources_due").on(table.enabled, table.nextPollAt),
+    uniqueIndex("control_plane_task_sources_project_kind").on(
+      table.projectId,
+      table.kind,
+    ),
+  ],
+);
+export const controlPlaneTaskSourceItems = sqliteTable(
+  "control_plane_task_source_items",
+  {
+    id: text("id").primaryKey(),
+    sourceId: text("source_id")
+      .notNull()
+      .references(() => controlPlaneTaskSources.id),
+    externalId: text("external_id").notNull(),
+    title: text("title").notNull(),
+    input: text("input").notNull(),
+    state: text("state", { enum: ["pending", "accepted"] })
+      .notNull()
+      .default("pending"),
+    runId: text("run_id"),
+    error: text("error"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("control_plane_task_source_item_identity").on(
+      table.sourceId,
+      table.externalId,
+    ),
+    index("control_plane_task_source_item_run").on(table.runId),
+    index("control_plane_task_source_item_pending").on(
+      table.sourceId,
+      table.state,
+      table.id,
+    ),
+  ],
+);

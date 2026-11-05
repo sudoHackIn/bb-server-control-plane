@@ -1,3 +1,4 @@
+import { verifyTaskSources } from "./check-control-plane-task-sources.mjs";
 import { verifyWebhooks } from "./check-control-plane-webhooks.mjs";
 import { once } from "node:events";
 import assert from "node:assert/strict";
@@ -1244,6 +1245,16 @@ export async function verifyPublishedWorkflowAgents({
       childThreadId: history.calls[0].childThreadId,
     });
   }
+  const taskSources = await verifyTaskSources({
+    published,
+    fixture,
+    userRequest,
+    userCommand,
+    wait,
+    db,
+    sendAdmin,
+    adminToken,
+  });
   const webhooks = await verifyWebhooks({
     published,
     send: webhookRequest,
@@ -1264,6 +1275,7 @@ export async function verifyPublishedWorkflowAgents({
       childThreadId: item.childThreadId,
     })),
     verification: {
+      taskSourceBeadsTwoUsersUidHomeCwdReadyDependenciesAndDuplicates: true,
       webhookTwoUserConversationWorkflowUidHomeCwdAndIdempotency: true,
       webhookSecretRotationDisableAndRevocation: true,
       workflowInspectionNativeMetadataCliAndForeignDenial: true,
@@ -1808,6 +1820,7 @@ export async function verifyPublishedWorkflowAgents({
         ),
       );
       return {
+        ...(await taskSources.afterRestart()),
         ...(await webhooks.afterRestart()),
         publishedAgentCompositionMetadataAndResultsSurviveRestart: true,
         publishedAgentCompositionReplayRevocationAndRegrant: true,

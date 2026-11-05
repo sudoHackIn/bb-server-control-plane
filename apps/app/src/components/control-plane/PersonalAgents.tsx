@@ -440,7 +440,9 @@ function PersonalAgentRunList({
                 ? "Scheduled"
                 : run.source === "webhook"
                   ? "Webhook"
-                  : "Manual"}{" "}
+                  : run.source === "task-source"
+                    ? "Task source"
+                    : "Manual"}{" "}
               · <PersonalStatus status={run.status} />
             </span>
             {["pending", "starting", "active", "queued", "running"].includes(
